@@ -7,7 +7,7 @@ import {
 } from './changeOrders'
 import { deriveCommitment, paymentStatus, type CommitmentInput } from './commitments'
 import { levelPackage, levelingSummary, type PackageInput } from './leveling'
-import { buildCashFlow, defaultCurve, type CashFlowPeriodInput } from './cashflow'
+import { buildCashFlow, buildCashFlowScenarios, defaultCurve, type CashFlowPeriodInput } from './cashflow'
 import { computeHealth, deriveQuantityProgress } from './project'
 import { endOfMonth, monthEndsBetween } from './dates'
 
@@ -307,8 +307,22 @@ describe('cash flow S-curve — Progress & Forecast B23:R46', () => {
     expect(rows[2].cumulativeBillings).toBe(1_046_000)
   })
 
-  it('future collections lag billings and are net of retention', () => {
+  it('the first forecast month collects the receivable outstanding at the data date', () => {
+    // billed 1,046,000 less 5% retention, less 497,800 already collected
+    expect(rows[3].cashIn).toBeCloseTo(1_046_000 * 0.95 - 497_800, 4)
+  })
+
+  it('later forecast months collect the prior month billing, net of retention', () => {
     expect(rows[4].cashIn).toBeCloseTo(rows[3].billings * 0.95, 4)
+  })
+
+  it('collecting sooner and spending less always improves the final cash position', () => {
+    const scenarios = buildCashFlowScenarios(periods, ctx)
+    const best = scenarios.best.at(-1)!.netCash
+    const expected = scenarios.expected.at(-1)!.netCash
+    const worst = scenarios.worst.at(-1)!.netCash
+    expect(best).toBeGreaterThan(expected)
+    expect(expected).toBeGreaterThan(worst)
   })
 
   it('net cash is cumulative cash less cumulative cost', () => {

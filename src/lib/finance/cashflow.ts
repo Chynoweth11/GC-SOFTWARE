@@ -76,11 +76,20 @@ export function buildCashFlow(
   const retentionRelease = num(ctx.contractValue) * num(ctx.ownerRetentionPct)
   const retentionMonth = endOfMonth(ctx.forecastCompletion, 1)
 
+  // Receivable already outstanding at the data date. It is collected across the
+  // first `lag` forecast months — without this the lag model would re-collect
+  // billings the actual months already brought in.
+  const openingReceivable = Math.max(
+    0,
+    num(ctx.billedToDate) * (1 - num(ctx.ownerRetentionPct)) - num(ctx.collectedToDate),
+  )
+  const lag = Math.max(0, Math.round(ctx.collectionLagMonths))
+
   const rows: CashFlowRow[] = []
   let cumulativeCost = 0
   let cumulativeBillings = 0
   let cumulativeCash = 0
-  const forecastBillingByMonth = new Map<string, number>()
+  let forecastIndex = 0
 
   for (const period of withPlanned) {
     const isActual = period.periodEnd.getTime() <= dataMonthEnd.getTime()
@@ -104,7 +113,6 @@ export function buildCashFlow(
       billings = Math.max(0, remainingContract * share)
     }
     cumulativeBillings += billings
-    forecastBillingByMonth.set(key(period.periodEnd), billings)
 
     let cashIn: number
     if (period.collectionOverride != null) {
@@ -112,16 +120,20 @@ export function buildCashFlow(
     } else if (isActual) {
       cashIn = num(ctx.actualCollectionsByMonth.get(key(period.periodEnd)))
     } else {
-      const lag = Math.max(0, Math.round(ctx.collectionLagMonths))
-      const sourceIndex = rows.length - lag
-      const sourceBilling =
-        sourceIndex >= 0 && sourceIndex < rows.length
-          ? rows[sourceIndex].billings
-          : lag === 0
-            ? billings
-            : 0
-      cashIn = sourceBilling * (1 - num(ctx.ownerRetentionPct))
+      // Forecast months collect, in order: the receivable already outstanding at
+      // the data date, then each month's own forecast billing `lag` months later,
+      // then the retained amount once the job completes.
+      if (lag === 0) {
+        cashIn = billings * (1 - num(ctx.ownerRetentionPct))
+        if (forecastIndex === 0) cashIn += openingReceivable
+      } else if (forecastIndex < lag) {
+        cashIn = openingReceivable / lag
+      } else {
+        const source = rows[rows.length - lag]
+        cashIn = num(source?.billings) * (1 - num(ctx.ownerRetentionPct))
+      }
       if (period.periodEnd.getTime() === retentionMonth.getTime()) cashIn += retentionRelease
+      forecastIndex++
     }
     cumulativeCash += cashIn
 
