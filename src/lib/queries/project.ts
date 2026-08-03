@@ -186,6 +186,7 @@ export const getProjectBundle = cache(
         tradeId: line.tradeId,
         tradeName: line.trade?.name ?? null,
         divisionCode: line.costCode.division?.code ?? null,
+        divisionName: line.costCode.division?.name ?? null,
         originalBudget: line.originalBudget,
         budgetRevisions: revisionByLine.get(line.id) ?? 0,
         committed: committedByCode.get(line.costCodeId) ?? 0,

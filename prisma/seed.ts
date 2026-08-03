@@ -682,7 +682,7 @@ function inferType(name: string): string {
 async function seedDetailedProject(
   projectId: string,
   companyId: string,
-  codeByCode: Map<string, { id: string; code: string; category: CostCategory }>,
+  codeByCode: Map<string, { id: string; code: string; description: string; category: CostCategory }>,
   tradeByName: Map<string, { id: string }>,
   vendorByName: Map<string, { id: string; name: string }>,
   _index: number,
@@ -720,27 +720,45 @@ async function seedDetailedProject(
     }
   }
 
-  // Cost transactions: one actual and one accrual per cost code, matching the
-  // workbook's Cost to Date and Accruals columns.
+  // Cost transactions. Actual cost is spread across the three elapsed months in
+  // the proportion the workbook's Progress & Forecast tab recorded, so the cost
+  // ledger, the monthly chart and the S-curve all agree. Accruals post at the
+  // data date, which is what an accrual is.
+  const monthlyActuals = raw.progress
+    .filter((r) => n(r['Actual Cost ($)']) > 0)
+    .map((r) => ({ periodEnd: d(r['Month End'])!, cost: n(r['Actual Cost ($)']) }))
+  const monthlyTotal = monthlyActuals.reduce((a, m) => a + m.cost, 0) || 1
+
   for (const row of raw.financials) {
     const code = String(row['Cost Code'])
     const costCodeId = codeByCode.get(code)!.id
     const actual = n(row['Cost to Date ($)'])
     const accrual = n(row['Accruals / Pending ($)'])
+
     if (actual !== 0) {
-      await prisma.costTransaction.create({
-        data: {
-          projectId,
-          costCodeId,
-          date: D('2026-03-31'),
-          type: 'ACTUAL',
-          source: 'IMPORT',
-          description: `${row['Description']} — cost posted through March 2026`,
-          reference: 'Accounting import 2026-03',
-          amount: actual,
-        },
-      })
+      let allocated = 0
+      for (const [i, month] of monthlyActuals.entries()) {
+        const amount =
+          i === monthlyActuals.length - 1
+            ? Math.round(actual - allocated)
+            : Math.round(actual * (month.cost / monthlyTotal))
+        allocated += amount
+        if (amount === 0) continue
+        await prisma.costTransaction.create({
+          data: {
+            projectId,
+            costCodeId,
+            date: month.periodEnd,
+            type: 'ACTUAL',
+            source: 'IMPORT',
+            description: `${row['Description']} — cost posted for the month`,
+            reference: `Accounting import ${month.periodEnd.toISOString().slice(0, 7)}`,
+            amount,
+          },
+        })
+      }
     }
+
     if (accrual !== 0) {
       await prisma.costTransaction.create({
         data: {
@@ -837,6 +855,27 @@ async function seedDetailedProject(
         lines: { create: [{ costCodeId: costCode.id, amount: n(row['PO Amount ($)']) }] },
       },
     })
+  }
+
+  // Link the posted cost back to the commitment that authorised it, so the job
+  // cost ledger can be filtered by vendor and each commitment shows its spend.
+  {
+    const allCommitments = await prisma.commitment.findMany({
+      where: { projectId },
+      include: { lines: true },
+    })
+    const byCostCode = new Map<string, { id: string; vendorId: string }>()
+    for (const c of allCommitments) {
+      for (const line of c.lines) {
+        if (!byCostCode.has(line.costCodeId)) byCostCode.set(line.costCodeId, { id: c.id, vendorId: c.vendorId })
+      }
+    }
+    for (const [costCodeId, commitment] of byCostCode) {
+      await prisma.costTransaction.updateMany({
+        where: { projectId, costCodeId, type: 'ACTUAL' },
+        data: { commitmentId: commitment.id, vendorId: commitment.vendorId },
+      })
+    }
   }
 
   // Subcontractor invoices
@@ -1150,7 +1189,7 @@ async function seedDetailedProject(
 async function seedSummaryProject(
   projectId: string,
   row: Row,
-  codeByCode: Map<string, { id: string; code: string; category: CostCategory }>,
+  codeByCode: Map<string, { id: string; code: string; description: string; category: CostCategory }>,
 ) {
   const contract = n(row['Current Contract ($)'])
   const costToDate = n(row['Cost to Date ($)'])

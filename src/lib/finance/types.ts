@@ -30,6 +30,7 @@ export interface CostLineInput {
   tradeId?: string | null
   tradeName?: string | null
   divisionCode?: string | null
+  divisionName?: string | null
   originalBudget: number
   /** Budget added by approved change orders and internal revisions. */
   budgetRevisions: number
