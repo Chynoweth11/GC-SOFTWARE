@@ -480,13 +480,17 @@ async function main() {
   let itemOrder = 0
   for (const row of raw.takeoff) {
     const div = s(row['CSI Division'])
-    const description = String(row['Item Description'])
-    // A banner row has a section name in the division column and no measure.
-    const asSection = SECTION_NAMES.find((x) => x.toLowerCase() === description.toLowerCase())
-    if (asSection) {
-      currentSection = sectionByName.get(asSection)!
+    const description = s(row['Item Description'])
+
+    // A section banner carries the section name in the division column with no
+    // item description. Everything after it belongs to that section.
+    if (!description) {
+      const banner = (div ?? '').toLowerCase()
+      const match = SECTION_NAMES.find((name) => banner.startsWith(name.toLowerCase()))
+      if (match) currentSection = sectionByName.get(match)!
       continue
     }
+
     const divisionCode = div ? div.slice(0, 2) : null
     await prisma.estimateItem.create({
       data: {
