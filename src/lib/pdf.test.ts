@@ -108,6 +108,94 @@ describe('pdf writer', () => {
     expect(text).toContain('$2,450,000')
   })
 
+  it('never truncates a money column, however many columns the report has', () => {
+    // The shape that broke: seventeen columns of a job-cost schedule.
+    const columns = [
+      { header: 'Job', key: 'job', width: 12 },
+      { header: 'Project', key: 'project', width: 26 },
+      { header: 'Cost code', key: 'code', width: 14 },
+      { header: 'Description', key: 'description', width: 32 },
+      ...Array.from({ length: 13 }, (_, i) => ({
+        header: `Money column ${i}`,
+        key: `m${i}`,
+        width: 14,
+        align: 'right' as const,
+      })),
+    ]
+    const row: Record<string, string> = {
+      job: '26-001',
+      project: 'Riverside Medical Office Building',
+      code: '03-300',
+      description: 'Cast-in-place concrete, footings and foundation walls',
+    }
+    for (let i = 0; i < 13; i++) row[`m${i}`] = '($1,234,567)'
+
+    const buffer = buildPdf({ title: 'Wide', sections: [{ table: { columns, rows: [row, row, row], totals: { job: 'Total (3)' } } }] })
+    const drawn = [...buffer.toString('latin1').matchAll(/\((.*?)\) Tj/g)].map((m) => m[1])
+
+    // Every money cell must survive whole.
+    const moneyCells = drawn.filter((s) => s.includes('1,234,567') || s.startsWith('\\($1'))
+    expect(moneyCells.length).toBe(39)
+    for (const cell of moneyCells) expect(cell).not.toContain('...')
+
+    // And the totals label is not cut down to nothing.
+    // Parentheses are escaped inside a PDF literal string.
+    expect(drawn).toContain('Total \\(3\\)')
+  })
+
+  it('does not lose a cell to floating-point rounding when it measures exactly', () => {
+    // "$62.00" measures 25.993pt at 8.5pt. Storing that as width + padding and
+    // subtracting the padding back at render time returned 25.992999999999995,
+    // one bit short, and the cell was truncated to "$62....".
+    const value = '$62.00'
+    const buffer = buildPdf({
+      title: 'Boundary',
+      sections: [
+        {
+          table: {
+            columns: [
+              { header: 'Rate', key: 'rate', width: 14, align: 'right' },
+              { header: 'Item', key: 'item', width: 40 },
+            ],
+            rows: [{ rate: value, item: 'Anything' }],
+          },
+        },
+      ],
+    })
+    const drawn = [...buffer.toString('latin1').matchAll(/\((.*?)\) Tj/g)].map((m) => m[1])
+    expect(drawn).toContain(value)
+  })
+
+  it('grows the sheet rather than shrinking figures away', () => {
+    const narrow = buildPdf({
+      title: 'Narrow',
+      sections: [{ table: { columns: [{ header: 'A', key: 'a', width: 10 }], rows: [{ a: 'x' }] } }],
+    })
+    const wide = buildPdf({
+      title: 'Wide',
+      sections: [
+        {
+          table: {
+            columns: Array.from({ length: 20 }, (_, i) => ({ header: `Column ${i}`, key: `k${i}`, width: 14, align: 'right' as const })),
+            rows: [Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`k${i}`, '$12,345,678']))],
+          },
+        },
+      ],
+    })
+    const box = (b: Buffer) => Number(/\/MediaBox \[0 0 (\d+)/.exec(b.toString('latin1'))![1])
+    expect(box(narrow)).toBe(792) // letter landscape when it fits
+    expect(box(wide)).toBeGreaterThan(792) // widened rather than truncated
+  })
+
+  it('keeps the totals row with its table instead of orphaning it', () => {
+    // Enough rows to land the totals right at a page boundary.
+    for (const count of [33, 34, 35, 36, 37]) {
+      const buffer = buildPdf({ title: 'Boundary', sections: [{ heading: 'D', table: table(count) }] })
+      const drawn = [...buffer.toString('latin1').matchAll(/\((.*?)\) Tj/g)].map((m) => m[1])
+      expect(drawn).toContain('Total')
+    }
+  })
+
   it('produces a valid document for an empty table rather than failing', () => {
     const buffer = buildPdf({
       title: 'Nothing to report',
