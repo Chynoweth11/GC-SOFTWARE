@@ -5,7 +5,8 @@ import { getProjectBundle } from '@/lib/queries/project'
 import { prisma } from '@/lib/db'
 import { auditTrail } from '@/lib/audit'
 import { date, dateInput, money, percent, titleize } from '@/lib/format'
-import { DataList, EmptyState, Section, StatusPill } from '@/components/ui'
+import Link from 'next/link'
+import { DataList, EmptyState, InfoNote, Section, StatusPill } from '@/components/ui'
 import { ProjectSettingsForm } from '@/components/project/project-settings-form'
 import { updateProject, createSnapshot } from './actions'
 
@@ -159,6 +160,27 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
           </div>
         )}
       </Section>
+
+      {canEdit && (
+        <Section
+          title="Backup"
+          description="The whole project as one restorable file — budgets, commitments, costs, change orders, billings, forecasts and quantities"
+          actions={
+            <a href={`/api/backup/project/${project.id}`} className="btn btn-secondary text-xs">
+              Download backup
+            </a>
+          }
+        >
+          <InfoNote>
+            The file carries stored values only. Every derived figure is recalculated on restore by the same engine this page
+            uses, so a restored project can never disagree with a live one. Restoring is done from{' '}
+            <Link href="/admin/restore" className="underline">
+              Settings → Backup and restore
+            </Link>
+            , and always creates a new project rather than overwriting one.
+          </InfoNote>
+        </Section>
+      )}
 
       <Section title="Change history" description="Every setup change to this project, with who made it">
         {trail.length === 0 ? (

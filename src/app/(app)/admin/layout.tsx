@@ -14,7 +14,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         title="Settings"
         subtitle="Company defaults, users, reference data and data import — the structures every project is built on"
       />
-      <AdminTabs canManageUsers={can(user.role, 'manage:users')} canImport={can(user.role, 'import:data')} />
+      <AdminTabs
+        canManageUsers={can(user.role, 'manage:users')}
+        canImport={can(user.role, 'import:data')}
+        canRestore={can(user.role, 'edit:project_setup')}
+      />
       {children}
     </>
   )

@@ -612,14 +612,18 @@ export function DonutChart({
   const radius = size / 2
   const thickness = size * 0.19
   const inner = radius - thickness
-  let angle = -Math.PI / 2
+  // Cumulative fractions, so each arc's start is derived rather than accumulated
+  // through a variable the renderer would see mutate.
+  const offsets = slices.reduce<number[]>((acc, slice, i) => {
+    acc.push((acc[i - 1] ?? 0) + Math.abs(slice.value) / total)
+    return acc
+  }, [])
 
   const arcs = slices.map((slice, i) => {
     const fraction = Math.abs(slice.value) / total
     const sweep = fraction * Math.PI * 2
-    const start = angle
-    const end = angle + sweep
-    angle = end
+    const start = -Math.PI / 2 + (offsets[i - 1] ?? 0) * Math.PI * 2
+    const end = start + sweep
     const largeArc = sweep > Math.PI ? 1 : 0
     const p = (r: number, a: number) => `${radius + r * Math.cos(a)},${radius + r * Math.sin(a)}`
     return {

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { getEstimateBundle } from '@/lib/queries/estimate'
 import { date, moneyShort, percent } from '@/lib/format'
-import { PageHeader, Pill, StatusPill } from '@/components/ui'
+import { ExportMenu, PageHeader, Pill, StatusPill } from '@/components/ui'
 import { EstimateTabs } from '@/components/estimating/estimate-tabs'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -55,6 +55,9 @@ export default async function EstimateLayout({
             )}
             {estimate.lockedAt && <Pill tone="neutral">Locked {date(estimate.lockedAt)}</Pill>}
           </>
+        }
+        actions={
+          <ExportMenu excelHref={`/api/export/estimate/${estimate.id}`} pdfHref={`/api/pdf/estimate/${estimate.id}`} label="Export estimate" />
         }
       />
 

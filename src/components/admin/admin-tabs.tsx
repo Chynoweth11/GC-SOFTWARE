@@ -3,7 +3,15 @@
 import { usePathname } from 'next/navigation'
 import { Tabs } from '@/components/ui'
 
-export function AdminTabs({ canManageUsers, canImport }: { canManageUsers: boolean; canImport: boolean }) {
+export function AdminTabs({
+  canManageUsers,
+  canImport,
+  canRestore,
+}: {
+  canManageUsers: boolean
+  canImport: boolean
+  canRestore: boolean
+}) {
   const pathname = usePathname()
 
   return (
@@ -16,6 +24,7 @@ export function AdminTabs({ canManageUsers, canImport }: { canManageUsers: boole
         { href: '/admin/trades', label: 'Trades and divisions' },
         { href: '/admin/vendors', label: 'Vendors' },
         ...(canImport ? [{ href: '/admin/import', label: 'Import' }] : []),
+        ...(canRestore ? [{ href: '/admin/restore', label: 'Backup and restore' }] : []),
       ]}
     />
   )

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getCompanyDashboard, parseProjectFilter } from '@/lib/queries/company'
@@ -17,6 +18,12 @@ import {
 } from '@/components/ui'
 import { ChartFrame, DonutChart, HorizontalBars, LineChart, BarChart, Meter } from '@/components/charts/primitives'
 import { ProjectFilters } from '@/components/dashboard/project-filters'
+import { SavedViews } from '@/components/dashboard/saved-views'
+import { listSavedViews } from '@/lib/queries/views'
+import { saveView, deleteView, saveDashboardLayout } from './views-actions'
+import { CustomizeDashboard } from '@/components/dashboard/customize'
+import { DASHBOARD_PANELS, resolveLayout } from '@/lib/dashboard-panels'
+import { getPreference } from '@/lib/queries/views'
 import { AlertList } from '@/components/dashboard/alert-list'
 
 export const metadata = { title: 'Company dashboard' }
@@ -29,12 +36,30 @@ export default async function DashboardPage({
   const user = await requireUser()
   const params = await searchParams
   const filter = parseProjectFilter(params)
-  const data = await getCompanyDashboard(user.companyId, filter)
+  const [data, savedViews, storedLayout] = await Promise.all([
+    getCompanyDashboard(user.companyId, filter),
+    listSavedViews('dashboard', user),
+    getPreference(user.id, 'dashboard.layout'),
+  ])
   const { totals, projects, pipeline, cashFlow, revenueForecast, alerts } = data
 
   const showCompany = can(user.role, 'view:company_financials')
   const showMargins = can(user.role, 'view:margins')
   const showCash = can(user.role, 'view:cash_position')
+
+  // Role decides which panels exist; preference only orders and hides them.
+  const permittedPanels = DASHBOARD_PANELS.filter((panel) => {
+    if (panel.id === 'cashflow') return showCash
+    // The billing panel carries both the company position and the cash breakdown,
+    // so it needs both capabilities rather than either one.
+    if (panel.id === 'billing') return showCompany && showCash
+    if (panel.id === 'revenue') return showCompany
+    if (panel.id === 'pipeline') return can(user.role, 'view:pipeline')
+    if (panel.id === 'alerts') return data.alerts.length > 0
+    return true
+  })
+  const layout = resolveLayout(storedLayout, permittedPanels.map((p) => p.id))
+  const visiblePanels = layout.order.filter((id) => !layout.hidden.includes(id))
 
   if (projects.length === 0) {
     return (
@@ -65,48 +90,13 @@ export default async function DashboardPage({
 
   const marginByProject = [...projects].sort((a, b) => b.financials.contract.currentContract - a.financials.contract.currentContract)
 
-  return (
-    <>
-      <PageHeader
-        title="Company dashboard"
-        subtitle={
-          <>
-            {data.company.name} · {projects.length} project{projects.length === 1 ? '' : 's'} · target margin{' '}
-            {percent(data.company.targetMarginPct, 0)}
-          </>
-        }
-        meta={
-          <>
-            <Pill tone={totals.projectsAtHighRisk > 0 ? 'adverse' : 'favorable'} dot>
-              {totals.projectsAtHighRisk} at high risk
-            </Pill>
-            <Pill tone={totals.projectsOnWatch > 0 ? 'caution' : 'neutral'} dot>
-              {totals.projectsOnWatch} on watch
-            </Pill>
-            <Pill tone={totals.projectsBehindSchedule > 0 ? 'caution' : 'favorable'} dot>
-              {totals.projectsBehindSchedule} behind schedule
-            </Pill>
-            <Pill tone={totals.projectsBelowTargetMargin > 0 ? 'caution' : 'favorable'} dot>
-              {totals.projectsBelowTargetMargin} below target margin
-            </Pill>
-          </>
-        }
-        actions={
-          <>
-            <Link href="/reports/wip" className="btn btn-secondary">
-              WIP schedule
-            </Link>
-            <Link href="/reports" className="btn btn-secondary">
-              All reports
-            </Link>
-          </>
-        }
-      />
-
-      <ProjectFilters options={data.filterOptions} current={filter} />
-
-      {/* ── Headline position ─────────────────────────────────────────── */}
-      <Section title="Portfolio position" className="mb-6 mt-5">
+  // ── Panels ─────────────────────────────────────────────────────────────
+  // Each is built once and placed by the user's saved order below. Building
+  // them as a map rather than inline JSX is what makes the order a datum
+  // rather than a hard-coded sequence.
+  const panelContent: Record<string, ReactNode> = {
+    portfolio: (
+      <Section title="Portfolio position">
         <KpiGrid cols={5}>
           <MoneyKpi
             label="Current contract value"
@@ -157,9 +147,9 @@ export default async function DashboardPage({
           )}
         </KpiGrid>
       </Section>
-
-      {/* ── Cost and cash ─────────────────────────────────────────────── */}
-      <Section title="Cost, commitment and cash position" className="mb-6">
+    ),
+    cost: (
+      <Section title="Cost, commitment and cash position">
         <KpiGrid cols={6}>
           <MoneyKpi label="Current budget" amount={totals.currentBudget} detail={<>Original {moneyShort(totals.originalBudget)}</>} />
           <MoneyKpi label="Actual cost" amount={totals.actualCost} detail={`${percent(totals.actualCost / (totals.forecastCost || 1))} of forecast`} />
@@ -175,94 +165,87 @@ export default async function DashboardPage({
           {showCash && <MoneyKpi label="Accounts payable" amount={totals.accountsPayable} detail={<>Retention payable {moneyShort(totals.retentionPayable)}</>} />}
         </KpiGrid>
       </Section>
-
-      {/* ── Charts ───────────────────────────────────────────────────── */}
-      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {showCash && (
-          <ChartFrame
-            title="Company cash flow"
-            subtitle="Collections against cost, with the cumulative position"
-            className="xl:col-span-2"
-          >
-            {cashFlow.length > 0 ? (
-              <LineChart
-                labels={cashLabels}
-                height={260}
-                format="moneyShort"
-                forecastFromIndex={forecastStart >= 0 ? forecastStart : undefined}
-                series={[
-                  { key: 'cash', label: 'Cumulative cash', values: cashFlow.map((r) => r.cumulativeCash), color: 'var(--accent)', area: true },
-                  { key: 'collections', label: 'Collections', values: cashFlow.map((r) => r.collections), color: 'var(--favorable)' },
-                  { key: 'costs', label: 'Cost outflow', values: cashFlow.map((r) => r.costs), color: 'var(--adverse)' },
-                ]}
-              />
-            ) : (
-              <EmptyState title="No cash-flow periods yet" description="Set a contract start and forecast completion on a project to generate its S-curve." />
-            )}
-          </ChartFrame>
-        )}
-
-        <ChartFrame title="Backlog by project" subtitle="Revenue still to be earned">
-          <HorizontalBars
-            labels={backlogByProject.map((p) => `${p.number} ${p.name}`)}
+    ),
+    cashflow: (
+      <ChartFrame
+        title="Company cash flow"
+        subtitle="Collections against cost, with the cumulative position"
+        className="xl:col-span-2"
+      >
+        {cashFlow.length > 0 ? (
+          <LineChart
+            labels={cashLabels}
+            height={260}
             format="moneyShort"
-            series={[{ key: 'backlog', label: 'Backlog', values: backlogByProject.map((p) => p.financials.backlog) }]}
+            forecastFromIndex={forecastStart >= 0 ? forecastStart : undefined}
+            series={[
+              { key: 'cash', label: 'Cumulative cash', values: cashFlow.map((r) => r.cumulativeCash), color: 'var(--accent)', area: true },
+              { key: 'collections', label: 'Collections', values: cashFlow.map((r) => r.collections), color: 'var(--favorable)' },
+              { key: 'costs', label: 'Cost outflow', values: cashFlow.map((r) => r.costs), color: 'var(--adverse)' },
+            ]}
           />
-        </ChartFrame>
-      </div>
-
-      {showCompany && (
-        <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <ChartFrame title="Revenue and profit forecast" subtitle="Monthly, derived from every project's cost curve" className="xl:col-span-2">
-            {revenueForecast.length > 0 ? (
-              <BarChart
-                labels={revenueLabels}
-                height={250}
-                format="moneyShort"
-                series={[
-                  { key: 'revenue', label: 'Revenue', values: revenueForecast.map((r) => r.revenue), color: 'var(--accent)' },
-                  { key: 'cost', label: 'Cost', values: revenueForecast.map((r) => r.cost), color: 'var(--series-neutral)' },
-                  { key: 'profit', label: 'Gross profit', values: revenueForecast.map((r) => r.grossProfit), color: 'var(--favorable)' },
-                ]}
-              />
-            ) : (
-              <EmptyState title="No forecast periods" />
-            )}
-          </ChartFrame>
-
-          <ChartFrame title="Billing position" subtitle="Over- and underbilling across the portfolio">
-            <DonutChart
-              format="moneyShort"
-              centerLabel="Net position"
-              centerValue={moneyShort(totals.overbilled - totals.underbilled)}
-              slices={[
-                { label: 'Overbilled', value: totals.overbilled, color: 'var(--favorable)' },
-                { label: 'Underbilled', value: totals.underbilled, color: 'var(--adverse)' },
-              ]}
-            />
-            <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
-              <DataList
-                columns={1}
-                items={[
-                  { label: 'Cash collected', value: money(totals.cashCollected) },
-                  { label: 'Receivable', value: money(totals.accountsReceivable) },
-                  { label: 'Retention receivable', value: money(totals.retentionReceivable) },
-                  { label: 'Retention payable', value: money(totals.retentionPayable) },
-                ]}
-              />
-            </div>
-          </ChartFrame>
+        ) : (
+          <EmptyState title="No cash-flow periods yet" description="Set a contract start and forecast completion on a project to generate its S-curve." />
+        )}
+      </ChartFrame>
+    ),
+    backlog: (
+      <ChartFrame title="Backlog by project" subtitle="Revenue still to be earned">
+        <HorizontalBars
+          labels={backlogByProject.map((p) => `${p.number} ${p.name}`)}
+          format="moneyShort"
+          series={[{ key: 'backlog', label: 'Backlog', values: backlogByProject.map((p) => p.financials.backlog) }]}
+        />
+      </ChartFrame>
+    ),
+    revenue: (
+      <ChartFrame title="Revenue and profit forecast" subtitle="Monthly, derived from every project's cost curve" className="xl:col-span-2">
+        {revenueForecast.length > 0 ? (
+          <BarChart
+            labels={revenueLabels}
+            height={250}
+            format="moneyShort"
+            series={[
+              { key: 'revenue', label: 'Revenue', values: revenueForecast.map((r) => r.revenue), color: 'var(--accent)' },
+              { key: 'cost', label: 'Cost', values: revenueForecast.map((r) => r.cost), color: 'var(--series-neutral)' },
+              { key: 'profit', label: 'Gross profit', values: revenueForecast.map((r) => r.grossProfit), color: 'var(--favorable)' },
+            ]}
+          />
+        ) : (
+          <EmptyState title="No forecast periods" />
+        )}
+      </ChartFrame>
+    ),
+    billing: (
+      <ChartFrame title="Billing position" subtitle="Over- and underbilling across the portfolio">
+        <DonutChart
+          format="moneyShort"
+          centerLabel="Net position"
+          centerValue={moneyShort(totals.overbilled - totals.underbilled)}
+          slices={[
+            { label: 'Overbilled', value: totals.overbilled, color: 'var(--favorable)' },
+            { label: 'Underbilled', value: totals.underbilled, color: 'var(--adverse)' },
+          ]}
+        />
+        <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+          <DataList
+            columns={1}
+            items={[
+              { label: 'Cash collected', value: money(totals.cashCollected) },
+              { label: 'Receivable', value: money(totals.accountsReceivable) },
+              { label: 'Retention receivable', value: money(totals.retentionReceivable) },
+              { label: 'Retention payable', value: money(totals.retentionPayable) },
+            ]}
+          />
         </div>
-      )}
-
-      {/* ── Alerts ───────────────────────────────────────────────────── */}
-      {alerts.length > 0 && (
-        <Section title="Attention required" description="Recomputed from live data every time this page loads" className="mb-6">
-          <AlertList alerts={alerts.slice(0, 8)} />
-        </Section>
-      )}
-
-      {/* ── Project table ────────────────────────────────────────────── */}
+      </ChartFrame>
+    ),
+    alerts: (
+      <Section title="Attention required" description="Recomputed from live data every time this page loads">
+        <AlertList alerts={alerts.slice(0, 8)} />
+      </Section>
+    ),
+    projects: (
       <Section
         title="Projects"
         description="Every figure below comes from the same calculation engine as the project pages"
@@ -271,7 +254,7 @@ export default async function DashboardPage({
             Open projects →
           </Link>
         }
-        className="mb-6"
+
       >
         <div className="card-flush">
           <div className="table-wrap">
@@ -357,58 +340,122 @@ export default async function DashboardPage({
           </div>
         </div>
       </Section>
-
-      {/* ── Pipeline ─────────────────────────────────────────────────── */}
-      {can(user.role, 'view:pipeline') && (
-        <Section
-          title="Bid pipeline"
-          actions={
-            <Link href="/pipeline" className="btn btn-ghost text-xs">
-              Open pipeline →
-            </Link>
-          }
-        >
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <KpiGrid cols={4}>
-                <Kpi label="Active bids" value={fmtNumber(pipeline.activeBids)} detail={`${pipeline.bidsDueNext14Days} due in 14 days`} />
-                <MoneyKpi label="Open pipeline" amount={pipeline.openPipelineValue} />
-                <MoneyKpi label="Weighted pipeline" amount={pipeline.weightedPipeline} hint="Value × win probability for every open opportunity." />
-                <Kpi
-                  label="Win rate"
-                  value={percent(pipeline.winRateByCount, 0)}
-                  detail={`${percent(pipeline.winRateByValue, 0)} by value`}
-                  tone={pipeline.winRateByCount >= 0.4 ? 'favorable' : 'caution'}
-                />
-              </KpiGrid>
-              {pipeline.followUpsOverdue > 0 && (
-                <div className="mt-3">
-                  <Link href="/pipeline?followUp=overdue" className="block">
-                    <div
-                      className="rounded-lg border px-3 py-2 text-xs"
-                      style={{ background: 'var(--caution-soft)', borderColor: 'var(--caution)', color: 'var(--caution)' }}
-                    >
-                      {pipeline.followUpsOverdue} follow-up{pipeline.followUpsOverdue === 1 ? ' is' : 's are'} overdue and{' '}
-                      {pipeline.followUpsDueThisWeek} due this week.
-                    </div>
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            <ChartFrame title="Pipeline by stage">
-              <HorizontalBars
-                labels={pipeline.byStatus.map((s) => s.status.replace(/_/g, ' ').toLowerCase())}
-                format="moneyShort"
-                series={[
-                  { key: 'value', label: 'Value', values: pipeline.byStatus.map((s) => s.value) },
-                  { key: 'weighted', label: 'Weighted', values: pipeline.byStatus.map((s) => s.weighted), color: 'var(--favorable)' },
-                ]}
+    ),
+    pipeline: (
+      <Section
+        title="Bid pipeline"
+        actions={
+          <Link href="/pipeline" className="btn btn-ghost text-xs">
+            Open pipeline →
+          </Link>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <KpiGrid cols={4}>
+              <Kpi label="Active bids" value={fmtNumber(pipeline.activeBids)} detail={`${pipeline.bidsDueNext14Days} due in 14 days`} />
+              <MoneyKpi label="Open pipeline" amount={pipeline.openPipelineValue} />
+              <MoneyKpi label="Weighted pipeline" amount={pipeline.weightedPipeline} hint="Value × win probability for every open opportunity." />
+              <Kpi
+                label="Win rate"
+                value={percent(pipeline.winRateByCount, 0)}
+                detail={`${percent(pipeline.winRateByValue, 0)} by value`}
+                tone={pipeline.winRateByCount >= 0.4 ? 'favorable' : 'caution'}
               />
-            </ChartFrame>
+            </KpiGrid>
+            {pipeline.followUpsOverdue > 0 && (
+              <div className="mt-3">
+                <Link href="/pipeline?followUp=overdue" className="block">
+                  <div
+                    className="rounded-lg border px-3 py-2 text-xs"
+                    style={{ background: 'var(--caution-soft)', borderColor: 'var(--caution)', color: 'var(--caution)' }}
+                  >
+                    {pipeline.followUpsOverdue} follow-up{pipeline.followUpsOverdue === 1 ? ' is' : 's are'} overdue and{' '}
+                    {pipeline.followUpsDueThisWeek} due this week.
+                  </div>
+                </Link>
+              </div>
+            )}
           </div>
-        </Section>
-      )}
+
+          <ChartFrame title="Pipeline by stage">
+            <HorizontalBars
+              labels={pipeline.byStatus.map((s) => s.status.replace(/_/g, ' ').toLowerCase())}
+              format="moneyShort"
+              series={[
+                { key: 'value', label: 'Value', values: pipeline.byStatus.map((s) => s.value) },
+                { key: 'weighted', label: 'Weighted', values: pipeline.byStatus.map((s) => s.weighted), color: 'var(--favorable)' },
+              ]}
+            />
+          </ChartFrame>
+        </div>
+      </Section>
+    ),
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Company dashboard"
+        subtitle={
+          <>
+            {data.company.name} · {projects.length} project{projects.length === 1 ? '' : 's'} · target margin{' '}
+            {percent(data.company.targetMarginPct, 0)}
+          </>
+        }
+        meta={
+          <>
+            <Pill tone={totals.projectsAtHighRisk > 0 ? 'adverse' : 'favorable'} dot>
+              {totals.projectsAtHighRisk} at high risk
+            </Pill>
+            <Pill tone={totals.projectsOnWatch > 0 ? 'caution' : 'neutral'} dot>
+              {totals.projectsOnWatch} on watch
+            </Pill>
+            <Pill tone={totals.projectsBehindSchedule > 0 ? 'caution' : 'favorable'} dot>
+              {totals.projectsBehindSchedule} behind schedule
+            </Pill>
+            <Pill tone={totals.projectsBelowTargetMargin > 0 ? 'caution' : 'favorable'} dot>
+              {totals.projectsBelowTargetMargin} below target margin
+            </Pill>
+          </>
+        }
+        actions={
+          <>
+            <Link href="/reports/wip" className="btn btn-secondary">
+              WIP schedule
+            </Link>
+            <Link href="/reports" className="btn btn-secondary">
+              All reports
+            </Link>
+            <CustomizeDashboard panels={permittedPanels} layout={layout} save={saveDashboardLayout} />
+          </>
+        }
+      />
+
+      <SavedViews scope="dashboard" views={savedViews} save={saveView} remove={deleteView} />
+      <ProjectFilters options={data.filterOptions} current={filter} />
+
+
+      <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {visiblePanels.map((id) => (
+          <div key={id} className={PANEL_SPANS[id] === 3 ? 'xl:col-span-3' : PANEL_SPANS[id] === 2 ? 'xl:col-span-2' : ''}>
+            {panelContent[id]}
+          </div>
+        ))}
+      </div>
     </>
   )
+}
+
+/** How many of the three dashboard columns each panel occupies on a wide screen. */
+const PANEL_SPANS: Record<string, number> = {
+    portfolio: 3,
+    cost: 3,
+    cashflow: 2,
+    backlog: 1,
+    revenue: 2,
+    billing: 1,
+    alerts: 3,
+    projects: 3,
+    pipeline: 3,
 }

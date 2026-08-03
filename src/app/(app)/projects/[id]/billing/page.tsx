@@ -5,7 +5,7 @@ import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { buildG702, sumBy } from '@/lib/finance'
 import { date, money, moneyShort, percent } from '@/lib/format'
-import { EmptyState, KpiGrid, MoneyKpi, Section, StatusPill, Variance, DataList } from '@/components/ui'
+import { EmptyState, ExportMenu, KpiGrid, MoneyKpi, Section, StatusPill, Variance, DataList } from '@/components/ui'
 import { ChartFrame, BarChart, Meter } from '@/components/charts/primitives'
 import { PayApplicationForm } from '@/components/project/pay-application-form'
 import { createPayApplication, recordPayment } from './actions'
@@ -191,9 +191,12 @@ export default async function BillingPage({
           title={`Application ${selected.appNumber} — AIA G702 / G703`}
           description={`Period to ${date(selected.periodTo)}`}
           actions={
-            <Link href={`/api/export/billing/${project.id}?app=${selected.appNumber}`} className="btn btn-secondary text-xs">
-              Export to Excel
-            </Link>
+            <ExportMenu
+              excelHref={`/api/export/billing/${project.id}?app=${selected.appNumber}`}
+              pdfHref={`/api/pdf/billing/${project.id}?app=${selected.appNumber}`}
+              label="Export application"
+              size="small"
+            />
           }
         >
           <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">

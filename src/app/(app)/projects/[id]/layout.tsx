@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { getProjectBundle } from '@/lib/queries/project'
 import { date, moneyShort, percent } from '@/lib/format'
-import { PageHeader, Pill, StatusPill } from '@/components/ui'
+import { ExportMenu, PageHeader, Pill, StatusPill } from '@/components/ui'
 import { ProjectTabs } from '@/components/project/project-tabs'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -49,6 +49,13 @@ export default async function ProjectLayout({
             </Pill>
             <Pill tone="neutral">{percent(financials.revenue.pctComplete)} complete</Pill>
           </>
+        }
+        actions={
+          <ExportMenu
+            excelHref={`/api/export/project/${project.id}`}
+            pdfHref={`/api/pdf/project/${project.id}`}
+            label="Export project"
+          />
         }
       />
 

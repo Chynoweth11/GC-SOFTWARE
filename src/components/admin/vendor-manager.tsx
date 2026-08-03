@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { money } from '@/lib/format'
-import { Pill, StatusPill } from '@/components/ui'
+import { Pill } from '@/components/ui'
 
 interface VendorRow {
   id: string

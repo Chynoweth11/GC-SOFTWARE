@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ROLE_LABELS } from '@/lib/permissions'
 import type { Role } from '@/generated/prisma/client'
 
@@ -40,11 +40,14 @@ function NavIcon({ path }: { path: string }) {
 }
 
 function ThemeToggle() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
-
-  useEffect(() => {
-    setTheme((document.documentElement.getAttribute('data-theme') as 'light' | 'dark') ?? 'light')
-  }, [])
+  // The inline script in the document head has already applied the stored theme
+  // by the time this hydrates, so read it during initialisation rather than
+  // setting state from an effect and re-rendering.
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    typeof document === 'undefined'
+      ? 'light'
+      : ((document.documentElement.getAttribute('data-theme') as 'light' | 'dark') ?? 'light'),
+  )
 
   const toggle = () => {
     const next = theme === 'dark' ? 'light' : 'dark'

@@ -1,8 +1,7 @@
 import { requireUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { COST_CATEGORIES, CATEGORY_LABELS } from '@/lib/finance/cost'
-import { money, titleize } from '@/lib/format'
-import { EmptyState, Pill, Section } from '@/components/ui'
+import { EmptyState, Section } from '@/components/ui'
 import { CostCodeManager } from '@/components/admin/cost-code-manager'
 import { saveCostCode, toggleCostCodeActive } from '../actions'
 

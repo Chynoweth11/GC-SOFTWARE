@@ -1,7 +1,7 @@
 import { requireUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { date, dateInput, money } from '@/lib/format'
-import { EmptyState, Pill, Section, StatusPill } from '@/components/ui'
+import { date, dateInput } from '@/lib/format'
+import { EmptyState, Section } from '@/components/ui'
 import { VendorManager } from '@/components/admin/vendor-manager'
 import { saveVendor } from '../actions'
 

@@ -6,30 +6,18 @@ import { getCompanyDashboard, parseProjectFilter } from '@/lib/queries/company'
 import { prisma } from '@/lib/db'
 import { buildWipSchedule, followUpState, rollupByDimension, sumBy } from '@/lib/finance'
 import { date, money, month, percent, titleize } from '@/lib/format'
-import { EmptyState, PageHeader, Section, StatusPill, Variance } from '@/components/ui'
+import { ExportMenu, PageHeader, Section, StatusPill, Variance } from '@/components/ui'
+import { REPORT_TITLES } from '@/lib/queries/report-spec'
 import { ProjectFilters } from '@/components/dashboard/project-filters'
-import { Meter } from '@/components/charts/primitives'
+import { SavedViews } from '@/components/dashboard/saved-views'
+import { listSavedViews } from '@/lib/queries/views'
+import { saveView, deleteView } from '../../views-actions'
 
 export const dynamicParams = false
 
-const TITLES: Record<string, { title: string; description: string }> = {
-  wip: { title: 'Work in progress', description: 'Percentage-of-completion schedule across the portfolio' },
-  'budget-vs-actual': { title: 'Budget vs actual vs forecast', description: 'Every cost code on every project' },
-  committed: { title: 'Budget vs committed', description: 'Commitment coverage and exposure by cost code' },
-  eac: { title: 'Estimate at completion', description: 'Cost to complete and EAC by project' },
-  profitability: { title: 'Profitability', description: 'Forecast profit and margin by project and by dimension' },
-  'billing-position': { title: 'Over / underbilling', description: 'Earned revenue against amount billed' },
-  backlog: { title: 'Backlog', description: 'Revenue still to be earned by project' },
-  cashflow: { title: 'Company cash flow', description: 'Monthly collections against outflow across every project' },
-  subcontractors: { title: 'Subcontractor payments', description: 'Contract, invoiced, paid, retention and outstanding across all projects' },
-  'change-orders': { title: 'Change orders', description: 'Every change order across the portfolio' },
-  buyout: { title: 'Buyout', description: 'Budget against award on every package' },
-  'bid-summary': { title: 'Bid summaries', description: 'Every estimate with its direct cost and final bid' },
-  pipeline: { title: 'Pipeline and win rate', description: 'Opportunities by stage with follow-up state' },
-}
 
 export function generateStaticParams() {
-  return Object.keys(TITLES).map((slug) => ({ slug }))
+  return Object.keys(REPORT_TITLES).map((slug) => ({ slug }))
 }
 
 export default async function ReportPage({
@@ -41,11 +29,26 @@ export default async function ReportPage({
 }) {
   const user = await requireUser()
   const { slug } = await params
-  const meta = TITLES[slug]
+  const meta = REPORT_TITLES[slug]
   if (!meta) notFound()
 
-  const filter = parseProjectFilter(await searchParams)
-  const data = await getCompanyDashboard(user.companyId, filter)
+  const resolvedSearchParams = await searchParams
+  const filter = parseProjectFilter(resolvedSearchParams)
+  // The export must honour the filters on screen, or the workbook and the page
+  // will show different projects.
+  const query = (() => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(resolvedSearchParams)) {
+      if (typeof value === 'string' && value) params.set(key, value)
+      else if (Array.isArray(value)) for (const v of value) params.append(key, v)
+    }
+    const encoded = params.toString()
+    return encoded ? `?${encoded}` : ''
+  })()
+  const [data, savedViews] = await Promise.all([
+    getCompanyDashboard(user.companyId, filter),
+    listSavedViews(slug, user),
+  ])
   const showMargins = can(user.role, 'view:margins')
 
   const bundles = data.projects
@@ -56,9 +59,10 @@ export default async function ReportPage({
       subtitle={`${meta.description} · ${bundles.length} project${bundles.length === 1 ? '' : 's'} in view`}
       actions={
         <>
-          <Link href={`/api/export/report/${slug}`} className="btn btn-secondary">
-            Export to Excel
-          </Link>
+          <ExportMenu
+            excelHref={`/api/export/report/${slug}${query}`}
+            pdfHref={`/api/pdf/report/${slug}${query}`}
+          />
           <Link href="/reports" className="btn btn-ghost">
             All reports
           </Link>
@@ -67,7 +71,12 @@ export default async function ReportPage({
     />
   )
 
-  const filters = <ProjectFilters options={data.filterOptions} current={filter} />
+  const filters = (
+    <>
+      <SavedViews scope={slug} views={savedViews} save={saveView} remove={deleteView} />
+      <ProjectFilters options={data.filterOptions} current={filter} />
+    </>
+  )
 
   // ── WIP ────────────────────────────────────────────────────────────────
   if (slug === 'wip') {

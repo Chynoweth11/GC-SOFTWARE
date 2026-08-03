@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { listEstimates } from '@/lib/queries/estimate'
-import { date, money, moneyShort, percent, titleize } from '@/lib/format'
+import { date, money, moneyShort, percent } from '@/lib/format'
 import { EmptyState, KpiGrid, Kpi, MoneyKpi, PageHeader, Section, StatusPill, Pill } from '@/components/ui'
 import { ChartFrame, HorizontalBars } from '@/components/charts/primitives'
 

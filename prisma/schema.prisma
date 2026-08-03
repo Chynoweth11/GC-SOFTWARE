@@ -43,6 +43,7 @@ model Company {
   monthlyActuals CompanyMonthly[]
   arAging        ArAgingBucket[]
   auditLogs      AuditLog[]
+  savedViews     SavedView[]
 }
 
 enum Role {
@@ -73,8 +74,49 @@ model User {
   sessions        Session[]
   managedProjects Project[] @relation("ProjectManager")
   auditLogs       AuditLog[]
+  savedViews      SavedView[]
+  preferences     UserPreference[]
 
   @@index([companyId])
+}
+
+/// A named filter combination on the dashboard or a report.
+/// Stores the query string only — the figures are always recomputed, so a saved
+/// view can never serve a stale number.
+model SavedView {
+  id        String   @id @default(cuid())
+  userId    String
+  companyId String
+  /// "dashboard" or the report slug the view belongs to.
+  scope     String
+  name      String
+  query     String
+  /// Loaded automatically when the user opens this scope.
+  isDefault Boolean  @default(false)
+  /// Visible to everyone in the company rather than just its author.
+  shared    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope, name])
+  @@index([companyId, scope])
+}
+
+/// Per-user interface state — which dashboard tiles are shown and in what order.
+/// Interface preference only; never a financial value.
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
 }
 
 model Session {

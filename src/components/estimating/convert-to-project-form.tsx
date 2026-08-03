@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { money, percent } from '@/lib/format'
+import { money } from '@/lib/format'
 
 function Submit() {
   const { pending } = useFormStatus()
