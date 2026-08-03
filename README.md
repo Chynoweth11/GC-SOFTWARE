@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ConstructX
 
-## Getting Started
+Financial operating system for a general contractor — estimating, bidding, budgets,
+job cost, forecasting, billing and company-wide financial control.
 
-First, run the development server:
+Built from three Excel workbooks (`ConstructX_Project_Controls_WorkbookXX.xlsx`,
+`ConstructX_Master_Company_TrackingX.xlsx`, `ConstructX_Takeoff_Bid_Template2.xlsx`),
+which remain the functional specification. Every formula in them is reproduced,
+tested against the workbooks' own outputs, and documented in
+[`docs/FORMULA-MAP.md`](docs/FORMULA-MAP.md).
+
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npx prisma migrate dev      # creates prisma/dev.db
+npx tsx prisma/seed.ts      # loads all three workbooks
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Sign in as `owner@constructx.com` / `constructx`. Other demo accounts —
+`o.reed@constructx.com` (project manager), `estimator@constructx.com`,
+`accounting@constructx.com`, `viewer@constructx.com` — use the same password and
+show how the permission model changes what is visible.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test          # 109 financial calculation tests
+npm run build     # production build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How it is put together
 
-## Learn More
+**One calculation engine.** `src/lib/finance/` holds every financial formula as
+pure, tested functions. Nothing else in the codebase computes a financial figure.
+The company dashboard, the project pages, the reports and the Excel exports all
+read the same engine output, which is what makes them impossible to disagree.
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/lib/finance/
+  core.ts          safeDiv, rounding, Excel-compatible primitives
+  cost.ts          cost control: budget → committed → actual → earned → forecast
+  forecast.ts      earned value, CPI/SPI, three EAC methods
+  billing.ts       AIA G702/G703, percentage of completion, revenue recognition
+  commitments.ts   subcontracts, POs, retention, payment status, buyout
+  changeOrders.ts  contract position, margin, pending exposure weighting
+  cashflow.ts      the monthly S-curve and three scenarios
+  estimate.ts      takeoff pricing, QA flags, the compounded markup chain
+  leveling.ts      bid leveling with automatic exception detection
+  project.ts       assembles one project's complete position
+  company.ts       portfolio rollups, WIP, pipeline, revenue forecast
+  alerts.ts        every alert, recomputed live — never stored, never stale
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**One database.** `prisma/schema.prisma` — 30+ models covering companies, users,
+clients, vendors, bids, estimates, projects, budgets and their revisions,
+commitments, change orders, cost transactions, owner and subcontractor billing,
+forecast periods, cash-flow periods, quantities, snapshots and audit records.
+A figure is stored once; everything else derives.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Financial history is never overwritten.** Budget changes are revision rows,
+not edits. Forecast periods lock with a snapshot. Cost transactions soft-delete.
+Cost codes and trades retire rather than delete. Every mutation writes an audit
+record naming the field, the old value and the new.
 
-## Deploy on Vercel
+## What it does
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Module | |
+|---|---|
+| Company dashboard | Portfolio position, cash flow, revenue and profit forecast, backlog, billing position, live alerts, filterable by status, manager, client, type, location and financial health |
+| Projects | 13 tabs per project: summary, budget, job cost, commitments, change orders, owner billing, subcontractors, forecast, % complete, cash flow, buyout, quantities, settings |
+| Estimating | Takeoff with QA flags, general conditions, sub-quote leveling, the bid build-up step by step, and one-click conversion to a live project |
+| Bid pipeline | Opportunities with the follow-up engine, win rate by count and by value |
+| Reports | 13 reports including the WIP schedule, all exportable to Excel |
+| Admin | Company defaults, users and roles, cost codes, trades, CSI divisions, vendors, accounting import |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scope
+
+Deliberately **not** a document-management platform. Drawings, specifications,
+RFIs, submittals, daily reports, safety documentation, punch lists and photos
+belong in Procore or equivalent. Attachments here are limited to financial
+records — invoices, quotes, purchase orders and billing backup.
+
+## Stack
+
+Next.js 16 (App Router, Server Actions) · TypeScript · Prisma · SQLite (Postgres-ready)
+· Tailwind v4 · Vitest · ExcelJS. Charts are hand-built SVG so every axis, tooltip
+and colour matches the design system and the client bundle stays small.
