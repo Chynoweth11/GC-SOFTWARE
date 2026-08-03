@@ -87,7 +87,6 @@ describe('pdf writer', () => {
     const text = buffer.toString('latin1')
     // Streams are uncompressed, so any survivor would be visible here.
     const streams = text.split('stream').slice(1).join('stream')
-    // eslint-disable-next-line no-control-regex -- asserting the absence of non-ASCII
     expect(/[^\x00-\x7F]/.test(streams)).toBe(false)
   })
 

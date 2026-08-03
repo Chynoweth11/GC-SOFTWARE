@@ -350,6 +350,37 @@ Database: `Bid`
 
 ---
 
+## 13. Output, permissions and portability
+
+Nothing in this section computes a figure. It documents where the figures go and
+who may see them.
+
+| Concern | How it works | Where |
+|---|---|---|
+| Report definition | One sheet spec per report, holding the columns, formats and which columns total | `src/lib/queries/report-spec.ts` |
+| Project export definition | One sheet spec covering every project tab | `src/lib/queries/project-spec.ts` |
+| Estimate export definition | Takeoff, general conditions, leveling, bid build-up | `src/lib/queries/estimate-spec.ts` |
+| Excel | Renders the spec through ExcelJS with number formats and a totals row | `src/lib/excel.ts` |
+| PDF | Renders the *same* spec, so the two exports cannot diverge | `src/lib/pdf-report.ts` → `src/lib/pdf.ts` |
+| AIA G702/G703 PDF | Purpose-built certificate layout with the nine numbered lines and signature blocks | `src/app/api/pdf/billing/[id]/route.ts` |
+| Report permissions | One capability map read by the report card, the page and both export routes | `REPORT_REQUIRES` in `report-spec.ts` |
+| Saved views | A stored query string, never a stored result — opening one recomputes today's figures | `SavedView` model, `src/lib/queries/views.ts` |
+| Dashboard layout | Order and visibility only; role decides which panels exist and the stored layout is reconciled against that set on every load | `src/lib/dashboard-panels.ts` |
+| Project backup | Stored values only, shared records keyed by business key rather than id | `src/lib/backup.ts` |
+
+**Why the backup carries no derived figure.** A restored project recalculates its
+whole position — percent complete, earned value, EAC, margin, backlog — from the
+same engine a live project uses. Writing a computed margin into the file would
+create a second source of truth the moment a formula changed. The round trip is
+tested: exporting job 26-001, restoring it and re-exporting produces a byte-identical
+file, and all thirty-one headline figures match the original exactly.
+
+**Restores never overwrite.** A restore always creates a new project. If the job
+number is taken it takes the next free suffix and says so, because a restore that
+could silently replace live budgets and billings is a way to lose a month of work.
+
+---
+
 ## Deliberately not built
 
 The brief scoped these to Procore or another document-management platform, and
@@ -382,3 +413,5 @@ the integrations the brief anticipates can be added without restructuring:
 | HeavyJob / HCSS | `QuantityEntry` is the production-and-hours shape those systems export |
 | Excel | Import and export are built |
 | Power BI | Every report has a stable Excel endpoint under `/api/export/report/[slug]` |
+| Anything that reads PDFs | Every report, project, estimate and pay application also has a PDF endpoint under `/api/pdf/...` |
+| Another ConstructX instance | `/api/backup/project/[id]` produces a single JSON file that restores into any company |

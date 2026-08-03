@@ -24,7 +24,7 @@ Sign in as `owner@constructx.com` / `constructx`. Other demo accounts —
 show how the permission model changes what is visible.
 
 ```bash
-npm test          # 109 financial calculation tests
+npm test          # 138 tests — financial calculations, PDF output, permissions
 npm run build     # production build
 ```
 
@@ -51,11 +51,27 @@ src/lib/finance/
   alerts.ts        every alert, recomputed live — never stored, never stale
 ```
 
+**One definition per report.** The screen, the Excel workbook and the PDF all
+render from the same sheet spec, and all four surfaces — including the report
+card on the index — read one capability map to decide who may open it. Adding a
+column adds it everywhere; there is nowhere else to add it.
+
 **One database.** `prisma/schema.prisma` — 30+ models covering companies, users,
 clients, vendors, bids, estimates, projects, budgets and their revisions,
 commitments, change orders, cost transactions, owner and subcontractor billing,
 forecast periods, cash-flow periods, quantities, snapshots and audit records.
 A figure is stored once; everything else derives.
+
+**A figure is visible to a role or it is not.** Roles map to capabilities, and
+the same capability governs the page, the workbook and the PDF, so nothing can be
+read on screen that would be refused as an export. The dashboard can be reordered
+per user, but preference only arranges what a role is already permitted to see.
+
+**Projects are portable.** `/api/backup/project/[id]` writes the whole job as one
+JSON file — budgets, commitments, costs, change orders, billings, forecasts,
+quantities. It carries stored values only; a restore recomputes every derived
+figure from the engine, and always creates a new project rather than overwriting
+a live one.
 
 **Financial history is never overwritten.** Budget changes are revision rows,
 not edits. Forecast periods lock with a snapshot. Cost transactions soft-delete.
@@ -70,8 +86,9 @@ record naming the field, the old value and the new.
 | Projects | 13 tabs per project: summary, budget, job cost, commitments, change orders, owner billing, subcontractors, forecast, % complete, cash flow, buyout, quantities, settings |
 | Estimating | Takeoff with QA flags, general conditions, sub-quote leveling, the bid build-up step by step, and one-click conversion to a live project |
 | Bid pipeline | Opportunities with the follow-up engine, win rate by count and by value |
-| Reports | 13 reports including the WIP schedule, all exportable to Excel |
-| Admin | Company defaults, users and roles, cost codes, trades, CSI divisions, vendors, accounting import |
+| Reports | 13 reports including the WIP schedule, each exportable to Excel and PDF, with saved filter views |
+| Exports | Excel workbooks and PDFs for every report, project, estimate and AIA pay application |
+| Admin | Company defaults, users and roles, cost codes, trades, CSI divisions, vendors, accounting import, project backup and restore |
 
 ## Scope
 

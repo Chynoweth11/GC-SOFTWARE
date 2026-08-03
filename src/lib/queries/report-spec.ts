@@ -1,5 +1,5 @@
 import 'server-only'
-import { can } from '@/lib/permissions'
+import { can, type Capability } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { getCompanyDashboard, parseProjectFilter, type CompanyDashboardData } from '@/lib/queries/company'
 import { listEstimates } from '@/lib/queries/estimate'
@@ -35,6 +35,27 @@ export const REPORT_TITLES: Record<string, { title: string; description: string 
   pipeline: { title: 'Pipeline and win rate', description: 'Opportunities by stage with follow-up state' },
 }
 
+/**
+ * What a role must hold to open each report — on screen, as a workbook, and as
+ * a PDF alike.
+ *
+ * One map, because the report card, the page and both exports all read it. When
+ * this lived in three places the page showed a read-only user the profitability
+ * report in full while the export correctly refused it.
+ */
+export const REPORT_REQUIRES: Partial<Record<string, Capability>> = {
+  wip: 'view:company_financials',
+  profitability: 'view:margins',
+  'billing-position': 'view:company_financials',
+  cashflow: 'view:cash_position',
+}
+
+/** True when the role may open this report at all. */
+export function canOpenReport(role: Role, slug: string): boolean {
+  const required = REPORT_REQUIRES[slug]
+  return !required || can(role, required)
+}
+
 export type ReportSpec =
   | { ok: true; slug: string; title: string; description: string; sheets: SheetSpec[]; data: CompanyDashboardData }
   | { ok: false; status: 403 | 404; message: string }
@@ -46,6 +67,9 @@ export async function buildReportSpec(
 ): Promise<ReportSpec> {
   const meta = REPORT_TITLES[slug]
   if (!meta) return { ok: false, status: 404, message: 'Unknown report' }
+  if (!canOpenReport(user.role, slug)) {
+    return { ok: false, status: 403, message: 'Your role is not permitted to open this report' }
+  }
 
   const filter = parseProjectFilter(searchParams)
   const data = await getCompanyDashboard(user.companyId, filter)
@@ -65,15 +89,8 @@ export async function buildReportSpec(
     sheets,
     data,
   })
-  const forbidden = (): ReportSpec => ({
-    ok: false,
-    status: 403,
-    message: 'Your role cannot see this report',
-  })
-
   switch (slug) {
     case 'wip': {
-      if (!can(user.role, 'view:company_financials')) return forbidden()
       return done([
         {
           name: 'Work in progress',
@@ -191,7 +208,6 @@ export async function buildReportSpec(
     }
 
     case 'profitability': {
-      if (!showMargins) return forbidden()
       return done([
         {
           name: 'By project',
@@ -281,7 +297,6 @@ export async function buildReportSpec(
     }
 
     case 'cashflow': {
-      if (!can(user.role, 'view:cash_position')) return forbidden()
       return done([
         {
           name: 'Company cash flow',

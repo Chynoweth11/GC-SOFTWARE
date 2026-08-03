@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { forbidden, notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getCompanyDashboard, parseProjectFilter } from '@/lib/queries/company'
@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db'
 import { buildWipSchedule, followUpState, rollupByDimension, sumBy } from '@/lib/finance'
 import { date, money, month, percent, titleize } from '@/lib/format'
 import { ExportMenu, PageHeader, Section, StatusPill, Variance } from '@/components/ui'
-import { REPORT_TITLES } from '@/lib/queries/report-spec'
+import { REPORT_TITLES, canOpenReport } from '@/lib/queries/report-spec'
 import { ProjectFilters } from '@/components/dashboard/project-filters'
 import { SavedViews } from '@/components/dashboard/saved-views'
 import { listSavedViews } from '@/lib/queries/views'
@@ -31,6 +31,9 @@ export default async function ReportPage({
   const { slug } = await params
   const meta = REPORT_TITLES[slug]
   if (!meta) notFound()
+  // The same gate the exports use, so a role can never read on screen what it
+  // would be refused in a workbook.
+  if (!canOpenReport(user.role, slug)) forbidden()
 
   const resolvedSearchParams = await searchParams
   const filter = parseProjectFilter(resolvedSearchParams)
