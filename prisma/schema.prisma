@@ -1,0 +1,1230 @@
+// ConstructX — construction financial operating system
+// Single source of truth for estimating, budgets, commitments, job cost,
+// forecasting, billing and company-level financial rollups.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tenancy, identity and audit
+// ─────────────────────────────────────────────────────────────
+
+model Company {
+  id                     String   @id @default(cuid())
+  name                   String
+  legalName              String?
+  address                String?
+  city                   String?
+  state                  String?
+  phone                  String?
+  fiscalYearStartMonth   Int      @default(1)
+  targetMarginPct        Float    @default(0.16)
+  defaultRetentionPct    Float    @default(0.05)
+  defaultLaborBurdenPct  Float    @default(0.34)
+  defaultOverheadPct     Float    @default(0.06)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  users          User[]
+  projects       Project[]
+  clients        Client[]
+  vendors        Vendor[]
+  costCodes      CostCode[]
+  trades         Trade[]
+  divisions      CsiDivision[]
+  bids           Bid[]
+  estimates      Estimate[]
+  monthlyActuals CompanyMonthly[]
+  arAging        ArAgingBucket[]
+  auditLogs      AuditLog[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EXECUTIVE
+  PROJECT_MANAGER
+  PROJECT_ENGINEER
+  ESTIMATOR
+  ACCOUNTING
+  FINANCE
+  READ_ONLY
+}
+
+model User {
+  id           String    @id @default(cuid())
+  companyId    String
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(READ_ONLY)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  managedProjects Project[] @relation("ProjectManager")
+  auditLogs       AuditLog[]
+
+  @@index([companyId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String?
+  entity    String
+  entityId  String
+  action    String
+  field     String?
+  oldValue  String?
+  newValue  String?
+  summary   String?
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, entity, entityId])
+  @@index([companyId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reference data — divisions, trades, cost codes
+// ─────────────────────────────────────────────────────────────
+
+enum CostCategory {
+  LABOR
+  MATERIAL
+  EQUIPMENT
+  SUBCONTRACT
+  GENERAL_CONDITIONS
+  OVERHEAD
+  CONTINGENCY
+  OTHER
+}
+
+model CsiDivision {
+  id        String @id @default(cuid())
+  companyId String
+  code      String
+  name      String
+  sortOrder Int    @default(0)
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  trades        Trade[]
+  costCodes     CostCode[]
+  estimateItems EstimateItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model Trade {
+  id         String  @id @default(cuid())
+  companyId  String
+  name       String
+  divisionId String?
+  sortOrder  Int     @default(0)
+  active     Boolean @default(true)
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  division     CsiDivision?  @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  costCodes    CostCode[]
+  budgetLines  BudgetLine[]
+  changeOrders ChangeOrder[]
+  bidPackages  BidPackage[]
+  vendors      Vendor[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model CostCode {
+  id          String       @id @default(cuid())
+  companyId   String
+  code        String
+  description String
+  category    CostCategory
+  divisionId  String?
+  tradeId     String?
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0)
+
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  division        CsiDivision?      @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  trade           Trade?            @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  budgetLines     BudgetLine[]
+  commitmentLines CommitmentLine[]
+  costTx          CostTransaction[]
+  changeOrderLine ChangeOrderLine[]
+  forecastLines   ForecastLine[]
+  sovLines        SovLine[]
+  quantityItems   QuantityItem[]
+  subInvoices     SubInvoice[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Clients and vendors
+// ─────────────────────────────────────────────────────────────
+
+enum ClientType {
+  RESIDENTIAL
+  COMMERCIAL
+  PUBLIC
+  DEVELOPER
+  INSTITUTIONAL
+  OTHER
+}
+
+model Client {
+  id        String      @id @default(cuid())
+  companyId String
+  name      String
+  type      ClientType  @default(OTHER)
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  createdAt DateTime    @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projects Project[]
+  bids     Bid[]
+
+  @@index([companyId])
+}
+
+model Vendor {
+  id               String   @id @default(cuid())
+  companyId        String
+  name             String
+  isSubcontractor  Boolean  @default(true)
+  tradeId          String?
+  contactName      String?
+  phone            String?
+  email            String?
+  address          String?
+  taxId            String?
+  w9OnFile         Boolean  @default(false)
+  glExpiration     DateTime?
+  wcExpiration     DateTime?
+  autoExpiration   DateTime?
+  umbrellaExpiration DateTime?
+  bondRequired     Boolean  @default(false)
+  bondStatus       String?
+  paymentHold      Boolean  @default(false)
+  paymentHoldReason String?
+  performanceRating Float?
+  safetyRating      Float?
+  qualityRating     Float?
+  scheduleRating    Float?
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  trade       Trade?           @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  commitments Commitment[]
+  costTx      CostTransaction[]
+  invoices    SubInvoice[]
+  quotes      BidPackageQuote[]
+  awarded     BidPackage[]     @relation("AwardedVendor")
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bid pipeline (CRM for opportunities)
+// ─────────────────────────────────────────────────────────────
+
+enum BidStatus {
+  LEAD
+  QUALIFYING
+  ESTIMATING
+  SUBMITTED
+  PENDING_DECISION
+  ON_HOLD
+  WON
+  LOST
+  NO_BID
+  WITHDRAWN
+}
+
+model Bid {
+  id             String    @id @default(cuid())
+  companyId      String
+  number         String
+  name           String
+  clientId       String?
+  clientContact  String?
+  clientPhone    String?
+  clientType     ClientType @default(OTHER)
+  leadSource     String?
+  location       String?
+  estimator      String?
+  dateReceived   DateTime?
+  bidDue         DateTime?
+  estimatedValue Float     @default(0)
+  submittedAmount Float    @default(0)
+  dateSubmitted  DateTime?
+  status         BidStatus @default(LEAD)
+  winProbability Float     @default(0)
+  lastContact    DateTime?
+  nextFollowUp   DateTime?
+  touches        Int       @default(0)
+  nextAction     String?
+  decisionDate   DateTime?
+  outcomeReason  String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client    Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  estimates Estimate[]
+  projects  Project[]
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Estimating and quantity takeoff
+// ─────────────────────────────────────────────────────────────
+
+enum EstimateStatus {
+  DRAFT
+  IN_PROGRESS
+  REVIEW
+  SUBMITTED
+  AWARDED
+  LOST
+  ARCHIVED
+}
+
+model Estimate {
+  id             String         @id @default(cuid())
+  companyId      String
+  bidId          String?
+  name           String
+  version        Int            @default(1)
+  status         EstimateStatus @default(DRAFT)
+  clientName     String?
+  architect      String?
+  address        String?
+  projectType    String?
+  bidDueDate     DateTime?
+  estimator      String?
+  drawingSet     String?
+  addenda        String?
+  durationWeeks  Float          @default(0)
+  buildingAreaSf Float          @default(0)
+
+  // factors
+  laborBurdenPct Float @default(0.34)
+  salesTaxPct    Float @default(0.086)
+  smallToolsPct  Float @default(0.03)
+
+  // markup chain, applied in order
+  contingencyPct Float @default(0.03)
+  overheadPct    Float @default(0.06)
+  profitPct      Float @default(0.10)
+  glInsurancePct Float @default(0.012)
+  bondPct        Float @default(0.01)
+  exciseTaxPct   Float @default(0.005)
+  roundToNearest Float @default(500)
+
+  lockedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company        Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bid            Bid?                  @relation(fields: [bidId], references: [id], onDelete: SetNull)
+  laborRates     LaborRate[]
+  sections       EstimateSection[]
+  items          EstimateItem[]
+  gcItems        GeneralConditionItem[]
+  alternates     EstimateAlternate[]
+  clarifications EstimateClarification[]
+  bidPackages    BidPackage[]
+  projects       Project[]
+
+  @@index([companyId, status])
+}
+
+model LaborRate {
+  id         String @id @default(cuid())
+  estimateId String
+  className  String
+  rate       Float
+  sortOrder  Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@unique([estimateId, className])
+}
+
+model EstimateSection {
+  id         String @id @default(cuid())
+  estimateId String
+  name       String
+  sortOrder  Int    @default(0)
+
+  estimate Estimate       @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  items    EstimateItem[]
+
+  @@index([estimateId])
+}
+
+enum MeasureType {
+  EA
+  LF
+  SF
+  SY
+  CY
+  CF
+  TON
+  LB
+  HR
+  DAY
+  LS
+  ALLOWANCE
+}
+
+model EstimateItem {
+  id          String  @id @default(cuid())
+  estimateId  String
+  sectionId   String?
+  divisionId  String?
+  description String
+  drawingRef  String?
+  measure     MeasureType @default(EA)
+  count       Float   @default(0)
+  length      Float   @default(0)
+  width       Float   @default(0)
+  depth       Float   @default(0)
+  /// Optional override of the derived quantity; null means derive from dimensions
+  netQtyOverride Float?
+  uom         String?
+  wastePct    Float   @default(0)
+  laborClass  String?
+  laborHrsPerUnit Float @default(0)
+  laborRateOverride Float?
+  materialUnitCost  Float @default(0)
+  equipmentUnitCost Float @default(0)
+  subUnitCost       Float @default(0)
+  notes       String?
+  sortOrder   Int     @default(0)
+
+  estimate Estimate         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  section  EstimateSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  division CsiDivision?     @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+
+  @@index([estimateId])
+}
+
+model GeneralConditionItem {
+  id         String @id @default(cuid())
+  estimateId String
+  item       String
+  basis      String @default("LS")
+  qty        Float  @default(0)
+  /// When true, qty follows the estimate duration in weeks
+  followsDuration Boolean @default(false)
+  unitCost   Float  @default(0)
+  notes      String?
+  sortOrder  Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+model EstimateAlternate {
+  id          String @id @default(cuid())
+  estimateId  String
+  number      String
+  description String
+  amount      Float  @default(0)
+  accepted    Boolean @default(false)
+  sortOrder   Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+model EstimateClarification {
+  id         String @id @default(cuid())
+  estimateId String
+  text       String
+  sortOrder  Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bid leveling / buyout (shared by estimates and awarded projects)
+// ─────────────────────────────────────────────────────────────
+
+enum BuyoutStatus {
+  BIDDING
+  LEVELED
+  AWARDED
+  BOUGHT_OUT
+}
+
+model BidPackage {
+  id          String       @id @default(cuid())
+  estimateId  String?
+  projectId   String?
+  tradeId     String?
+  name        String
+  divisionCode String?
+  budgetAmount Float       @default(0)
+  /// Amount carried in the estimate/budget before buyout
+  carriedAmount Float      @default(0)
+  awardedVendorId String?
+  awardAmount  Float       @default(0)
+  status       BuyoutStatus @default(BIDDING)
+  notes        String?
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+
+  estimate      Estimate?         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  project       Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  trade         Trade?            @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  awardedVendor Vendor?           @relation("AwardedVendor", fields: [awardedVendorId], references: [id], onDelete: SetNull)
+  quotes        BidPackageQuote[]
+
+  @@index([estimateId])
+  @@index([projectId])
+}
+
+enum QuoteStatus {
+  PENDING
+  RECEIVED
+  DECLINED
+  NO_BID
+}
+
+model BidPackageQuote {
+  id           String      @id @default(cuid())
+  packageId    String
+  vendorId     String?
+  vendorName   String
+  baseAmount   Float       @default(0)
+  adjustmentAmount Float   @default(0)
+  inclusions   String?
+  exclusions   String?
+  qualifications String?
+  allowances   Float       @default(0)
+  status       QuoteStatus @default(PENDING)
+  notes        String?
+  sortOrder    Int         @default(0)
+
+  package BidPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  vendor  Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  @@index([packageId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Projects
+// ─────────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  BIDDING
+  AWARDED
+  PRECONSTRUCTION
+  UNDER_CONSTRUCTION
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CLOSED
+}
+
+enum EacMethod {
+  BOTTOM_UP
+  CPI_BASED
+  BUDGET_RATE
+}
+
+enum PocMethod {
+  COST_TO_COST
+  QUANTITY
+  SUBCONTRACTOR_PROGRESS
+  SCHEDULE
+  MANUAL
+  EARNED_VALUE
+  BILLING
+}
+
+model Project {
+  id                 String        @id @default(cuid())
+  companyId          String
+  number             String
+  name               String
+  clientId           String?
+  address            String?
+  city               String?
+  state              String?
+  projectType        String?
+  deliveryMethod     String?
+  architect          String?
+  pmUserId           String?
+  superintendent     String?
+  status             ProjectStatus @default(ACTIVE)
+
+  noticeToProceed    DateTime?
+  contractStart      DateTime?
+  contractCompletion DateTime?
+  forecastCompletion DateTime?
+  dataDate           DateTime?
+
+  originalContractSum   Float @default(0)
+  ownerRetentionPct     Float @default(0.05)
+  defaultSubRetentionPct Float @default(0.05)
+  targetMarginPct       Float @default(0.18)
+  laborBurdenPct        Float @default(0.34)
+  overheadPct           Float @default(0.06)
+  workDaysPerWeek       Int   @default(5)
+
+  eacMethod EacMethod @default(BOTTOM_UP)
+  pocMethod PocMethod @default(COST_TO_COST)
+  /// Fraction 0-1 used when pocMethod is MANUAL
+  manualPctComplete Float?
+  /// Fraction of pending change orders included in forecast
+  pendingCoInclusionPct Float @default(0)
+
+  safetyScore        Float?
+  qualityScore       Float?
+  clientSatScore     Float?
+  recordablesYtd     Int    @default(0)
+  nearMissesYtd      Int    @default(0)
+  observationsYtd    Int    @default(0)
+
+  sourceEstimateId String?
+  sourceBidId      String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company        Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client         Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  pm             User?             @relation("ProjectManager", fields: [pmUserId], references: [id], onDelete: SetNull)
+  sourceEstimate Estimate?         @relation(fields: [sourceEstimateId], references: [id], onDelete: SetNull)
+  sourceBid      Bid?              @relation(fields: [sourceBidId], references: [id], onDelete: SetNull)
+
+  budgetLines    BudgetLine[]
+  revisions      BudgetRevision[]
+  commitments    Commitment[]
+  costTx         CostTransaction[]
+  changeOrders   ChangeOrder[]
+  sovLines       SovLine[]
+  ownerBillings  OwnerBilling[]
+  subInvoices    SubInvoice[]
+  forecastPeriods ForecastPeriod[]
+  cashFlowPeriods CashFlowPeriod[]
+  quantityItems  QuantityItem[]
+  snapshots      ProjectSnapshot[]
+  bidPackages    BidPackage[]
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Budget
+// ─────────────────────────────────────────────────────────────
+
+model BudgetLine {
+  id             String       @id @default(cuid())
+  projectId      String
+  costCodeId     String
+  description    String
+  category       CostCategory
+  tradeId        String?
+  originalBudget Float        @default(0)
+  notes          String?
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode  CostCode         @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+  trade     Trade?           @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  revisions BudgetRevision[]
+
+  @@unique([projectId, costCodeId])
+  @@index([projectId])
+}
+
+enum BudgetRevisionType {
+  CHANGE_ORDER
+  TRANSFER
+  REVISION
+  CONTINGENCY_DRAW
+}
+
+model BudgetRevision {
+  id            String             @id @default(cuid())
+  projectId     String
+  budgetLineId  String
+  type          BudgetRevisionType
+  amount        Float
+  reason        String
+  changeOrderId String?
+  /// Paired transfer id so a transfer's two halves stay linked
+  transferGroup String?
+  createdBy     String?
+  createdAt     DateTime           @default(now())
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  budgetLine  BudgetLine   @relation(fields: [budgetLineId], references: [id], onDelete: Cascade)
+  changeOrder ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([budgetLineId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Commitments (subcontracts and purchase orders)
+// ─────────────────────────────────────────────────────────────
+
+enum CommitmentType {
+  SUBCONTRACT
+  PURCHASE_ORDER
+  MATERIAL
+  EQUIPMENT
+  SERVICE
+}
+
+enum CommitmentStatus {
+  DRAFT
+  ISSUED
+  EXECUTED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  INVOICED
+  CLOSED
+  CANCELLED
+}
+
+model Commitment {
+  id            String           @id @default(cuid())
+  projectId     String
+  vendorId      String
+  type          CommitmentType   @default(SUBCONTRACT)
+  number        String
+  description   String?
+  scopeOfWork   String?
+  originalAmount Float           @default(0)
+  retentionPct  Float            @default(0.05)
+  status        CommitmentStatus @default(ISSUED)
+  dateIssued    DateTime?
+  dateExecuted  DateTime?
+  expectedDelivery DateTime?
+  actualDelivery   DateTime?
+  receivedAmount   Float         @default(0)
+  /// Manager's forecast of the final cost of this commitment
+  forecastFinalOverride Float?
+  pctComplete   Float            @default(0)
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vendor  Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  lines   CommitmentLine[]
+  changes CommitmentChange[]
+  invoices SubInvoice[]
+  costTx  CostTransaction[]
+
+  @@unique([projectId, number])
+  @@index([projectId])
+}
+
+model CommitmentLine {
+  id           String @id @default(cuid())
+  commitmentId String
+  costCodeId   String
+  description  String?
+  amount       Float  @default(0)
+
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  costCode   CostCode   @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@index([commitmentId])
+}
+
+enum CommitmentChangeStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  VOID
+}
+
+model CommitmentChange {
+  id           String                 @id @default(cuid())
+  commitmentId String
+  number       String
+  description  String
+  amount       Float                  @default(0)
+  status       CommitmentChangeStatus @default(PENDING)
+  dateSubmitted DateTime?
+  dateApproved  DateTime?
+  changeOrderId String?
+  createdAt    DateTime               @default(now())
+
+  commitment  Commitment   @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  changeOrder ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([commitmentId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Job cost transactions
+// ─────────────────────────────────────────────────────────────
+
+enum CostTxType {
+  ACTUAL
+  ACCRUAL
+  COMMITTED_ADJUSTMENT
+}
+
+enum CostTxSource {
+  MANUAL
+  IMPORT
+  SUB_INVOICE
+  PAYROLL
+  PURCHASE_ORDER
+  JOURNAL
+}
+
+model CostTransaction {
+  id           String       @id @default(cuid())
+  projectId    String
+  costCodeId   String
+  date         DateTime
+  type         CostTxType   @default(ACTUAL)
+  source       CostTxSource @default(MANUAL)
+  vendorId     String?
+  commitmentId String?
+  subInvoiceId String?
+  description  String
+  reference    String?
+  amount       Float
+  /// Hours for labor transactions, used for productivity analysis
+  hours        Float?
+  /// Set when an imported row could not be auto-coded
+  needsCoding  Boolean      @default(false)
+  /// Hash of source row used to detect duplicate imports
+  importHash   String?
+  attachmentName String?
+  attachmentUrl  String?
+  notes        String?
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode   CostCode    @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+  vendor     Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  commitment Commitment? @relation(fields: [commitmentId], references: [id], onDelete: SetNull)
+  subInvoice SubInvoice? @relation(fields: [subInvoiceId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, date])
+  @@index([projectId, costCodeId])
+  @@index([importHash])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Change orders
+// ─────────────────────────────────────────────────────────────
+
+enum ChangeOrderType {
+  OWNER_REQUEST
+  DESIGN_CHANGE
+  FIELD_CONDITION
+  ALLOWANCE_RECONCILE
+  ASI_DRIVEN
+  BACKCHARGE
+  TIME_ONLY
+  INTERNAL_BUDGET
+}
+
+enum ChangeOrderStatus {
+  DRAFT
+  PRICING
+  PENDING
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  VOID
+  EXECUTED
+}
+
+model ChangeOrder {
+  id            String            @id @default(cuid())
+  projectId     String
+  number        String
+  type          ChangeOrderType   @default(OWNER_REQUEST)
+  description   String
+  origin        String?
+  tradeId       String?
+  status        ChangeOrderStatus @default(DRAFT)
+  dateInitiated DateTime?
+  dateSubmitted DateTime?
+  dateApproved  DateTime?
+  anticipatedApproval DateTime?
+  /// Revenue impact presented to the owner
+  ownerAmount   Float             @default(0)
+  /// Cost impact carried into the budget
+  costAmount    Float             @default(0)
+  submittedAmount Float           @default(0)
+  approvedAmount  Float           @default(0)
+  rejectedAmount  Float           @default(0)
+  probabilityPct  Float           @default(0)
+  scheduleImpactDays Int          @default(0)
+  /// When true the approved amount posts budget revisions on the linked cost codes
+  postsToBudget Boolean           @default(true)
+  notes         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  trade             Trade?             @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  lines             ChangeOrderLine[]
+  budgetRevisions   BudgetRevision[]
+  commitmentChanges CommitmentChange[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+}
+
+model ChangeOrderLine {
+  id            String       @id @default(cuid())
+  changeOrderId String
+  costCodeId    String
+  category      CostCategory
+  description   String?
+  quantity      Float        @default(1)
+  unitCost      Float        @default(0)
+  amount        Float        @default(0)
+  markupPct     Float        @default(0)
+
+  changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  costCode    CostCode    @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@index([changeOrderId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Owner billing — schedule of values and pay applications
+// ─────────────────────────────────────────────────────────────
+
+model SovLine {
+  id             String  @id @default(cuid())
+  projectId      String
+  number         String
+  description    String
+  costCodeId     String?
+  scheduledValue Float   @default(0)
+  /// Set when this SOV line was created by an approved change order
+  changeOrderNumber String?
+  sortOrder      Int     @default(0)
+
+  project  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode CostCode?          @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  lines    OwnerBillingLine[]
+
+  @@unique([projectId, number])
+  @@index([projectId])
+}
+
+enum BillingStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PAID
+  REJECTED
+}
+
+model OwnerBilling {
+  id            String        @id @default(cuid())
+  projectId     String
+  appNumber     Int
+  periodTo      DateTime
+  dateSubmitted DateTime?
+  dateApproved  DateTime?
+  datePaid      DateTime?
+  retainagePct  Float         @default(0.05)
+  amountPaid    Float         @default(0)
+  status        BillingStatus @default(DRAFT)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   OwnerBillingLine[]
+
+  @@unique([projectId, appNumber])
+  @@index([projectId])
+}
+
+model OwnerBillingLine {
+  id              String @id @default(cuid())
+  billingId       String
+  sovLineId       String
+  workThisPeriod  Float  @default(0)
+  storedMaterials Float  @default(0)
+
+  billing OwnerBilling @relation(fields: [billingId], references: [id], onDelete: Cascade)
+  sovLine SovLine      @relation(fields: [sovLineId], references: [id], onDelete: Cascade)
+
+  @@unique([billingId, sovLineId])
+  @@index([billingId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Subcontractor billing
+// ─────────────────────────────────────────────────────────────
+
+model SubInvoice {
+  id            String    @id @default(cuid())
+  projectId     String
+  commitmentId  String?
+  vendorId      String
+  costCodeId    String?
+  invoiceNumber String
+  periodEnd     DateTime?
+  amount        Float     @default(0)
+  retentionPct  Float     @default(0.05)
+  dateReceived  DateTime?
+  approved      Boolean   @default(false)
+  dateApproved  DateTime?
+  amountPaid    Float     @default(0)
+  datePaid      DateTime?
+  lienWaiverReceived Boolean @default(false)
+  attachmentName String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  commitment Commitment?       @relation(fields: [commitmentId], references: [id], onDelete: SetNull)
+  vendor     Vendor            @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  costCode   CostCode?         @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  costTx     CostTransaction[]
+
+  @@index([projectId])
+  @@index([vendorId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Monthly forecasting
+// ─────────────────────────────────────────────────────────────
+
+enum ForecastStatus {
+  OPEN
+  LOCKED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model ForecastPeriod {
+  id        String         @id @default(cuid())
+  projectId String
+  periodEnd DateTime
+  status    ForecastStatus @default(OPEN)
+  lockedAt  DateTime?
+  lockedBy  String?
+  notes     String?
+  createdAt DateTime       @default(now())
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   ForecastLine[]
+
+  @@unique([projectId, periodEnd])
+  @@index([projectId])
+}
+
+model ForecastLine {
+  id         String @id @default(cuid())
+  periodId   String
+  costCodeId String
+
+  // snapshot values captured when the period is locked
+  currentBudget Float @default(0)
+  costToDate    Float @default(0)
+  committed     Float @default(0)
+  accrued       Float @default(0)
+  remainingCommitment Float @default(0)
+
+  pctComplete Float  @default(0)
+  /// Manager's estimate of remaining cost; null means derive from budget and % complete
+  etcOverride Float?
+  estimateToComplete Float @default(0)
+  estimateAtCompletion Float @default(0)
+  previousEac Float  @default(0)
+
+  riskLevel  RiskLevel @default(LOW)
+  confidence Float     @default(0.8)
+  note       String?
+
+  period   ForecastPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  costCode CostCode       @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, costCodeId])
+  @@index([periodId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Cash flow / S-curve
+// ─────────────────────────────────────────────────────────────
+
+model CashFlowPeriod {
+  id        String   @id @default(cuid())
+  projectId String
+  periodEnd DateTime
+  /// Planned progress increment for the month (fraction)
+  plannedDeltaPct Float @default(0)
+  /// Actual percent complete at month end (fraction), null for future months
+  actualPctComplete Float?
+  /// Actual cost recorded in the month, null for future months
+  actualCost Float?
+  /// Manual override of expected billing for the month
+  billingOverride Float?
+  /// Manual override of expected collection for the month
+  collectionOverride Float?
+  notes     String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, periodEnd])
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Quantity tracking and productivity
+// ─────────────────────────────────────────────────────────────
+
+model QuantityItem {
+  id          String  @id @default(cuid())
+  projectId   String
+  costCodeId  String?
+  description String
+  uom         String
+  budgetQty   Float   @default(0)
+  /// Budget labour hours per unit
+  budgetUnitRate Float @default(0)
+  targetFinish   DateTime?
+  materialOrderedQty Float @default(0)
+  notes       String?
+  sortOrder   Int     @default(0)
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode CostCode?        @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  entries  QuantityEntry[]
+
+  @@index([projectId])
+}
+
+model QuantityEntry {
+  id           String   @id @default(cuid())
+  itemId       String
+  periodEnd    DateTime
+  installedQty Float    @default(0)
+  actualHours  Float    @default(0)
+  crewDays     Float    @default(0)
+  notes        String?
+
+  item QuantityItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, periodEnd])
+  @@index([itemId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Snapshots and company-level accounting inputs
+// ─────────────────────────────────────────────────────────────
+
+model ProjectSnapshot {
+  id        String   @id @default(cuid())
+  projectId String
+  asOf      DateTime
+  label     String?
+  /// Serialized ProjectFinancials payload
+  payload   String
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, asOf])
+  @@index([projectId])
+}
+
+model CompanyMonthly {
+  id        String   @id @default(cuid())
+  companyId String
+  month     DateTime
+  billings  Float    @default(0)
+  costs     Float    @default(0)
+  cashIn    Float    @default(0)
+  cashOut   Float    @default(0)
+  overhead  Float    @default(0)
+  notes     String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, month])
+  @@index([companyId])
+}
+
+model ArAgingBucket {
+  id        String   @id @default(cuid())
+  companyId String
+  asOf      DateTime
+  bucket    String
+  amount    Float    @default(0)
+  sortOrder Int      @default(0)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, asOf, bucket])
+  @@index([companyId])
+}
