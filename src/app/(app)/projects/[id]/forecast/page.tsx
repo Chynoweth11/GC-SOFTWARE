@@ -124,7 +124,7 @@ export default async function ForecastPage({ params }: { params: Promise<{ id: s
               height={240}
               format="moneyShort"
               series={[
-                { key: 'budget', label: 'Current budget', values: historyWithCurrent.map((h) => h.budget), color: 'var(--ink-400)' },
+                { key: 'budget', label: 'Current budget', values: historyWithCurrent.map((h) => h.budget), color: 'var(--series-neutral)' },
                 { key: 'eac', label: 'Estimate at completion', values: historyWithCurrent.map((h) => h.eac), color: 'var(--accent)' },
                 { key: 'cost', label: 'Cost to date', values: historyWithCurrent.map((h) => h.costToDate), color: 'var(--caution)' },
               ]}

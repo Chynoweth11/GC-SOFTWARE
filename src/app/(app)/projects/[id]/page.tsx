@@ -142,7 +142,7 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
             format="moneyShort"
             forecastFromIndex={dataDateIndex >= 0 ? dataDateIndex : undefined}
             series={[
-              { key: 'plannedValue', label: 'Planned value', values: cashFlow.map((r) => r.plannedValue), color: 'var(--ink-400)', dashed: true },
+              { key: 'plannedValue', label: 'Planned value', values: cashFlow.map((r) => r.plannedValue), color: 'var(--series-neutral)', dashed: true },
               { key: 'cumCost', label: 'Cumulative cost', values: cashFlow.map((r) => r.cumulativeCost), color: 'var(--adverse)' },
               { key: 'cumBillings', label: 'Cumulative billings', values: cashFlow.map((r) => r.cumulativeBillings), color: 'var(--accent)', area: true },
               { key: 'cumCash', label: 'Cumulative cash', values: cashFlow.map((r) => r.cumulativeCash), color: 'var(--favorable)' },

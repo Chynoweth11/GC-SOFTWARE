@@ -221,7 +221,7 @@ export default async function DashboardPage({
                 format="moneyShort"
                 series={[
                   { key: 'revenue', label: 'Revenue', values: revenueForecast.map((r) => r.revenue), color: 'var(--accent)' },
-                  { key: 'cost', label: 'Cost', values: revenueForecast.map((r) => r.cost), color: 'var(--ink-400)' },
+                  { key: 'cost', label: 'Cost', values: revenueForecast.map((r) => r.cost), color: 'var(--series-neutral)' },
                   { key: 'profit', label: 'Gross profit', values: revenueForecast.map((r) => r.grossProfit), color: 'var(--favorable)' },
                 ]}
               />
