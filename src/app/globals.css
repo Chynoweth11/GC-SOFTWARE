@@ -1,26 +1,246 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+
+/*
+  ConstructX design tokens.
+  A restrained, high-contrast financial palette: near-black surfaces in dark,
+  paper-white in light, one accent, and semantic colours reserved exclusively
+  for financial meaning (favourable / unfavourable / caution).
+*/
+
+@theme {
+  --color-ink-50: #f7f8f9;
+  --color-ink-100: #eceef1;
+  --color-ink-200: #d9dde3;
+  --color-ink-300: #b6bdc8;
+  --color-ink-400: #8b95a5;
+  --color-ink-500: #667186;
+  --color-ink-600: #4c5668;
+  --color-ink-700: #3a4252;
+  --color-ink-800: #262c38;
+  --color-ink-900: #171b23;
+  --color-ink-950: #0d1016;
+
+  --color-accent-50: #eef4ff;
+  --color-accent-100: #dbe7ff;
+  --color-accent-200: #bed3ff;
+  --color-accent-300: #91b5ff;
+  --color-accent-400: #5d8cfb;
+  --color-accent-500: #3765f0;
+  --color-accent-600: #2247dc;
+  --color-accent-700: #1c37b2;
+
+  --color-favorable-400: #34c98a;
+  --color-favorable-500: #16a06a;
+  --color-favorable-600: #0d7d53;
+  --color-caution-400: #f2b433;
+  --color-caution-500: #d99411;
+  --color-caution-600: #b0740a;
+  --color-adverse-400: #f76b6b;
+  --color-adverse-500: #e03b3b;
+  --color-adverse-600: #bb2727;
+}
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f5f6f8;
+  --surface-inset: #eceef1;
+  --border: #e2e5ea;
+  --border-strong: #cbd1da;
+  --text: #171b23;
+  --text-muted: #667186;
+  --text-subtle: #8b95a5;
+  --accent: #2247dc;
+  --accent-soft: #eef4ff;
+  --favorable: #0d7d53;
+  --favorable-soft: #e6f6ee;
+  --caution: #a56b06;
+  --caution-soft: #fdf4e0;
+  --adverse: #bb2727;
+  --adverse-soft: #fdecec;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.04);
+  --shadow-raised: 0 4px 12px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.04);
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root[data-theme='dark'] {
+  --surface: #0d1016;
+  --surface-raised: #171b23;
+  --surface-sunken: #0a0c11;
+  --surface-inset: #1f242f;
+  --border: #262c38;
+  --border-strong: #3a4252;
+  --text: #eceef1;
+  --text-muted: #8b95a5;
+  --text-subtle: #667186;
+  --accent: #5d8cfb;
+  --accent-soft: #16203a;
+  --favorable: #34c98a;
+  --favorable-soft: #0e2a1f;
+  --caution: #f2b433;
+  --caution-soft: #2c2110;
+  --adverse: #f76b6b;
+  --adverse-soft: #2d1616;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-raised: 0 8px 24px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * { border-color: var(--border); }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  body {
+    background: var(--surface-sunken);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Financial figures always align on the decimal. */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  ::selection { background: var(--accent); color: #fff; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  input, select, textarea, button { font: inherit; color: inherit; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); background-clip: content-box; }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-flush {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
+  }
+
+  .field {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+  }
+  .field:disabled { background: var(--surface-inset); color: var(--text-subtle); cursor: not-allowed; }
+
+  /* A calculated cell is visually distinct from one a user may type into. */
+  .calculated {
+    background: var(--surface-inset);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 8px;
+    padding: 7px 13px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 120ms, border-color 120ms, opacity 120ms;
+    white-space: nowrap;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-secondary { background: var(--surface-raised); border-color: var(--border-strong); color: var(--text); }
+  .btn-secondary:hover:not(:disabled) { background: var(--surface-inset); }
+  .btn-ghost { background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover:not(:disabled) { background: var(--surface-inset); color: var(--text); }
+  .btn-danger {
+    background: var(--adverse-soft);
+    color: var(--adverse);
+    border-color: color-mix(in oklab, var(--adverse) 30%, transparent);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  table.data thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface-inset);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  table.data tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: color-mix(in oklab, var(--accent) 4%, transparent); }
+  table.data tfoot td {
+    padding: 9px 12px;
+    font-weight: 600;
+    border-top: 2px solid var(--border-strong);
+    background: var(--surface-inset);
+  }
+  table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
+}
+
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .card, .card-flush { box-shadow: none; break-inside: avoid; }
 }
