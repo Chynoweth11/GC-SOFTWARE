@@ -13,9 +13,19 @@ tested against the workbooks' own outputs, and documented in
 
 ```bash
 npm install
-npx prisma migrate dev      # creates prisma/dev.db
-npx tsx prisma/seed.ts      # loads all three workbooks
 npm run dev                 # http://localhost:3000
+```
+
+That is the whole setup. `npm install` generates the Prisma client, and the
+first `npm run dev` creates `prisma/dev.db`, applies the migrations and loads all
+three workbooks. Later runs find the database and start immediately. No `.env` is
+needed — both the app and the Prisma CLI default to `file:./prisma/dev.db`; see
+`.env.example` to point elsewhere.
+
+To start over from the workbooks, delete the database and run dev again:
+
+```bash
+rm prisma/dev.db && npm run dev   # or: npm run db:reset
 ```
 
 Sign in as `owner@constructx.com` / `constructx`. Other demo accounts —
@@ -24,7 +34,7 @@ Sign in as `owner@constructx.com` / `constructx`. Other demo accounts —
 show how the permission model changes what is visible.
 
 ```bash
-npm test          # 138 tests — financial calculations, PDF output, permissions
+npm test          # 142 tests — financial calculations, PDF output, permissions
 npm run build     # production build
 ```
 

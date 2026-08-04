@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
+    "setup": "node scripts/ensure-db.mjs",
+    "predev": "node scripts/ensure-db.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/ensure-db.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,7 +15,8 @@
     "test:watch": "vitest",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.9.1",
