@@ -48,26 +48,39 @@ export async function importCostTransactions(formData: FormData): Promise<Import
 
   if (parsed.rows.length === 0) return { error: 'No data rows found. The first row must be the column headers.' }
 
-  const required = ['date', 'line item', 'description', 'amount']
+  // "line item" is the current wording; "cost code" is accepted so a template
+  // written before the rename keeps working.
+  const required = ['date', 'description', 'amount']
   const missing = required.filter((header) => !parsed.headers.includes(header))
+  if (!parsed.headers.includes('line item') && !parsed.headers.includes('cost code')) missing.push('line item')
   if (missing.length > 0) {
     return {
-      error: `The spreadsheet is missing these columns: ${missing.join(', ')}. Expected headers: date, line item, description, amount, and optionally vendor, reference, type and hours.`,
+      error: `The spreadsheet is missing these columns: ${missing.join(', ')}. Expected headers: date, line item, description, amount, and optionally vendor, reference, type and hours. The line item column is matched against this project's budget line names.`,
     }
   }
 
-  const [costCodes, vendors, existing] = await Promise.all([
-    prisma.costCode.findMany({ where: { companyId: user.companyId } }),
+  const [budgetLines, vendors, existing] = await Promise.all([
+    prisma.budgetLine.findMany({ where: { projectId }, include: { costCode: true } }),
     prisma.vendor.findMany({ where: { companyId: user.companyId } }),
     prisma.costTransaction.findMany({ where: { projectId }, select: { importHash: true } }),
   ])
 
-  const codeByCode = new Map(costCodes.map((c) => [c.code.toUpperCase(), c]))
+  // Rows are matched to this project's budget lines by what the line is called,
+  // which is the only thing an accounting export can reasonably carry. Matching
+  // on the internal identity would be asking for a value nobody can look up.
+  const lineByName = new Map<string, (typeof budgetLines)[number]>()
+  for (const line of budgetLines) {
+    lineByName.set(line.description.trim().toLowerCase(), line)
+    // The generated identity is accepted too, so a file exported from here and
+    // fed straight back in still lands where it came from.
+    lineByName.set(line.costCode.code.trim().toLowerCase(), line)
+  }
   const vendorByName = new Map(vendors.map((v) => [v.name.toLowerCase(), v]))
   const existingHashes = new Set(existing.map((e) => e.importHash).filter(Boolean) as string[])
 
-  // Anything that cannot be coded lands on a holding code rather than being lost.
-  let holdingCode = codeByCode.get('UNCODED')
+  // Anything that cannot be matched lands on a holding line rather than being
+  // lost, and is flagged for coding.
+  let holdingCode = await prisma.costCode.findFirst({ where: { companyId: user.companyId, code: 'UNCODED' } })
   if (!holdingCode) {
     holdingCode = await prisma.costCode.create({
       data: {
@@ -87,7 +100,8 @@ export async function importCostTransactions(formData: FormData): Promise<Import
 
   for (const row of parsed.rows) {
     const date = asDate(row.values['date'])
-    const codeText = asText(row.values['line item']).toUpperCase()
+    // Either header works, so an existing template keeps importing.
+    const codeText = (asText(row.values['line item']) || asText(row.values['cost code'])).trim()
     const description = asText(row.values['description'])
     const amount = asNumber(row.values['amount'])
 
@@ -103,9 +117,9 @@ export async function importCostTransactions(formData: FormData): Promise<Import
     }
     existingHashes.add(hash)
 
-    const costCode = codeByCode.get(codeText)
-    if (!costCode && codeText) unmatchedCodes.add(codeText)
-    if (!costCode) needsCoding++
+    const matched = lineByName.get(codeText.toLowerCase())
+    if (!matched && codeText) unmatchedCodes.add(codeText)
+    if (!matched) needsCoding++
 
     const vendorName = asText(row.values['vendor'])
     const vendor = vendorName ? vendorByName.get(vendorName.toLowerCase()) : undefined
@@ -115,7 +129,7 @@ export async function importCostTransactions(formData: FormData): Promise<Import
     await prisma.costTransaction.create({
       data: {
         projectId,
-        costCodeId: (costCode ?? holdingCode).id,
+        costCodeId: matched?.costCodeId ?? holdingCode.id,
         date,
         type: typeText === 'ACCRUAL' ? 'ACCRUAL' : 'ACTUAL',
         source: 'IMPORT',
@@ -124,7 +138,7 @@ export async function importCostTransactions(formData: FormData): Promise<Import
         reference: asText(row.values['reference']) || `Import ${file.name}`,
         amount,
         hours: hours > 0 ? hours : null,
-        needsCoding: !costCode,
+        needsCoding: !matched,
         importHash: hash,
       },
     })

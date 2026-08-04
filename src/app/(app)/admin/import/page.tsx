@@ -43,7 +43,9 @@ export default async function ImportPage() {
         <InfoNote>
           The first row must be headers. Required: <strong>date</strong>, <strong>line item</strong>, <strong>description</strong>,{' '}
           <strong>amount</strong>. Optional: <strong>vendor</strong>, <strong>reference</strong>, <strong>type</strong> (actual or accrual),{' '}
-          <strong>hours</strong>. Column order does not matter and header case is ignored.
+          <strong>hours</strong>. Column order does not matter and header case is ignored. The line item column is matched
+          against the names of the lines on that project&apos;s budget; anything that does not match is still imported and
+          flagged for coding rather than dropped.
         </InfoNote>
 
         <div className="mt-3">

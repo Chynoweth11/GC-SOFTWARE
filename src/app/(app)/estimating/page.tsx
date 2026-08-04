@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { listEstimates } from '@/lib/queries/estimate'
@@ -10,6 +11,7 @@ export const metadata = { title: 'Estimating' }
 
 export default async function EstimatingPage() {
   const user = await requireUser()
+  if (!can(user.role, 'view:estimates')) forbidden()
   const estimates = await listEstimates(user.companyId)
   const canEdit = can(user.role, 'edit:estimates')
 

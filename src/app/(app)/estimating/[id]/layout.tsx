@@ -1,5 +1,6 @@
-import { notFound } from 'next/navigation'
+import { notFound, forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
+import { can } from '@/lib/permissions'
 import { getEstimateBundle } from '@/lib/queries/estimate'
 import { date, moneyShort, percent } from '@/lib/format'
 import { ExportMenu, PageHeader, Pill, StatusPill } from '@/components/ui'
@@ -20,6 +21,7 @@ export default async function EstimateLayout({
   params: Promise<{ id: string }>
 }) {
   const user = await requireUser()
+  if (!can(user.role, 'view:estimates')) forbidden()
   const { id } = await params
   const bundle = await getEstimateBundle(id, user.companyId)
   if (!bundle) notFound()

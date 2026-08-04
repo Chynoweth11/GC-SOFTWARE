@@ -50,7 +50,7 @@ export function ImportForm({
           </ul>
           {result.unmatchedCodes && result.unmatchedCodes.length > 0 && (
             <p className="mt-1.5">
-              Line items not recognised: <span className="font-mono">{result.unmatchedCodes.join(', ')}</span>. Add them under Line items,
+              These line items are not on the project&apos;s budget: <span className="font-mono">{result.unmatchedCodes.join(', ')}</span>. Their cost was still imported and flagged for coding. Add the lines on the project&apos;s budget tab,
               then recode those transactions.
             </p>
           )}

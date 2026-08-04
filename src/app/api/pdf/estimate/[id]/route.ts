@@ -10,6 +10,9 @@ import { date } from '@/lib/format'
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+  // The same capability that opens the estimate on screen. Without this an
+  // export becomes a way to read what the page refuses to show.
+  if (!can(user.role, 'view:estimates')) return new Response('Your role cannot read estimates', { status: 403 })
 
   const { id } = await params
   const bundle = await getEstimateBundle(id, user.companyId)

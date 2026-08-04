@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
@@ -26,6 +27,7 @@ export default async function PipelinePage({
   searchParams: Promise<{ followUp?: string; status?: string }>
 }) {
   const user = await requireUser()
+  if (!can(user.role, 'view:pipeline')) forbidden()
   const params = await searchParams
   const canEdit = can(user.role, 'edit:pipeline')
 
