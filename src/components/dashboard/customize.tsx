@@ -7,7 +7,7 @@ import type { DashboardLayout, PanelDefinition } from '@/lib/dashboard-panels'
 /**
  * Dashboard arrangement.
  *
- * Order and visibility only — nothing here changes a figure, and a panel a
+ * Order and visibility only: nothing here changes a figure, and a panel a
  * role cannot see never reaches this list in the first place.
  */
 export function CustomizeDashboard({

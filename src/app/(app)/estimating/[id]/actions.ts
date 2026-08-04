@@ -142,7 +142,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
       create: {
         companyId: user.companyId,
         code,
-        description: `${entry.section} — ${entry.category.toLowerCase().replace(/_/g, ' ')}`,
+        description: `${entry.section}, ${entry.category.toLowerCase().replace(/_/g, ' ')}`,
         category: entry.category,
         tradeId: trade?.id,
         sortOrder,
@@ -154,7 +154,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
       data: {
         projectId: project.id,
         costCodeId: costCode.id,
-        description: `${entry.section} — ${entry.category.toLowerCase().replace(/_/g, ' ')}`,
+        description: `${entry.section}, ${entry.category.toLowerCase().replace(/_/g, ' ')}`,
         category: entry.category,
         tradeId: trade?.id,
         originalBudget: Math.round(entry.amount * 100) / 100,
@@ -162,7 +162,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
       },
     })
 
-    sovInputs.push({ description: `${entry.section} — ${entry.category.toLowerCase().replace(/_/g, ' ')}`, amount: entry.amount })
+    sovInputs.push({ description: `${entry.section}, ${entry.category.toLowerCase().replace(/_/g, ' ')}`, amount: entry.amount })
   }
 
   // Schedule of values, scaled from the budget to the contract so the SOV ties.
@@ -249,7 +249,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
     })
   }
 
-  // Lock the estimate — the basis of the bid must not change after award.
+  // Lock the estimate: the basis of the bid must not change after award.
   await prisma.estimate.update({
     where: { id: estimateId },
     data: { status: 'AWARDED', lockedAt: new Date() },
@@ -264,6 +264,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Estimate',
     entityId: estimateId,
     action: 'CONVERT',
@@ -328,6 +329,7 @@ export async function saveTakeoffItem(formData: FormData): Promise<{ error?: str
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'EstimateItem',
     entityId: itemId || estimateId,
     action: itemId ? 'UPDATE' : 'CREATE',
@@ -354,6 +356,7 @@ export async function deleteTakeoffItem(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'EstimateItem',
     entityId: itemId,
     action: 'DELETE',
@@ -450,6 +453,7 @@ export async function updateEstimateSetup(formData: FormData): Promise<{ error?:
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Estimate',
     entityId: estimateId,
     action: 'UPDATE',

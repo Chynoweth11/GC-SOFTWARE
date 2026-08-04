@@ -53,10 +53,11 @@ export async function createCostTransaction(formData: FormData): Promise<{ error
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CostTransaction',
     entityId: tx.id,
     action: 'CREATE',
-    summary: `Posted ${amount} to ${costCodeId} — ${description}`,
+    summary: `Posted ${amount} to ${costCodeId}, ${description}`,
   })
 
   revalidatePath(`/projects/${projectId}/costs`)
@@ -90,6 +91,7 @@ export async function recodeTransaction(formData: FormData): Promise<{ error?: s
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CostTransaction',
     entityId: transactionId,
     action: 'RECODE',
@@ -155,6 +157,7 @@ export async function splitTransaction(formData: FormData): Promise<{ error?: st
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CostTransaction',
     entityId: transactionId,
     action: 'SPLIT',
@@ -166,7 +169,7 @@ export async function splitTransaction(formData: FormData): Promise<{ error?: st
   return {}
 }
 
-/** Soft delete — the row leaves every total but stays recoverable. */
+/** Soft delete: the row leaves every total but stays recoverable. */
 export async function softDeleteTransaction(formData: FormData): Promise<{ error?: string }> {
   const user = await requireUser()
   assertCan(user.role, 'edit:costs')
@@ -182,10 +185,11 @@ export async function softDeleteTransaction(formData: FormData): Promise<{ error
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CostTransaction',
     entityId: transactionId,
     action: 'DELETE',
-    summary: `Removed ${existing.description} (${existing.amount}) from the ledger — recoverable`,
+    summary: `Removed ${existing.description} (${existing.amount}) from the ledger, recoverable`,
   })
 
   revalidatePath(`/projects/${existing.projectId}/costs`)

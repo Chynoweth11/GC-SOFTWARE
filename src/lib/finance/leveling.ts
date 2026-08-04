@@ -89,7 +89,7 @@ export function levelPackage(pkg: PackageInput, spreadThreshold = 0.15): Leveled
 
     const flags: string[] = []
     if (q.status === 'PENDING') flags.push('Quote still pending')
-    if (hasBase && !q.inclusions && !q.exclusions) flags.push('No scope letter — inclusions and exclusions blank')
+    if (hasBase && !q.inclusions && !q.exclusions) flags.push('No scope letter: inclusions and exclusions blank')
     if (hasBase && num(q.allowances) > 0) flags.push('Carries an allowance')
     if (missingScopes.length > 0) flags.push(`${missingScopes.length} scope gap${missingScopes.length === 1 ? '' : 's'} vs. other bidders`)
     if (hasBase && num(pkg.budgetAmount) > 0 && leveledAmount > num(pkg.budgetAmount))
@@ -111,9 +111,9 @@ export function levelPackage(pkg: PackageInput, spreadThreshold = 0.15): Leveled
   const spread = highLeveled - lowLeveled
   const flags: string[] = []
   if (received.length === 0) flags.push('No quotes received')
-  else if (received.length === 1) flags.push('Only one bidder — no competitive check')
+  else if (received.length === 1) flags.push('Only one bidder, no competitive check')
   if (received.length > 1 && safeDiv(spread, lowLeveled) > spreadThreshold)
-    flags.push(`Wide spread — ${(safeDiv(spread, lowLeveled) * 100).toFixed(0)}% between high and low`)
+    flags.push(`Wide spread: ${(safeDiv(spread, lowLeveled) * 100).toFixed(0)}% between high and low`)
   if (num(pkg.budgetAmount) > 0 && lowLeveled > num(pkg.budgetAmount))
     flags.push('Every bid is over budget')
   if (pkg.quotes.some((q) => q.status === 'PENDING')) flags.push('Awaiting outstanding quotes')

@@ -43,6 +43,7 @@ export async function updateCompany(formData: FormData): Promise<{ error?: strin
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Company',
     entityId: user.companyId,
     action: 'UPDATE',
@@ -81,6 +82,7 @@ export async function createUser(formData: FormData): Promise<{ error?: string }
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'User',
     entityId: created.id,
     action: 'CREATE',
@@ -112,6 +114,7 @@ export async function updateUserRole(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'User',
     entityId: userId,
     action: 'ROLE',
@@ -145,10 +148,11 @@ export async function toggleUserActive(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'User',
     entityId: userId,
     action: target.active ? 'DEACTIVATE' : 'ACTIVATE',
-    summary: `${target.name} ${target.active ? 'deactivated — sessions revoked' : 'reactivated'}`,
+    summary: `${target.name} ${target.active ? 'deactivated, sessions revoked' : 'reactivated'}`,
   })
 
   revalidatePath('/admin/users')
@@ -189,10 +193,11 @@ export async function saveCostCode(formData: FormData): Promise<{ error?: string
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CostCode',
     entityId: costCodeId || code,
     action: costCodeId ? 'UPDATE' : 'CREATE',
-    summary: `${costCodeId ? 'Updated' : 'Added'} cost code ${code} — ${description}`,
+    summary: `${costCodeId ? 'Updated' : 'Added'} cost code ${code}, ${description}`,
   })
 
   revalidatePath('/admin/cost-codes')
@@ -216,10 +221,11 @@ export async function toggleCostCodeActive(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CostCode',
     entityId: costCodeId,
     action: code.active ? 'RETIRE' : 'REINSTATE',
-    summary: `${code.code} ${code.active ? 'retired — existing history is unaffected' : 'reinstated'}`,
+    summary: `${code.code} ${code.active ? 'retired, existing history is unaffected' : 'reinstated'}`,
   })
 
   revalidatePath('/admin/cost-codes')
@@ -253,6 +259,7 @@ export async function saveTrade(formData: FormData): Promise<{ error?: string }>
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Trade',
     entityId: tradeId || name,
     action: tradeId ? 'UPDATE' : 'CREATE',
@@ -276,6 +283,7 @@ export async function toggleTradeActive(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Trade',
     entityId: tradeId,
     action: trade.active ? 'RETIRE' : 'REINSTATE',
@@ -350,10 +358,87 @@ export async function saveVendor(formData: FormData): Promise<{ error?: string }
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Vendor',
     entityId: vendorId || name,
     action: vendorId ? 'UPDATE' : 'CREATE',
     summary: `${vendorId ? 'Updated' : 'Added'} vendor "${name}"`,
+  })
+
+  revalidatePath('/admin/vendors')
+  return {}
+}
+
+/** Archives a vendor, or brings one back. Archived vendors stay on their history. */
+export async function setVendorActive(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'manage:reference_data')
+
+  const id = String(formData.get('id') ?? '')
+  const active = formData.get('active') === 'true'
+
+  const vendor = await prisma.vendor.findFirst({ where: { id, companyId: user.companyId } })
+  if (!vendor) return { error: 'That vendor no longer exists.' }
+
+  await prisma.vendor.update({ where: { id }, data: { active } })
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'Vendor',
+    entityId: id,
+    entityLabel: vendor.name,
+    action: active ? 'RESTORE' : 'ARCHIVE',
+    field: 'Active',
+    oldValue: String(vendor.active),
+    newValue: String(active),
+    summary: active ? `Restored the vendor ${vendor.name}` : `Archived the vendor ${vendor.name}`,
+  })
+
+  revalidatePath('/admin/vendors')
+  return {}
+}
+
+/**
+ * Deletes a vendor that was never used.
+ *
+ * A vendor named on a commitment or an invoice is part of the payment record and
+ * is archived instead, so a subcontract never loses the name of who held it.
+ */
+export async function deleteVendor(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'manage:reference_data')
+  assertCan(user.role, 'delete:records')
+
+  const id = String(formData.get('id') ?? '')
+  const vendor = await prisma.vendor.findFirst({
+    where: { id, companyId: user.companyId },
+    include: { _count: { select: { commitments: true, invoices: true, costTx: true, quotes: true } } },
+  })
+  if (!vendor) return { error: 'That vendor no longer exists.' }
+
+  const { commitments, invoices, costTx, quotes } = vendor._count
+  const used: string[] = []
+  if (commitments > 0) used.push(`${commitments} commitment${commitments === 1 ? '' : 's'}`)
+  if (invoices > 0) used.push(`${invoices} invoice${invoices === 1 ? '' : 's'}`)
+  if (costTx > 0) used.push(`${costTx} cost transaction${costTx === 1 ? '' : 's'}`)
+  if (quotes > 0) used.push(`${quotes} quote${quotes === 1 ? '' : 's'}`)
+
+  if (used.length > 0) {
+    return { error: `${vendor.name} is named on ${used.join(', ')} and cannot be deleted. Archive it instead.` }
+  }
+
+  await prisma.vendor.delete({ where: { id } })
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'Vendor',
+    entityId: id,
+    entityLabel: vendor.name,
+    action: 'DELETE',
+    oldValue: vendor.name,
+    summary: `Deleted the vendor ${vendor.name}, which had no commitments, invoices or quotes`,
   })
 
   revalidatePath('/admin/vendors')

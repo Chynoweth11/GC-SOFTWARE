@@ -101,13 +101,13 @@ export default async function EstimatingPage() {
                         </Link>
                       </td>
                       <td style={{ color: 'var(--text-muted)' }}>v{e.version}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{e.clientName ?? '—'}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{e.bid?.number ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{e.clientName ?? '-'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{e.bid?.number ?? '-'}</td>
                       <td>
                         <StatusPill status={e.status} />
                       </td>
                       <td style={{ color: 'var(--text-muted)' }}>{date(e.bidDueDate)}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{e.estimator ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{e.estimator ?? '-'}</td>
                       <td className="num">{e._count.items}</td>
                       <td className="num">{money(e.directCost)}</td>
                       <td className="num font-medium">{money(e.totalBid)}</td>
@@ -127,7 +127,7 @@ export default async function EstimatingPage() {
                             {e.projects[0].number}
                           </Link>
                         ) : (
-                          <span style={{ color: 'var(--text-subtle)' }}>—</span>
+                          <span style={{ color: 'var(--text-subtle)' }}>-</span>
                         )}
                       </td>
                     </tr>

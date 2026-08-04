@@ -95,13 +95,14 @@ export async function updateProject(formData: FormData): Promise<{ error?: strin
       await recordAudit({
         companyId: user.companyId,
         userId: user.id,
+        actor: user,
         entity: 'Project',
         entityId: projectId,
         action: 'UPDATE',
         field: String(field),
         oldValue: beforeText,
         newValue: afterText,
-        summary: `${String(field)} changed from ${beforeText || '—'} to ${afterText || '—'}`,
+        summary: `${String(field)} changed from ${beforeText || '-'} to ${afterText || '-'}`,
       })
     }
   }
@@ -127,7 +128,7 @@ export async function createSnapshot(formData: FormData): Promise<void> {
     create: {
       projectId,
       asOf,
-      label: `Manual capture — ${asOf.toISOString().slice(0, 10)}`,
+      label: `Manual capture, ${asOf.toISOString().slice(0, 10)}`,
       payload: JSON.stringify(bundle.financials),
       createdBy: user.id,
     },
@@ -137,6 +138,7 @@ export async function createSnapshot(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'ProjectSnapshot',
     entityId: projectId,
     action: 'SNAPSHOT',
@@ -144,4 +146,108 @@ export async function createSnapshot(formData: FormData): Promise<void> {
   })
 
   revalidatePath(`/projects/${projectId}/settings`)
+}
+
+/**
+ * Archives a project, or brings one back.
+ *
+ * Closing a job is a status change, not a deletion: the contract, the costs and
+ * the pay applications all stay exactly where they are and keep reporting.
+ */
+export async function setProjectArchived(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'edit:project_setup')
+
+  const projectId = String(formData.get('projectId') ?? '')
+  const archived = formData.get('archived') === 'true'
+
+  const project = await prisma.project.findFirst({ where: { id: projectId, companyId: user.companyId } })
+  if (!project) return { error: 'That project no longer exists.' }
+
+  const status = archived ? 'CLOSED' : 'ACTIVE'
+  await prisma.project.update({ where: { id: projectId }, data: { status } })
+
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'Project',
+    entityId: projectId,
+    entityLabel: `${project.number} ${project.name}`,
+    action: archived ? 'ARCHIVE' : 'RESTORE',
+    field: 'Status',
+    oldValue: project.status,
+    newValue: status,
+    summary: archived
+      ? `Closed ${project.number}. Its financial history stays on record.`
+      : `Reopened ${project.number}`,
+  })
+
+  revalidatePath(`/projects/${projectId}/settings`)
+  revalidatePath('/projects')
+  return {}
+}
+
+/**
+ * Deletes a project outright.
+ *
+ * Refused as soon as the job carries financial history. A project with costs,
+ * billings or commitments against it is part of the company's books, and the
+ * honest way to retire it is to close it. Deleting is for the job that was
+ * created by mistake ten minutes ago.
+ */
+export async function deleteProject(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'edit:project_setup')
+  assertCan(user.role, 'delete:records')
+
+  const projectId = String(formData.get('projectId') ?? '')
+  const confirmation = String(formData.get('confirmation') ?? '').trim()
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, companyId: user.companyId },
+    include: {
+      _count: {
+        select: { costTx: true, ownerBillings: true, commitments: true, changeOrders: true, subInvoices: true },
+      },
+    },
+  })
+  if (!project) return { error: 'That project no longer exists.' }
+
+  if (confirmation !== project.number) {
+    return { error: `Type the job number ${project.number} to confirm.` }
+  }
+
+  const counts = project._count
+  const history: string[] = []
+  if (counts.costTx > 0) history.push(`${counts.costTx} cost transactions`)
+  if (counts.ownerBillings > 0) history.push(`${counts.ownerBillings} pay applications`)
+  if (counts.commitments > 0) history.push(`${counts.commitments} commitments`)
+  if (counts.changeOrders > 0) history.push(`${counts.changeOrders} change orders`)
+  if (counts.subInvoices > 0) history.push(`${counts.subInvoices} subcontractor invoices`)
+
+  if (history.length > 0) {
+    return {
+      error: `${project.number} carries ${history.join(', ')} and cannot be deleted. Close the project instead, which keeps every figure on record.`,
+    }
+  }
+
+  const label = `${project.number} ${project.name}`
+  await prisma.project.delete({ where: { id: projectId } })
+
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'Project',
+    entityId: projectId,
+    entityLabel: label,
+    action: 'DELETE',
+    oldValue: label,
+    summary: `Deleted ${label}, which had no cost, billing or commitment history`,
+  })
+
+  revalidatePath('/projects')
+  revalidatePath('/')
+  return {}
 }

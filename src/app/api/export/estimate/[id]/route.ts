@@ -4,7 +4,7 @@ import { getEstimateBundle } from '@/lib/queries/estimate'
 import { buildEstimateSheets } from '@/lib/queries/estimate-spec'
 import { buildWorkbook, workbookResponse } from '@/lib/excel'
 
-/** Estimate export — takeoff, general conditions, leveling and the bid build-up. */
+/** Estimate export: takeoff, general conditions, leveling and the bid build-up. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
   if (!user) return new Response('Unauthorized', { status: 401 })

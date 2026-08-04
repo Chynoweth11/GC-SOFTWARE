@@ -44,7 +44,7 @@ function alert(
 
 /**
  * Every alert the forecasting brief calls for, derived from live data.
- * Nothing here is stored — alerts recompute on every read so they can never
+ * Nothing here is stored: alerts recompute on every read so they can never
  * be stale relative to the numbers they describe.
  */
 export function buildProjectAlerts(ctx: AlertContext): Alert[] {

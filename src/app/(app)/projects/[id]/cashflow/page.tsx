@@ -49,7 +49,7 @@ export default async function CashFlowPage({ params }: { params: Promise<{ id: s
             label="Peak funding requirement"
             amount={peakFunding}
             tone={peakFunding < 0 ? 'caution' : 'neutral'}
-            hint="The deepest the project's cash position goes across the whole job — the working capital it needs."
+            hint="The deepest the project's cash position goes across the whole job: the working capital it needs."
           />
           <MoneyKpi label="Collections still to come" amount={remainingCollections} />
           <MoneyKpi

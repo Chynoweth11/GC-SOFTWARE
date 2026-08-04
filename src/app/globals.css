@@ -58,7 +58,7 @@
   --caution-soft: #fdf4e0;
   --adverse: #bb2727;
   --adverse-soft: #fdecec;
-  /* Neutral chart series — the reference line a coloured series is read against. */
+  /* Neutral chart series, the reference line a coloured series is read against. */
   --series-neutral: #8b95a5;
   --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.04);
   --shadow-raised: 0 4px 12px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.04);

@@ -285,12 +285,12 @@ export function buildBidBuildUp(input: MarkupChainInput): BidBuildUp {
   steps.push({ label: 'Small tools', basis: 'Labor cost', rate: num(input.smallToolsPct), amount: smallTools, runningTotal: running })
   running += contingency
   steps.push({ label: 'Contingency', basis: 'Direct + small tools', rate: num(input.contingencyPct), amount: contingency, runningTotal: running })
-  steps.push({ label: 'Cost subtotal', basis: '—', rate: null, amount: costSubtotal, runningTotal: costSubtotal, isSubtotal: true })
+  steps.push({ label: 'Cost subtotal', basis: '-', rate: null, amount: costSubtotal, runningTotal: costSubtotal, isSubtotal: true })
   running = costSubtotal + overhead
   steps.push({ label: 'Overhead', basis: 'Cost subtotal', rate: num(input.overheadPct), amount: overhead, runningTotal: running })
   running += profit
   steps.push({ label: 'Profit', basis: 'Cost subtotal + overhead', rate: num(input.profitPct), amount: profit, runningTotal: running })
-  steps.push({ label: 'Subtotal', basis: '—', rate: null, amount: subtotal, runningTotal: subtotal, isSubtotal: true })
+  steps.push({ label: 'Subtotal', basis: '-', rate: null, amount: subtotal, runningTotal: subtotal, isSubtotal: true })
   running = subtotal + glInsurance
   steps.push({ label: 'GL insurance', basis: 'Subtotal', rate: num(input.glInsurancePct), amount: glInsurance, runningTotal: running })
   running += bond
@@ -301,7 +301,7 @@ export function buildBidBuildUp(input: MarkupChainInput): BidBuildUp {
     running += num(adder.amount)
     steps.push({ label: adder.label, basis: 'Fixed amount', rate: null, amount: num(adder.amount), runningTotal: running })
   }
-  steps.push({ label: 'TOTAL BID', basis: '—', rate: null, amount: totalBid, runningTotal: totalBid, isSubtotal: true })
+  steps.push({ label: 'TOTAL BID', basis: '-', rate: null, amount: totalBid, runningTotal: totalBid, isSubtotal: true })
 
   return {
     steps,

@@ -4,7 +4,7 @@ import { getProjectBundle } from '@/lib/queries/project'
 import { buildProjectSheets } from '@/lib/queries/project-spec'
 import { buildWorkbook, workbookResponse } from '@/lib/excel'
 
-/** Full project export — every tab of the project workspace as one workbook. */
+/** Full project export: every tab of the project workspace as one workbook. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
   if (!user) return new Response('Unauthorized', { status: 401 })

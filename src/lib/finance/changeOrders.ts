@@ -58,7 +58,7 @@ export function deriveChangeOrder(co: ChangeOrderInput, dataDate: Date): ChangeO
 }
 
 /**
- * Contract position — Setup ▸ C24:C28.
+ * Contract position: Setup ▸ C24:C28.
  *   Current Contract   = Original + Approved COs
  *   Potential Contract = Current + Pending COs
  *

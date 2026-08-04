@@ -1,3 +1,4 @@
+import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
@@ -11,6 +12,7 @@ export const metadata = { title: 'Company settings' }
 
 export default async function AdminCompanyPage() {
   const user = await requireUser()
+  if (!can(user.role, 'edit:company_settings')) forbidden()
   const canEdit = can(user.role, 'edit:company_settings')
 
   const [company, counts, activity] = await Promise.all([
@@ -65,7 +67,7 @@ export default async function AdminCompanyPage() {
               columns={3}
               items={[
                 { label: 'Company', value: company.name },
-                { label: 'Legal name', value: company.legalName ?? '—' },
+                { label: 'Legal name', value: company.legalName ?? '-' },
                 { label: 'Target margin', value: percent(company.targetMarginPct, 1) },
                 { label: 'Default retention', value: percent(company.defaultRetentionPct, 1) },
                 { label: 'Default labor burden', value: percent(company.defaultLaborBurdenPct, 1) },
@@ -99,18 +101,18 @@ export default async function AdminCompanyPage() {
                   {activity.map((entry) => (
                     <tr key={entry.id}>
                       <td style={{ color: 'var(--text-muted)' }}>{date(entry.createdAt)}</td>
-                      <td>{entry.user?.name ?? 'System'}</td>
+                      <td>{entry.userName ?? 'System'}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{entry.entity}</td>
                       <td>{titleize(entry.action)}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{entry.field ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{entry.field ?? '-'}</td>
                       <td className="max-w-[10rem] truncate" style={{ color: 'var(--text-subtle)' }}>
-                        {entry.oldValue ?? '—'}
+                        {entry.oldValue ?? '-'}
                       </td>
                       <td className="max-w-[10rem] truncate" style={{ color: 'var(--text-subtle)' }}>
-                        {entry.newValue ?? '—'}
+                        {entry.newValue ?? '-'}
                       </td>
                       <td className="max-w-[30rem] truncate" title={entry.summary ?? ''}>
-                        {entry.summary ?? '—'}
+                        {entry.summary ?? '-'}
                       </td>
                     </tr>
                   ))}

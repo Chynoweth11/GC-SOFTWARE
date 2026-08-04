@@ -18,7 +18,7 @@ const RIGHT_ALIGNED: SheetColumn['format'][] = ['money', 'money2', 'percent', 'n
 function formatCell(value: CellValue, format: SheetColumn['format']): string {
   // A missing figure or date reads as an em-dash, exactly as it does on screen;
   // only free text is left blank.
-  if (value == null || value === '') return format && format !== 'text' ? '—' : ''
+  if (value == null || value === '') return format && format !== 'text' ? '-' : ''
   switch (format) {
     case 'money':
       return money(typeof value === 'number' ? value : Number(value))
@@ -95,7 +95,7 @@ export function sheetsToPdf(
     subtitle: meta.subtitle,
     meta: meta.notes ?? [meta.company, `Generated ${date(new Date())}`],
     sections: sheets.map((sheet) =>
-      // A single-sheet export needs no repeated heading — the title already says it.
+      // A single-sheet export needs no repeated heading: the title already says it.
       sheets.length === 1 ? { ...sheetToPdfSection(sheet), heading: undefined, subheading: undefined } : sheetToPdfSection(sheet),
     ),
     footer: meta.company,

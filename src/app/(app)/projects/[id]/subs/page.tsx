@@ -72,7 +72,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
         <div className="space-y-2">
           {overdue.length > 0 && (
             <div className="rounded-lg border px-3 py-2 text-xs" style={{ background: 'var(--adverse-soft)', borderColor: 'var(--adverse)', color: 'var(--adverse)' }}>
-              {overdue.length} invoice{overdue.length === 1 ? '' : 's'} unpaid more than 30 days after receipt —{' '}
+              {overdue.length} invoice{overdue.length === 1 ? '' : 's'} unpaid more than 30 days after receipt.{' '}
               {money(sumBy(overdue, (r) => r.outstanding))} outstanding to{' '}
               {[...new Set(overdue.map((r) => r.record.vendor.name))].join(', ')}.
             </div>
@@ -157,7 +157,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
                     return (
                       <tr key={c.id}>
                         <td className="font-medium">{c.vendorName}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{vendor.trade?.name ?? '—'}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{vendor.trade?.name ?? '-'}</td>
                         <td style={{ color: 'var(--text-muted)' }}>{c.number}</td>
                         <td className="num">{money(c.originalAmount)}</td>
                         <td className="num">
@@ -210,7 +210,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>Total — {subcontracts.length}</td>
+                    <td colSpan={3}>Total, {subcontracts.length}</td>
                     <td className="num">{money(f.subcontracts.originalValue)}</td>
                     <td className="num">{money(f.subcontracts.approvedChanges)}</td>
                     <td className="num">{money(f.subcontracts.pendingChanges)}</td>
@@ -265,18 +265,18 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
                     <tr key={i.id} style={status === 'OVERDUE' ? { background: 'color-mix(in oklab, var(--adverse) 5%, transparent)' } : undefined}>
                       <td className="font-medium">{i.invoiceNumber}</td>
                       <td>{i.vendor.name}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{i.costCode?.code ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{i.costCode?.code ?? '-'}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{date(i.periodEnd)}</td>
                       <td className="num">{money(i.amount)}</td>
                       <td className="num">{money(i.amount * i.retentionPct)}</td>
                       <td className="num">{money(netPayable)}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{date(i.dateReceived)}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{i.approved ? date(i.dateApproved) : '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{i.approved ? date(i.dateApproved) : '-'}</td>
                       <td className="num">{money(i.amountPaid)}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{date(i.datePaid)}</td>
                       <td className="num">{money(outstanding)}</td>
                       <td className="num" style={{ color: daysOutstanding > 30 ? 'var(--adverse)' : undefined }}>
-                        {daysOutstanding || '—'}
+                        {daysOutstanding || '-'}
                       </td>
                       <td>{i.lienWaiverReceived ? <Pill tone="favorable">Received</Pill> : <Pill tone="caution">Outstanding</Pill>}</td>
                       <td>
@@ -310,7 +310,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={4}>Total — {invoices.length} invoices</td>
+                    <td colSpan={4}>Total, {invoices.length} invoices</td>
                     <td className="num">{money(sumBy(invoices, (i) => i.amount))}</td>
                     <td className="num">{money(sumBy(invoices, (i) => i.amount * i.retentionPct))}</td>
                     <td className="num">{money(sumBy(invoiceRows, (r) => r.netPayable))}</td>
@@ -334,10 +334,10 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
             commitments={subcontracts.map((c) => ({
               id: c.id,
               vendorId: c.vendorId,
-              label: `${c.number} — ${c.vendorName}`,
+              label: `${c.number} ${c.vendorName}`,
               retentionPct: c.retentionPct,
             }))}
-            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} — ${c.description}` }))}
+            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
             action={createSubInvoice}
           />
         </Section>

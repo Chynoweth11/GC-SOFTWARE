@@ -22,7 +22,6 @@ export default async function RestorePage() {
     }),
     prisma.auditLog.findMany({
       where: { companyId: user.companyId, action: 'RESTORE' },
-      include: { user: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
@@ -35,7 +34,7 @@ export default async function RestorePage() {
         description="Rebuild a project from a backup file taken on this or another ConstructX installation"
       >
         <InfoNote>
-          A backup holds stored values only — budgets, commitments, costs, change orders, billings, forecasts and quantities.
+          A backup holds stored values only: budgets, commitments, costs, change orders, billings, forecasts and quantities.
           Every derived figure, from percent complete to estimate at completion, is recalculated on restore by the same engine
           the live project uses, so a restored job cannot carry a stale number.
         </InfoNote>
@@ -99,8 +98,8 @@ export default async function RestorePage() {
                   {restores.map((entry) => (
                     <tr key={entry.id}>
                       <td style={{ color: 'var(--text-muted)' }}>{date(entry.createdAt)}</td>
-                      <td>{entry.user?.name ?? 'System'}</td>
-                      <td>{entry.summary ?? '—'}</td>
+                      <td>{entry.userName ?? 'System'}</td>
+                      <td>{entry.summary ?? '-'}</td>
                     </tr>
                   ))}
                 </tbody>

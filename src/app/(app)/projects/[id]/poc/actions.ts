@@ -27,6 +27,7 @@ export async function setPocMethod(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Project',
     entityId: projectId,
     action: 'UPDATE',

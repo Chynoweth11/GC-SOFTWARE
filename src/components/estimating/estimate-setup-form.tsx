@@ -205,7 +205,7 @@ export function EstimateSetupForm({
             Markups
           </h3>
           <p className="mb-3 text-xs" style={{ color: 'var(--text-subtle)' }}>
-            Compounded in the order listed — the same order the bid summary shows. Set any you do not use to zero.
+            Compounded in the order listed: the same order the bid summary shows. Set any you do not use to zero.
           </p>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-4">
             {markups.map(([key, label, basis]) => (

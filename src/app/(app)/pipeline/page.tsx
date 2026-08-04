@@ -107,7 +107,7 @@ export default async function PipelinePage({
           className="mb-5 rounded-lg border px-3 py-2 text-xs"
           style={{ background: 'var(--adverse-soft)', borderColor: 'var(--adverse)', color: 'var(--adverse)' }}
         >
-          {summary.followUpsOverdue} follow-up{summary.followUpsOverdue === 1 ? ' is' : 's are'} past due. Opportunities go cold quietly —
+          {summary.followUpsOverdue} follow-up{summary.followUpsOverdue === 1 ? ' is' : 's are'} past due. Opportunities go cold quietly.
           these are the ones to call today.
         </div>
       )}
@@ -134,7 +134,7 @@ export default async function PipelinePage({
         </ChartFrame>
       </div>
 
-      <Section title="Opportunities" description="The follow-up column is the engine — it turns red the day a follow-up goes past due">
+      <Section title="Opportunities" description="The follow-up column is the engine: it turns red the day a follow-up goes past due">
         {visible.length === 0 ? (
           <EmptyState title="No opportunities match" description="Clear the filters to see the whole pipeline." />
         ) : (
@@ -176,16 +176,16 @@ export default async function PipelinePage({
                           {r.name}
                         </td>
                         <td className="max-w-[12rem] truncate" style={{ color: 'var(--text-muted)' }}>
-                          {r.clientName ?? '—'}
+                          {r.clientName ?? '-'}
                         </td>
                         <td style={{ color: 'var(--text-muted)' }}>{titleize(r.clientType)}</td>
                         <td className="max-w-[10rem] truncate" style={{ color: 'var(--text-subtle)' }}>
-                          {r.leadSource ?? '—'}
+                          {r.leadSource ?? '-'}
                         </td>
-                        <td style={{ color: 'var(--text-muted)' }}>{r.estimator ?? '—'}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{r.estimator ?? '-'}</td>
                         <td style={{ color: 'var(--text-muted)' }}>{date(r.bidDue)}</td>
                         <td className="num" style={{ color: daysToDue != null && daysToDue < 0 ? 'var(--adverse)' : undefined }}>
-                          {state === 'CLOSED' || daysToDue == null ? '—' : daysToDue}
+                          {state === 'CLOSED' || daysToDue == null ? '-' : daysToDue}
                         </td>
                         <td className="num">{money(r.estimatedValue)}</td>
                         <td className="num">{money(r.submittedAmount)}</td>
@@ -197,12 +197,12 @@ export default async function PipelinePage({
                         <td style={{ color: 'var(--text-muted)' }}>{date(r.nextFollowUp)}</td>
                         <td>
                           <Pill tone={FOLLOW_UP_TONE[state]} dot={state !== 'CLOSED'}>
-                            {state === 'CLOSED' ? '—' : state}
+                            {state === 'CLOSED' ? '-' : state}
                           </Pill>
                         </td>
                         <td className="num">{record.touches}</td>
                         <td className="max-w-[18rem] truncate" title={record.nextAction ?? ''} style={{ color: 'var(--text-muted)' }}>
-                          {record.nextAction ?? '—'}
+                          {record.nextAction ?? '-'}
                         </td>
                         {canEdit && (
                           <td className="no-print">
@@ -235,7 +235,7 @@ export default async function PipelinePage({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={8}>Total — {visible.length} opportunities</td>
+                    <td colSpan={8}>Total, {visible.length} opportunities</td>
                     <td className="num">{money(visible.reduce((a, r) => a + r.estimatedValue, 0))}</td>
                     <td className="num">{money(visible.reduce((a, r) => a + r.submittedAmount, 0))}</td>
                     <td />

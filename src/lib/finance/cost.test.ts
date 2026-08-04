@@ -22,7 +22,7 @@ const base = (over: Partial<CostLineInput> = {}): CostLineInput => ({
   ...over,
 })
 
-describe('deriveCostLine — matches the workbook row for row', () => {
+describe('deriveCostLine: matches the workbook row for row', () => {
   it('01-000 general conditions (row 7)', () => {
     const line = deriveCostLine(
       base({
@@ -125,7 +125,7 @@ describe('deriveCostLine — matches the workbook row for row', () => {
   })
 })
 
-describe('category rollup — Financials V6:AA14', () => {
+describe('category rollup: Financials V6:AA14', () => {
   const lines = deriveCostLines([
     base({ code: '01-000', category: 'GENERAL_CONDITIONS', originalBudget: 186_000, committed: 186_000, costToDate: 62_400, accruals: 4_200, pctComplete: 0.34 }),
     base({ code: '06-100', category: 'LABOR', originalBudget: 214_000, budgetRevisions: 12_000, costToDate: 138_600, accruals: 8_400, pctComplete: 0.6 }),

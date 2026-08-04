@@ -91,7 +91,7 @@ export function Variance({
   const tone = varianceTone(value, favorableWhen)
   const color = tone === 'favorable' ? 'var(--favorable)' : tone === 'adverse' ? 'var(--adverse)' : 'var(--text-muted)'
 
-  if (value == null || !isFinite(value)) return <span style={{ color: 'var(--text-subtle)' }}>—</span>
+  if (value == null || !isFinite(value)) return <span style={{ color: 'var(--text-subtle)' }}>-</span>
 
   let text: string
   if (format === 'percent') {
@@ -388,3 +388,5 @@ export function Tabs({
 }
 
 export { ExportMenu } from './export-menu'
+
+export { ConfirmButton } from './confirm-button'

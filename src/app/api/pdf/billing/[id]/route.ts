@@ -7,7 +7,7 @@ import { date, money, percent } from '@/lib/format'
 
 /**
  * The AIA G702 application and certificate for payment, with its G703
- * continuation sheet — laid out as the document an owner signs rather than as
+ * continuation sheet: laid out as the document an owner signs rather than as
  * a table dump, because this is the one export that leaves the company.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const document: PdfDocument = {
     title: `Application and Certificate for Payment No. ${g.appNumber}`,
-    subtitle: `${project.number} — ${project.name}`,
+    subtitle: `${project.number} ${project.name}`,
     meta: [
       project.client?.name ? `Owner: ${project.client.name}` : '',
       `Period to ${date(g.periodTo)}`,
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           { label: 'Percent complete', value: percent(g.pctComplete) },
           { label: 'Amount collected against this application', value: money(g.amountPaid) },
           { label: 'Outstanding receivable', value: money(g.arOutstanding) },
-          { label: 'Days outstanding', value: g.daysOutstanding == null ? '—' : String(g.daysOutstanding) },
+          { label: 'Days outstanding', value: g.daysOutstanding == null ? '-' : String(g.daysOutstanding) },
           { label: 'Status', value: g.status },
         ],
       },
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         paragraphs: [
           'The undersigned Contractor certifies that to the best of the Contractor’s knowledge, information and belief the work covered by this Application for Payment has been completed in accordance with the Contract Documents, that all amounts have been paid by the Contractor for work for which previous Certificates for Payment were issued and payments received from the Owner, and that current payment shown herein is now due.',
           'Contractor signature: _________________________________    Date: ______________',
-          'Architect certificate for payment — amount certified: _________________________',
+          'Architect certificate for payment: amount certified: _________________________',
           'Architect signature: __________________________________    Date: ______________',
         ],
       },

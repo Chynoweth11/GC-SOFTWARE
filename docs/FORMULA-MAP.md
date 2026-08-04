@@ -15,12 +15,12 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts` — 109 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 109 tests asserting these formulas
 reproduce the workbooks' own cached values.
 
 ---
 
-## 1. Cost control — PC ▸ Financials
+## 1. Cost control: PC ▸ Financials
 
 Engine: [`src/lib/finance/cost.ts`](../src/lib/finance/cost.ts) · Tests: `cost.test.ts`
 Database: `BudgetLine`, `BudgetRevision`, `Commitment`, `CommitmentLine`, `CostTransaction`, `ForecastLine`
@@ -28,7 +28,7 @@ Appears: project Budget tab, Job cost tab, company dashboard, budget-vs-actual r
 
 | Cell | Excel formula | Software field | How it is derived now |
 |---|---|---|---|
-| `G` Current Budget | `=IF($A7="",0,$E7+$F7)` | `CostLine.currentBudget` | `originalBudget + Σ BudgetRevision.amount` — revisions are rows, never an overwrite |
+| `G` Current Budget | `=IF($A7="",0,$E7+$F7)` | `CostLine.currentBudget` | `originalBudget + Σ BudgetRevision.amount`: revisions are rows, never an overwrite |
 | `H` Committed | manual entry | `CostLine.committed` | Σ `CommitmentLine.amount` + approved commitment changes, pro-rated across the commitment's codes |
 | `I` Cost to Date | manual entry | `CostLine.costToDate` | Σ `CostTransaction` where `type = ACTUAL` |
 | `J` Accruals | manual entry | `CostLine.accruals` | Σ `CostTransaction` where `type = ACCRUAL` |
@@ -50,7 +50,7 @@ rather than three separate SUMIFS blocks.
 
 ---
 
-## 2. Earned value and estimate at completion — PC ▸ Progress & Forecast
+## 2. Earned value and estimate at completion: PC ▸ Progress & Forecast
 
 Engine: [`src/lib/finance/forecast.ts`](../src/lib/finance/forecast.ts) · Tests: `forecast.test.ts`
 Appears: project Summary, Forecast tab, EAC report
@@ -67,7 +67,7 @@ Appears: project Summary, Forecast tab, EAC report
 | `F6` EAC method 2 | `=IFERROR($C$5/$C$9,$C$5)` | `EacResult.cpiBased` | Degrades to BAC when CPI is 0 |
 | `F7` EAC method 3 | `=$C$8+$C$5-$C$7` | `EacResult.budgetRate` | `AC + BAC − EV` |
 | `F9` Selected EAC | `=IF($F$8="1",$F$5,IF($F$8="2",$F$6,$F$7))` | `EacResult.selected` | Method stored per project (`Project.eacMethod`) rather than a cell |
-| `I5` Estimate to Complete | `=$F$9-$C$8` | `estimateToComplete` | Clamped at 0 — never negative |
+| `I5` Estimate to Complete | `=$F$9-$C$8` | `estimateToComplete` | Clamped at 0: never negative |
 | `I6` Variance at Completion | `=$C$5-$F$9` | `varianceAtCompletion` | |
 | `I7` Forecast profit | `=Setup!$C$26-$F$9` | `ProjectFinancials.forecastProfit` | Uses `forecastContract`, so pending change orders can be included at management's chosen weighting |
 | `I8` Forecast margin | `=IFERROR((Setup!$C$26-$F$9)/Setup!$C$26,0)` | `forecastMargin` | |
@@ -77,7 +77,7 @@ forecast tab, so the selection can be justified rather than assumed.
 
 ---
 
-## 3. Contract and change orders — PC ▸ Setup, Change Orders
+## 3. Contract and change orders: PC ▸ Setup, Change Orders
 
 Engine: [`src/lib/finance/changeOrders.ts`](../src/lib/finance/changeOrders.ts) · Tests: `workflows.test.ts`
 Database: `ChangeOrder`, `ChangeOrderLine`, `BudgetRevision`
@@ -89,19 +89,19 @@ Database: `ChangeOrder`, `ChangeOrderLine`, `BudgetRevision`
 | `Setup C26` Current Contract | `=C24+C25` | `currentContract` | |
 | `Setup C27` Pending COs | `=SUMIFS(...,"Pending")+SUMIFS(...,"Submitted")` | `pendingChangeOrders` | Extended to `PENDING`, `SUBMITTED`, `UNDER_REVIEW`, `PRICING` |
 | `Setup C28` Potential Contract | `=C26+C27` | `potentialContract` | |
-| — | *(not in the workbook)* | `weightedPendingChangeOrders` | Pending × probability |
-| — | *(not in the workbook)* | `forecastContract` | `current + weighted pending × Project.pendingCoInclusionPct` |
+|: | *(not in the workbook)* | `weightedPendingChangeOrders` | Pending × probability |
+|: | *(not in the workbook)* | `forecastContract` | `current + weighted pending × Project.pendingCoInclusionPct` |
 | `CO J` Margin | `=IF($A6="",0,$H6-$I6)` | `ChangeOrderDerived.margin` | |
 | `CO K` Margin % | `=IFERROR($J6/$H6,0)` | `marginPct` | |
 | `CO N` Days Pending | `=IF($G6="Approved",$M6-$F6,Setup!$C$21-$F6)` | `daysPending` | Approved measures to approval; pending ages against the data date |
 
 **Approved change orders post to the budget automatically** via
-`syncBudgetForChangeOrder()` — and un-approving one reverses that posting, with
+`syncBudgetForChangeOrder()`: and un-approving one reverses that posting, with
 both movements recorded in the revision history.
 
 ---
 
-## 4. Owner billing — PC ▸ Owner Billings (AIA G702/G703)
+## 4. Owner billing: PC ▸ Owner Billings (AIA G702/G703)
 
 Engine: [`src/lib/finance/billing.ts`](../src/lib/finance/billing.ts) · Tests: `billing.test.ts`
 Database: `SovLine`, `OwnerBilling`, `OwnerBillingLine`
@@ -116,12 +116,12 @@ Appears: project Billing tab, billing-position report, G702 Excel export
 | `H` % Complete | `=IFERROR($G6/$F6,0)` | `G702.pctComplete` | |
 | `J` Retainage | `=$G6*$I6` | `retainage` | |
 | `K` Earned Less Retainage | `=$G6-$J6` | `totalEarnedLessRetainage` | |
-| `L` Less Previous Certificates | `=INDEX($K$6:$K$41,MATCH($A6-1,$A$6:$A$41,0))` | `lessPreviousCertificates` | **Recomputed from the full application history** rather than reading the prior row — a corrected back-application now flows forward automatically |
+| `L` Less Previous Certificates | `=INDEX($K$6:$K$41,MATCH($A6-1,$A$6:$A$41,0))` | `lessPreviousCertificates` | **Recomputed from the full application history** rather than reading the prior row, a corrected back-application now flows forward automatically |
 | `M` Current Payment Due | `=$K6-$L6` | `currentPaymentDue` | |
 | `N` Balance to Finish | `=$F6-$K6` | `balanceToFinishIncludingRetainage` | |
 | `R` AR Outstanding | `=$M6-$Q6` | `arOutstanding` | |
 | `S` Days Outstanding | `=IF($P6="",Setup!$C$21-$C6,$P6-$C6)` | `daysOutstanding` | |
-| `Roll-Up R6` Billed to Date | `=MAX('Owner Billings'!$G$6:$G$41)` | `BillingPosition.totalCompletedAndStored` | A max, not a sum — each application restates the cumulative figure |
+| `Roll-Up R6` Billed to Date | `=MAX('Owner Billings'!$G$6:$G$41)` | `BillingPosition.totalCompletedAndStored` | A max, not a sum, each application restates the cumulative figure |
 
 **Validation added:** an application cannot bill a line past its scheduled value,
 and the SOV total is checked against the contract sum with a warning when they drift.
@@ -148,7 +148,7 @@ amount billed. Selected per project via `Project.pocMethod`.
 
 ---
 
-## 6. Subcontractors and payments — PC ▸ Subcontractors, Sub Payments
+## 6. Subcontractors and payments: PC ▸ Subcontractors, Sub Payments
 
 Engine: [`src/lib/finance/commitments.ts`](../src/lib/finance/commitments.ts) · Tests: `workflows.test.ts`
 Database: `Commitment`, `CommitmentChange`, `SubInvoice`
@@ -157,7 +157,7 @@ Database: `Commitment`, `CommitmentChange`, `SubInvoice`
 |---|---|---|
 | `Subs O` Current Contract | `=$L6+$M6` | `CommitmentDerived.currentValue` |
 | `Subs Q` Earned to Date | `=$O6*$P6` | `earnedToDate` |
-| `Subs S` Retention Held | `=$Q6*$R6` | `retentionHeld` — summed from the invoices actually issued, which diverges from the sheet whenever a rate changed mid-job |
+| `Subs S` Retention Held | `=$Q6*$R6` | `retentionHeld`: summed from the invoices actually issued, which diverges from the sheet whenever a rate changed mid-job |
 | `Subs T` Invoiced to Date | `=SUMIFS('Sub Payments'!$F:$F,$B:$B,$B6)` | `invoicedToDate` |
 | `Subs U` Paid to Date | `=SUMIFS('Sub Payments'!$M:$M,...)` | `paidToDate` |
 | `Subs V` Outstanding | `=SUMIFS('Sub Payments'!$N:$N,...)` | `outstanding` |
@@ -174,7 +174,7 @@ same action, so a pay application never needs entering twice.
 
 ---
 
-## 7. Cash flow S-curve — PC ▸ Progress & Forecast B23:R46
+## 7. Cash flow S-curve: PC ▸ Progress & Forecast B23:R46
 
 Engine: [`src/lib/finance/cashflow.ts`](../src/lib/finance/cashflow.ts) · Tests: `workflows.test.ts`
 Database: `CashFlowPeriod`
@@ -184,10 +184,10 @@ Database: `CashFlowPeriod`
 | `D` Planned Cum % | `=MIN(SUM($C$23:$C23),1)` | `CashFlowRow.plannedCumPct` |
 | `E` Planned Value | `=Setup!$C$26*$D23` | `plannedValue` |
 | `G` Earned Value | `=Setup!$C$26*$F23` | `earnedValue` |
-| `I` Forecast Cost | `=MAX(0,($F$9-$C$8)*$C23/MAX(1-plannedCumAtDataDate,0.0001))` | `forecastCost` — remaining cost spread on the planned curve, normalised by progress still to go |
+| `I` Forecast Cost | `=MAX(0,($F$9-$C$8)*$C23/MAX(1-plannedCumAtDataDate,0.0001))` | `forecastCost`: remaining cost spread on the planned curve, normalised by progress still to go |
 | `K` Cumulative Cost | `=SUM($J$23:$J23)` | `cumulativeCost` |
-| `L` Billings | `MAXIFS`/spread hybrid | `billings` — actuals from the register, forecast spread on the same curve |
-| `N` Cash In | deeply nested lag + retention release | `cashIn` — **rewritten**, see below |
+| `L` Billings | `MAXIFS`/spread hybrid | `billings`: actuals from the register, forecast spread on the same curve |
+| `N` Cash In | deeply nested lag + retention release | `cashIn`: **rewritten**, see below |
 | `P` Schedule Variance | `=$G23-$E23` | `scheduleVariance` |
 | `Q` Over/(Under) Billed | `=$M23-$G23` | `overUnderBilled` |
 | `R` Net Cash | `=$O23-$K23` | `netCash` |
@@ -196,7 +196,7 @@ Database: `CashFlowPeriod`
 actual/forecast boundary that the actual months had already collected. Forecast
 months now draw down the receivable outstanding at the data date first, then
 collect forecast billings on the lag. Regression test: *"collecting sooner and
-spending less always improves the final cash position"* — which failed before
+spending less always improves the final cash position"*: which failed before
 the fix, since the best case read worse than the worst.
 
 Three scenarios (`buildCashFlowScenarios`): best collects a month sooner at 3% under,
@@ -204,19 +204,19 @@ worst lags a month at 8% over.
 
 ---
 
-## 8. Quantity tracking and productivity — PC ▸ Quantity Tracking
+## 8. Quantity tracking and productivity: PC ▸ Quantity Tracking
 
 Engine: `deriveQuantityProgress()` in [`project.ts`](../src/lib/finance/project.ts) · Tests: `workflows.test.ts`
 
 | Cell | Excel formula | Software field |
 |---|---|---|
-| `H` Installed to Date | `=$F6+$G6` | `installedToDate` — Σ `QuantityEntry` |
+| `H` Installed to Date | `=$F6+$G6` | `installedToDate`: Σ `QuantityEntry` |
 | `I` % Installed | `=IFERROR($H6/$E6,0)` | `pctInstalled` |
 | `M` Budget Hours | `=$E6*$L6` | `budgetHours` |
 | `N` Earned Hours | `=$H6*$L6` | `earnedHours` |
 | `P` Hours Variance | `=$N6-$O6` | `hoursVariance` |
 | `Q` Actual Unit Rate | `=IFERROR($O6/$H6,0)` | `actualUnitRate` |
-| `R` Productivity Factor | `=IFERROR($N6/$O6,0)` | `productivityFactor` — above 1.0 beats budget |
+| `R` Productivity Factor | `=IFERROR($N6/$O6,0)` | `productivityFactor`: above 1.0 beats budget |
 | `S` Forecast Hours at Completion | `=IFERROR($M6/$R6,$M6)` | `forecastHoursAtCompletion` |
 | `V` Avg Daily Production | `=IFERROR($H6/$U6,0)` | `avgDailyProduction` |
 | `W` Days to Complete | `=ROUNDUP($J6/$V6,0)` | `daysToComplete` |
@@ -224,7 +224,7 @@ Engine: `deriveQuantityProgress()` in [`project.ts`](../src/lib/finance/project.
 
 ---
 
-## 9. Bid leveling — PC ▸ Bid Leveling, TB ▸ Sub Quotes
+## 9. Bid leveling: PC ▸ Bid Leveling, TB ▸ Sub Quotes
 
 Engine: [`src/lib/finance/leveling.ts`](../src/lib/finance/leveling.ts) · Tests: `workflows.test.ts`
 Database: `BidPackage`, `BidPackageQuote`
@@ -232,18 +232,18 @@ Database: `BidPackage`, `BidPackageQuote`
 | Cell | Excel formula | Software field |
 |---|---|---|
 | `F/J/N` Leveled | `=IF($D6>0,$D6+$E6,0)` | `LeveledQuote.leveledAmount` |
-| `O` Low Leveled | nested `MIN` with a 1e9 sentinel for blanks | `LeveledPackage.lowLeveled` — plain `Math.min` over received bids |
+| `O` Low Leveled | nested `MIN` with a 1e9 sentinel for blanks | `LeveledPackage.lowLeveled`: plain `Math.min` over received bids |
 | `P` Under/(Over) Budget | `=IF($O6=0,0,$B6-$O6)` | `underOverBudget` |
 | `T` Buyout Savings | `=IF($S6>0,$B6-$S6,0)` | `buyoutSavings` |
 | conditional formatting | green fill on the low bid | `isLow` |
 
-**The exception-highlighting the sheet did with colour is now written out in words** —
+**The exception-highlighting the sheet did with colour is now written out in words** , 
 scope gaps against other bidders, missing scope letters, allowances carried, single-bidder
 packages, wide spreads, duplicate bidders and over-budget bids, each as a named flag.
 
 ---
 
-## 10. Takeoff and bid build-up — TB ▸ Takeoff, General Conditions, Bid Summary
+## 10. Takeoff and bid build-up: TB ▸ Takeoff, General Conditions, Bid Summary
 
 Engine: [`src/lib/finance/estimate.ts`](../src/lib/finance/estimate.ts) · Tests: `estimate.test.ts`
 Database: `Estimate`, `EstimateItem`, `EstimateSection`, `GeneralConditionItem`, `LaborRate`
@@ -252,17 +252,17 @@ Database: `Estimate`, `EstimateItem`, `EstimateSection`, `GeneralConditionItem`,
 
 | Cell | Excel formula | Software field |
 |---|---|---|
-| `I` Net Qty | nested `IF` per measure (EA/LF/SF/SY/CY/LS/TON) | `deriveNetQuantity()` — extended with CF, LB, HR, DAY, ALLOWANCE |
+| `I` Net Qty | nested `IF` per measure (EA/LF/SF/SY/CY/LS/TON) | `deriveNetQuantity()`: extended with CF, LB, HR, DAY, ALLOWANCE |
 | `L` Gross Qty | `=$I7*(1+$K7)` | `grossQty` |
-| `O` Rate | `=INDEX('Bid Setup'!$F$5:$F$10,MATCH($M7,...))` | `laborRate` — from `LaborRate`, with a per-line override |
+| `O` Rate | `=INDEX('Bid Setup'!$F$5:$F$10,MATCH($M7,...))` | `laborRate`, from `LaborRate`, with a per-line override |
 | `P` Labor $ burdened | `=$L7*$N7*$O7*(1+'Bid Setup'!$F$13)` | `laborCost` |
 | `R` Material $ taxed | `=$L7*$Q7*(1+'Bid Setup'!$F$14)` | `materialCost` |
 | `T` Equipment $ | `=$L7*$S7` | `equipmentCost` |
 | `V` Sub $ | `=$L7*$U7` | `subCost` |
 | `W` TOTAL $ | `=$P7+$R7+$T7+$V7` | `totalCost` |
-| `X` Check | nested `IF` → `⚠ div` / `⚠ meas` / `⚠ qty` / `⚠ cost` / `⚠ class` | `qaFlags[]` — full sentences, plus a new "labor class has no rate" check |
+| `X` Check | nested `IF` → `⚠ div` / `⚠ meas` / `⚠ qty` / `⚠ cost` / `⚠ class` | `qaFlags[]`: full sentences, plus a new "labor class has no rate" check |
 
-### Markup chain — TB ▸ Bid Summary G5:G16
+### Markup chain: TB ▸ Bid Summary G5:G16
 
 Every step verified to the cent against the sample bid B-26-014:
 
@@ -283,28 +283,28 @@ Every step verified to the cent against the sample bid B-26-014:
 | `G22` Gross margin | `=($G$15-$G$8)/$G$15` | `grossMarginOnBid` | 16.4914% |
 
 `BidBuildUp.steps[]` returns every step with its basis, rate, amount and running
-total, which is what the bid summary renders — the final number is always explainable.
+total, which is what the bid summary renders: the final number is always explainable.
 
 ### General conditions
 
 | Cell | Excel formula | Software field |
 |---|---|---|
-| `D` Qty | `='Bid Setup'!$C$14` for weekly items | `followsDuration` flag — changing the duration reprices every weekly line |
+| `D` Qty | `='Bid Setup'!$C$14` for weekly items | `followsDuration` flag: changing the duration reprices every weekly line |
 | `F` Total | `=$D7*$E7` | `total` |
 
-### QA panel — TB ▸ Bid Summary F27:G32
+### QA panel: TB ▸ Bid Summary F27:G32
 
 | Check | Excel | Software |
 |---|---|---|
 | Flagged takeoff rows | `=COUNTIF(Takeoff!$X:$X,"⚠*")` | `qa.flaggedItems` |
-| Section rollup ties | `=SUM($C$6:$C$17)-Takeoff!$W$181` | Structurally impossible to break — both read the same array |
+| Section rollup ties | `=SUM($C$6:$C$17)-Takeoff!$W$181` | Structurally impossible to break, both read the same array |
 | Quotes still pending | `=COUNTIF('Sub Quotes'!$T:$T,"Pending")` | `qa.pendingQuotes` |
 | Selected ≠ carried | `=SUMPRODUCT(...ABS($S$6:$S$65)>0.005)` | `qa.quoteVarianceRows` |
 | GC items unpriced | `=COUNTIFS('General Conditions'!$B:$B,"<>",$F:$F,0)` | `qa.unpricedGcItems` |
 
 ---
 
-## 11. Company rollups — MC ▸ Executive Dashboard, Financial Dashboard, Project Summary
+## 11. Company rollups: MC ▸ Executive Dashboard, Financial Dashboard, Project Summary
 
 Engine: [`src/lib/finance/company.ts`](../src/lib/finance/company.ts)
 Query: [`src/lib/queries/company.ts`](../src/lib/queries/company.ts)
@@ -333,7 +333,7 @@ view is never stale.
 
 ---
 
-## 12. Bid pipeline — MC ▸ Bid Pipeline
+## 12. Bid pipeline: MC ▸ Bid Pipeline
 
 Engine: `rollupPipeline()` / `followUpState()` in `company.ts`
 Database: `Bid`
@@ -342,7 +342,7 @@ Database: `Bid`
 |---|---|---|
 | `K` Days to Due | `=$J7-$D$4` | computed against the as-of date |
 | `Q` Weighted | `=IF($M7>0,$M7,$L7)*$P7` | submitted amount once submitted, else estimated value, × probability |
-| `T` Follow-Up | nested `IF` → OVERDUE / TODAY / THIS WEEK / SET ONE / — | `followUpState()` |
+| `T` Follow-Up | nested `IF` → OVERDUE / TODAY / THIS WEEK / SET ONE /: | `followUpState()` |
 | `G4` Active bids | `SUMPRODUCT` over six open statuses | `activeBids` |
 | `J4` Open pipeline | `SUMPRODUCT` weighted by value | `openPipelineValue` |
 | `V4` Win rate | `=COUNTIF("Won")/(COUNTIF("Won")+COUNTIF("Lost"))` | `winRateByCount` |
@@ -364,12 +364,12 @@ who may see them.
 | PDF | Renders the *same* spec, so the two exports cannot diverge | `src/lib/pdf-report.ts` → `src/lib/pdf.ts` |
 | AIA G702/G703 PDF | Purpose-built certificate layout with the nine numbered lines and signature blocks | `src/app/api/pdf/billing/[id]/route.ts` |
 | Report permissions | One capability map read by the report card, the page and both export routes | `REPORT_REQUIRES` in `report-spec.ts` |
-| Saved views | A stored query string, never a stored result — opening one recomputes today's figures | `SavedView` model, `src/lib/queries/views.ts` |
+| Saved views | A stored query string, never a stored result: opening one recomputes today's figures | `SavedView` model, `src/lib/queries/views.ts` |
 | Dashboard layout | Order and visibility only; role decides which panels exist and the stored layout is reconciled against that set on every load | `src/lib/dashboard-panels.ts` |
 | Project backup | Stored values only, shared records keyed by business key rather than id | `src/lib/backup.ts` |
 
 **Why the backup carries no derived figure.** A restored project recalculates its
-whole position — percent complete, earned value, EAC, margin, backlog — from the
+whole position: percent complete, earned value, EAC, margin, backlog, from the
 same engine a live project uses. Writing a computed margin into the file would
 create a second source of truth the moment a formula changed. The round trip is
 tested: exporting job 26-001, restoring it and re-exporting produces a byte-identical
@@ -389,14 +389,14 @@ the corresponding workbook tabs were not carried across:
 | Workbook tab | Decision |
 |---|---|
 | PC ▸ Schedule | Not built. Schedule *dates* live on the project; activity-level scheduling belongs in the schedule tool. |
-| PC ▸ Punch List | Not built — field management. |
-| PC ▸ RFI Log | Not built — document management. |
-| PC ▸ Submittal Log | Not built — document management. |
-| PC ▸ Document Register | Not built — document management. |
+| PC ▸ Punch List | Not built: field management. |
+| PC ▸ RFI Log | Not built: document management. |
+| PC ▸ Submittal Log | Not built: document management. |
+| PC ▸ Document Register | Not built: document management. |
 | MC ▸ Schedule Dashboard | Not built; schedule health is reduced to the days ahead/behind figure that feeds the risk score. |
 
-Attachments are limited to financial records — invoices, quotes, purchase orders
-and billing backup — carried as a filename reference on the transaction or invoice,
+Attachments are limited to financial records: invoices, quotes, purchase orders
+and billing backup: carried as a filename reference on the transaction or invoice,
 not a document library.
 
 ---

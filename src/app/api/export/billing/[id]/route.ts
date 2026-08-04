@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       {
         name: 'G702 certificate',
         notes: [
-          `${project.number} — ${project.name}`,
+          `${project.number}: ${project.name}`,
           `Application ${g702.appNumber} · period to ${g702.periodTo.toISOString().slice(0, 10)}`,
           project.client?.name ? `Owner: ${project.client.name}` : '',
         ].filter(Boolean),

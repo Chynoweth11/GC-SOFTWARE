@@ -91,7 +91,7 @@ export function deriveCostLines(inputs: readonly CostLineInput[]): CostLine[] {
 }
 
 /**
- * Category summary — Financials ▸ V6:AA14.
+ * Category summary: Financials ▸ V6:AA14.
  * Categories with no budget, cost or forecast are dropped so the summary panel
  * and its chart never render empty rows.
  */

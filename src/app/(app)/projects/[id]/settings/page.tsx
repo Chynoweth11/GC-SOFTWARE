@@ -8,7 +8,8 @@ import { date, dateInput, money, percent, titleize } from '@/lib/format'
 import Link from 'next/link'
 import { DataList, EmptyState, InfoNote, Section, StatusPill } from '@/components/ui'
 import { ProjectSettingsForm } from '@/components/project/project-settings-form'
-import { updateProject, createSnapshot } from './actions'
+import { updateProject, createSnapshot, setProjectArchived, deleteProject } from './actions'
+import { ProjectDangerZone } from '@/components/project/project-danger-zone'
 
 export default async function ProjectSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser()
@@ -19,12 +20,17 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
   const { project, financials: f } = bundle
   const canEdit = can(user.role, 'edit:project_setup')
 
-  const [clients, managers, snapshots, trail] = await Promise.all([
+  const [clients, managers, snapshots, trail, counts] = await Promise.all([
     prisma.client.findMany({ where: { companyId: user.companyId }, orderBy: { name: 'asc' } }),
     prisma.user.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { name: 'asc' } }),
     prisma.projectSnapshot.findMany({ where: { projectId: id }, orderBy: { asOf: 'desc' } }),
     auditTrail(user.companyId, 'Project', id),
+    prisma.project.findUniqueOrThrow({
+      where: { id },
+      select: { _count: { select: { costTx: true, ownerBillings: true, commitments: true, changeOrders: true, subInvoices: true } } },
+    }),
   ])
+  const historyCount = Object.values(counts._count).reduce((total, n) => total + n, 0)
 
   return (
     <div className="space-y-6">
@@ -72,7 +78,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
               columns={3}
               items={[
                 { label: 'Job number', value: project.number },
-                { label: 'Client', value: project.client?.name ?? '—' },
+                { label: 'Client', value: project.client?.name ?? '-' },
                 { label: 'Status', value: <StatusPill status={project.status} /> },
                 { label: 'Contract start', value: date(project.contractStart) },
                 { label: 'Contract completion', value: date(project.contractCompletion) },
@@ -131,13 +137,13 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
                     return (
                       <tr key={s.id}>
                         <td className="font-medium">{date(s.asOf)}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{s.label ?? '—'}</td>
-                        <td className="num">{contract == null ? '—' : money(contract)}</td>
-                        <td className="num">{payload.currentBudget == null ? '—' : money(payload.currentBudget as number)}</td>
-                        <td className="num">{payload.totalCostToDate == null ? '—' : money(payload.totalCostToDate as number)}</td>
-                        <td className="num">{payload.forecastCost == null ? '—' : money(payload.forecastCost as number)}</td>
-                        <td className="num">{payload.forecastProfit == null ? '—' : money(payload.forecastProfit as number)}</td>
-                        <td className="num">{payload.forecastMargin == null ? '—' : percent(payload.forecastMargin as number)}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{s.label ?? '-'}</td>
+                        <td className="num">{contract == null ? '-' : money(contract)}</td>
+                        <td className="num">{payload.currentBudget == null ? '-' : money(payload.currentBudget as number)}</td>
+                        <td className="num">{payload.totalCostToDate == null ? '-' : money(payload.totalCostToDate as number)}</td>
+                        <td className="num">{payload.forecastCost == null ? '-' : money(payload.forecastCost as number)}</td>
+                        <td className="num">{payload.forecastProfit == null ? '-' : money(payload.forecastProfit as number)}</td>
+                        <td className="num">{payload.forecastMargin == null ? '-' : percent(payload.forecastMargin as number)}</td>
                         <td style={{ color: 'var(--text-subtle)' }}>{date(s.createdAt)}</td>
                       </tr>
                     )
@@ -164,7 +170,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
       {canEdit && (
         <Section
           title="Backup"
-          description="The whole project as one restorable file — budgets, commitments, costs, change orders, billings, forecasts and quantities"
+          description="The whole project as one restorable file: budgets, commitments, costs, change orders, billings, forecasts and quantities"
           actions={
             <a href={`/api/backup/project/${project.id}`} className="btn btn-secondary text-xs">
               Download backup
@@ -179,6 +185,20 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
             </Link>
             , and always creates a new project rather than overwriting one.
           </InfoNote>
+        </Section>
+      )}
+
+      {canEdit && (
+        <Section title="Closing this project" description="How a job is retired without losing anything">
+          <ProjectDangerZone
+            projectId={project.id}
+            projectNumber={project.number}
+            archived={project.status === 'CLOSED'}
+            canDelete={can(user.role, 'delete:records')}
+            historyCount={historyCount}
+            setArchived={setProjectArchived}
+            remove={deleteProject}
+          />
         </Section>
       )}
 
@@ -204,13 +224,13 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
                   {trail.map((entry) => (
                     <tr key={entry.id}>
                       <td style={{ color: 'var(--text-muted)' }}>{date(entry.createdAt)}</td>
-                      <td>{entry.user?.name ?? 'System'}</td>
+                      <td>{entry.userName ?? 'System'}</td>
                       <td>{titleize(entry.action)}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{entry.field ?? '—'}</td>
-                      <td style={{ color: 'var(--text-subtle)' }}>{entry.oldValue ?? '—'}</td>
-                      <td style={{ color: 'var(--text-subtle)' }}>{entry.newValue ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{entry.field ?? '-'}</td>
+                      <td style={{ color: 'var(--text-subtle)' }}>{entry.oldValue ?? '-'}</td>
+                      <td style={{ color: 'var(--text-subtle)' }}>{entry.newValue ?? '-'}</td>
                       <td className="max-w-[24rem] truncate" title={entry.summary ?? ''}>
-                        {entry.summary ?? '—'}
+                        {entry.summary ?? '-'}
                       </td>
                     </tr>
                   ))}

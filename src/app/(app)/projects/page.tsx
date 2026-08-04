@@ -6,6 +6,9 @@ import { date, money, moneyShort, percent } from '@/lib/format'
 import { EmptyState, KpiGrid, MoneyKpi, PageHeader, Section, StatusPill, Variance } from '@/components/ui'
 import { ChartFrame, HorizontalBars, Meter } from '@/components/charts/primitives'
 import { ProjectFilters } from '@/components/dashboard/project-filters'
+import { NewProjectForm } from '@/components/project/new-project-form'
+import { prisma } from '@/lib/db'
+import { createProject } from './actions'
 
 export const metadata = { title: 'Projects' }
 
@@ -16,7 +19,16 @@ export default async function ProjectsPage({
 }) {
   const user = await requireUser()
   const filter = parseProjectFilter(await searchParams)
-  const data = await getCompanyDashboard(user.companyId, filter)
+  const canCreate = can(user.role, 'edit:project_setup')
+  const [data, clients, managers] = await Promise.all([
+    getCompanyDashboard(user.companyId, filter),
+    canCreate
+      ? prisma.client.findMany({ where: { companyId: user.companyId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
+      : Promise.resolve([]),
+    canCreate
+      ? prisma.user.findMany({ where: { companyId: user.companyId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
+      : Promise.resolve([]),
+  ])
   const showMargins = can(user.role, 'view:margins')
 
   const sorted = [...data.projects].sort(
@@ -28,6 +40,7 @@ export default async function ProjectsPage({
       <PageHeader
         title="Projects"
         subtitle={`${data.projects.length} of ${data.totals.projectCount} projects · ${moneyShort(data.totals.currentContract)} under contract`}
+        actions={canCreate ? <NewProjectForm clients={clients} managers={managers} create={createProject} /> : undefined}
       />
 
       <ProjectFilters options={data.filterOptions} current={filter} />
@@ -128,9 +141,9 @@ export default async function ProjectsPage({
                           </Link>
                         </td>
                         <td className="max-w-[11rem] truncate" style={{ color: 'var(--text-muted)' }}>
-                          {p.clientName ?? '—'}
+                          {p.clientName ?? '-'}
                         </td>
-                        <td style={{ color: 'var(--text-muted)' }}>{p.pmName ?? '—'}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{p.pmName ?? '-'}</td>
                         <td>
                           <StatusPill status={p.status} />
                         </td>

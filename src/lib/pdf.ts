@@ -3,9 +3,9 @@ import 'server-only'
 /**
  * PDF generation.
  *
- * Written directly rather than pulled from a library: the documents this system
- * produces are financial reports and AIA certificates — tables of figures with a
- * header and a totals row — and a hand-built writer keeps them typographically
+ * Written directly rather than pulled from a library. The documents this system
+ * produces are financial reports and AIA certificates, tables of figures with a
+ * header and a totals row, and a hand-built writer keeps them typographically
  * consistent with the rest of the app, embeds no fonts beyond the PDF base 14,
  * and adds no dependency for something this bounded.
  *
@@ -17,8 +17,8 @@ const PAGE_HEIGHT = 612 // US Letter, landscape
 const BASE_PAGE_WIDTH = 792
 /**
  * A seventeen-column job-cost schedule does not fit on letter landscape at a
- * legible size. Rather than truncate figures — a PDF showing "$1,2..." where a
- * cost belongs is worse than no PDF — the sheet grows to fit, up to this cap.
+ * legible size. Rather than truncate figures, the sheet grows to fit, up to this
+ * cap. A PDF showing "$1,2..." where a cost belongs is worse than no PDF at all.
  * Every viewer and printer scales an oversized sheet down; none can recover a
  * digit that was thrown away.
  */
@@ -55,7 +55,7 @@ export interface PdfTable {
 export interface PdfSection {
   heading?: string
   subheading?: string
-  /** Label/value pairs rendered in two columns — used for certificate summaries. */
+  /** Label and value pairs in two columns, used for certificate summaries. */
   pairs?: { label: string; value: string; emphasis?: boolean }[]
   table?: PdfTable
   paragraphs?: string[]
@@ -101,7 +101,7 @@ function textWidth(value: string, size: number): number {
 /** ASCII-folds and truncates so a cell never bleeds past its column. */
 function fit(value: string, maxWidth: number, size: number): string {
   const clean = value
-    .replace(/[—–]/g, '-')
+    .replace(/\u2014|\u2013/g, '-')
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/·/g, '-')
@@ -179,7 +179,7 @@ interface TableLayout {
 /**
  * What each column actually needs: the widest of its header, its cells and its
  * total, plus padding. The `width` on PdfColumn is only a hint for the relative
- * feel of the table — content decides, because a column of dollar figures has a
+ * feel of the table. Content decides, because a column of dollar figures has a
  * width it cannot go below without losing digits.
  */
 function headerSizeFor(bodySize: number): number {
@@ -198,7 +198,7 @@ function naturalWidths(table: PdfTable, bodySize: number): number[] {
     }
     // Rounded up to a quarter point. The renderer subtracts the same padding
     // back off before fitting each cell, and `w + 8 - 8` does not always return
-    // w in binary floating point — a cell measured to fit was being judged one
+    // w in binary floating point: a cell measured to fit was being judged one
     // bit too wide and truncated. Rounding up guarantees the space is there.
     return Math.ceil((width + CELL_PADDING) * 4) / 4
   })
@@ -206,7 +206,7 @@ function naturalWidths(table: PdfTable, bodySize: number): number[] {
 
 /**
  * The width a table wants at full size, with long text columns allowed to be
- * clipped — a description can lose its tail, a dollar figure cannot.
+ * clipped. A description can lose its tail; a dollar figure cannot.
  */
 function preferredWidth(table: PdfTable): number {
   return naturalWidths(table, BODY_SIZE).reduce(
@@ -339,7 +339,7 @@ export function buildPdf(doc: PdfDocument): Buffer {
       y -= 4
     }
 
-    // Label/value pairs — the certificate summary form.
+    // Label/value pairs: the certificate summary form.
     if (section.pairs) {
       const labelWidth = contentWidth * 0.62
       for (const pair of section.pairs) {

@@ -72,7 +72,7 @@ function ThemeToggle() {
   )
 }
 
-/** Project switcher — keeps the current sub-route when jumping between projects. */
+/** Project switcher: keeps the current sub-route when jumping between projects. */
 function ProjectSelector({ projects }: { projects: ProjectOption[] }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -94,7 +94,7 @@ function ProjectSelector({ projects }: { projects: ProjectOption[] }) {
       <option value="">All projects</option>
       {projects.map((p) => (
         <option key={p.id} value={p.id}>
-          {p.number} — {p.name}
+          {p.number}: {p.name}
         </option>
       ))}
     </select>

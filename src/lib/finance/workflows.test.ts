@@ -30,7 +30,7 @@ const co = (over: Partial<ChangeOrderInput> = {}): ChangeOrderInput => ({
   ...over,
 })
 
-describe('change orders — Change Orders J,K,N and Setup C24:C28', () => {
+describe('change orders: Change Orders J,K,N and Setup C24:C28', () => {
   it('margin and margin percent match the workbook rows', () => {
     const roof = deriveChangeOrder(co({ ownerAmount: 38_000, costAmount: 30_400, dateInitiated: D('2026-01-19'), dateApproved: D('2026-02-03') }), DATA_DATE)
     expect(roof.margin).toBe(7_600)
@@ -107,7 +107,7 @@ const commitment = (over: Partial<CommitmentInput> = {}): CommitmentInput => ({
   ...over,
 })
 
-describe('commitments — Subcontractors O–W', () => {
+describe('commitments: Subcontractors O–W', () => {
   it('reproduces the Basalt Site Works row', () => {
     const derived = deriveCommitment(
       commitment({
@@ -145,7 +145,7 @@ describe('commitments — Subcontractors O–W', () => {
   })
 })
 
-describe('payment status — Sub Payments S', () => {
+describe('payment status: Sub Payments S', () => {
   const invoice = { amount: 62_000, retentionPct: 0.05, approved: true, amountPaid: 0, dateReceived: D('2026-02-03'), datePaid: null, lienWaiverReceived: false }
 
   it('a fully paid invoice reads PAID', () => {
@@ -185,7 +185,7 @@ const pkg = (over: Partial<PackageInput> = {}): PackageInput => ({
   ...over,
 })
 
-describe('bid leveling — Bid Leveling F,J,N,O,P,T', () => {
+describe('bid leveling: Bid Leveling F,J,N,O,P,T', () => {
   const quotes = [
     { id: 'q1', vendorId: 'v1', vendorName: 'Basalt Site Works', baseAmount: 287_000, adjustmentAmount: 0, inclusions: 'sanitary; storm; water main', exclusions: 'rock excavation', qualifications: null, allowances: 0, status: 'RECEIVED', notes: null },
     { id: 'q2', vendorId: 'v2', vendorName: 'Columbia Underground', baseAmount: 301_400, adjustmentAmount: 0, inclusions: 'sanitary; storm; water main; dewatering', exclusions: null, qualifications: null, allowances: 0, status: 'RECEIVED', notes: null },
@@ -215,7 +215,7 @@ describe('bid leveling — Bid Leveling F,J,N,O,P,T', () => {
   })
 
   it('a single bidder and a wide spread both raise package flags', () => {
-    expect(levelPackage(pkg({ quotes: [quotes[0]] })).flags).toContain('Only one bidder — no competitive check')
+    expect(levelPackage(pkg({ quotes: [quotes[0]] })).flags).toContain('Only one bidder, no competitive check')
     const wide = levelPackage(pkg({ quotes: [quotes[0], { ...quotes[1], baseAmount: 400_000 }] }))
     expect(wide.flags.some((f) => f.startsWith('Wide spread'))).toBe(true)
   })
@@ -249,7 +249,7 @@ describe('bid leveling — Bid Leveling F,J,N,O,P,T', () => {
 
 // ── Cash flow ─────────────────────────────────────────────────────────────
 
-describe('cash flow S-curve — Progress & Forecast B23:R46', () => {
+describe('cash flow S-curve: Progress & Forecast B23:R46', () => {
   const periods: CashFlowPeriodInput[] = [
     { periodEnd: D('2026-01-31'), plannedDeltaPct: 0.09, actualPctComplete: 0.089, actualCost: 215_000, billingOverride: null, collectionOverride: null },
     { periodEnd: D('2026-02-28'), plannedDeltaPct: 0.12, actualPctComplete: 0.208, actualCost: 289_000, billingOverride: null, collectionOverride: null },
@@ -360,7 +360,7 @@ describe('cash flow S-curve — Progress & Forecast B23:R46', () => {
 
 // ── Health scoring and productivity ───────────────────────────────────────
 
-describe('project health — Project Summary W,X,Y,Z', () => {
+describe('project health: Project Summary W,X,Y,Z', () => {
   const healthy = {
     contractCompletion: D('2026-11-20'),
     forecastCompletion: D('2026-11-20'),
@@ -406,7 +406,7 @@ describe('project health — Project Summary W,X,Y,Z', () => {
   })
 })
 
-describe('quantity productivity — Quantity Tracking H–AB', () => {
+describe('quantity productivity: Quantity Tracking H–AB', () => {
   const item = {
     itemId: 'q',
     description: '8" PVC sanitary main',

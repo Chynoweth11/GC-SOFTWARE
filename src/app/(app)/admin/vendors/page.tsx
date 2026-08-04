@@ -1,4 +1,6 @@
+import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
+import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { date, dateInput } from '@/lib/format'
 import { EmptyState, Section } from '@/components/ui'
@@ -9,6 +11,7 @@ export const metadata = { title: 'Vendors' }
 
 export default async function VendorsPage() {
   const user = await requireUser()
+  if (!can(user.role, 'manage:reference_data')) forbidden()
 
   const [vendors, trades] = await Promise.all([
     prisma.vendor.findMany({
@@ -58,7 +61,7 @@ export default async function VendorsPage() {
       wcExpiration: dateInput(v.wcExpiration),
       autoExpiration: dateInput(v.autoExpiration),
       umbrellaExpiration: dateInput(v.umbrellaExpiration),
-      earliestExpiration: earliest ? date(earliest) : '—',
+      earliestExpiration: earliest ? date(earliest) : '-',
       coiStatus,
       paymentHold: v.paymentHold,
       commitments: v._count.commitments,

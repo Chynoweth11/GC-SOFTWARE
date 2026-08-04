@@ -80,17 +80,17 @@ export function CashFlowEditor({
                   <td className="num">{percent(r.plannedDeltaPct, 1)}</td>
                   <td className="num">{percent(r.plannedCumPct, 1)}</td>
                   <td className="num">{money(r.plannedValue)}</td>
-                  <td className="num">{r.actualPctComplete == null ? '—' : percent(r.actualPctComplete, 1)}</td>
-                  <td className="num">{r.earnedValue == null ? '—' : money(r.earnedValue)}</td>
-                  <td className="num">{r.actualCost == null ? '—' : money(r.actualCost)}</td>
+                  <td className="num">{r.actualPctComplete == null ? '-' : percent(r.actualPctComplete, 1)}</td>
+                  <td className="num">{r.earnedValue == null ? '-' : money(r.earnedValue)}</td>
+                  <td className="num">{r.actualCost == null ? '-' : money(r.actualCost)}</td>
                   <td className="num">{money(r.forecastCost)}</td>
                   <td className="num">{money(r.cumulativeCost)}</td>
                   <td className="num">{money(r.billings)}</td>
                   <td className="num">{money(r.cumulativeBillings)}</td>
                   <td className="num">{money(r.cashIn)}</td>
                   <td className="num">{money(r.cumulativeCash)}</td>
-                  <td className="num">{r.scheduleVariance == null ? '—' : <Variance value={r.scheduleVariance} />}</td>
-                  <td className="num">{r.overUnderBilled == null ? '—' : <Variance value={r.overUnderBilled} />}</td>
+                  <td className="num">{r.scheduleVariance == null ? '-' : <Variance value={r.scheduleVariance} />}</td>
+                  <td className="num">{r.overUnderBilled == null ? '-' : <Variance value={r.overUnderBilled} />}</td>
                   <td className="num font-medium" style={{ color: r.netCash < 0 ? 'var(--adverse)' : 'var(--favorable)' }}>
                     {money(r.netCash)}
                   </td>
@@ -129,7 +129,7 @@ export function CashFlowEditor({
 
                           <div>
                             <label className="label mb-1 block" htmlFor="cf-planned">
-                              Planned progress — {date(row.periodEnd)}
+                              Planned progress: {date(row.periodEnd)}
                             </label>
                             <input
                               id="cf-planned"

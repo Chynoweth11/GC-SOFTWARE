@@ -82,7 +82,7 @@ describe('pdf writer', () => {
   it('folds typographic characters to ASCII rather than emitting raw bytes', () => {
     const buffer = buildPdf({
       title: 'Typography',
-      sections: [{ paragraphs: ['Cost — “quoted” · 4×4 ÷ 2'] }],
+      sections: [{ paragraphs: ['Cost, “quoted” · 4×4 ÷ 2'] }],
     })
     const text = buffer.toString('latin1')
     // Streams are uncompressed, so any survivor would be visible here.

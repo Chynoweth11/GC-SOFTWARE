@@ -30,6 +30,9 @@ export type Capability =
   | 'edit:company_settings'
   | 'manage:users'
   | 'manage:reference_data'
+  | 'manage:clients'
+  | 'delete:records'
+  | 'view:audit'
   | 'import:data'
 
 const ALL: Capability[] = [
@@ -56,6 +59,9 @@ const ALL: Capability[] = [
   'edit:company_settings',
   'manage:users',
   'manage:reference_data',
+  'manage:clients',
+  'delete:records',
+  'view:audit',
   'import:data',
 ]
 
@@ -72,6 +78,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:estimates',
     'view:pipeline',
     'award:bid',
+    'view:audit',
   ],
 
   PROJECT_MANAGER: [
@@ -88,6 +95,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'edit:forecast',
     'lock:forecast',
     'import:data',
+    'manage:clients',
   ],
 
   PROJECT_ENGINEER: [
@@ -108,6 +116,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'edit:estimates',
     'edit:pipeline',
     'import:data',
+    'manage:clients',
   ],
 
   ACCOUNTING: [
@@ -118,6 +127,8 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'edit:owner_billing',
     'edit:sub_billing',
     'import:data',
+    'manage:clients',
+    'view:audit',
   ],
 
   FINANCE: [
@@ -131,6 +142,8 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'edit:forecast',
     'lock:forecast',
     'import:data',
+    'manage:clients',
+    'view:audit',
   ],
 
   READ_ONLY: ['view:project_financials'],

@@ -117,7 +117,7 @@ export function ConvertToProjectForm({
         </h4>
         <ul className="space-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
           <li>
-            • A budget line per trade section and cost category — {sections.length} sections, split across labor, material, equipment and
+            • A budget line per trade section and cost category: {sections.length} sections, split across labor, material, equipment and
             subcontract
           </li>
           <li>• A schedule of values scaled from the budget so it ties to the contract value exactly</li>

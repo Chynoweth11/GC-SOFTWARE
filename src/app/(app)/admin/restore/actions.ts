@@ -6,7 +6,7 @@ import { assertCan } from '@/lib/permissions'
 import { recordAudit } from '@/lib/audit'
 import { restoreProject, type RestoreResult } from '@/lib/backup'
 
-/** 25 MB — comfortably above the largest project this system produces. */
+/** 25 MB: comfortably above the largest project this system produces. */
 const MAX_BYTES = 25 * 1024 * 1024
 
 export async function restoreFromBackup(_prev: RestoreResult | null, formData: FormData): Promise<RestoreResult> {
@@ -34,6 +34,7 @@ export async function restoreFromBackup(_prev: RestoreResult | null, formData: F
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Project',
     entityId: result.projectId!,
     action: 'RESTORE',

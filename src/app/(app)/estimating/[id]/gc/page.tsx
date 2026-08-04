@@ -34,7 +34,7 @@ export default async function GcPage({ params }: { params: Promise<{ id: string 
       </Section>
 
       <InfoNote>
-        Items marked as duration-driven requantify automatically when the project duration changes on the setup tab — change 22 weeks to
+        Items marked as duration-driven requantify automatically when the project duration changes on the setup tab: change 22 weeks to
         26 and every weekly line reprices.
       </InfoNote>
 
@@ -73,7 +73,7 @@ export default async function GcPage({ params }: { params: Promise<{ id: string 
                       <td className="num">{g.qty}</td>
                       <td className="num">{money(g.unitCost)}</td>
                       <td className="num font-medium">{money(g.total)}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{g.notes ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{g.notes ?? '-'}</td>
                       <td>{g.followsDuration ? <Pill tone="accent">Follows duration</Pill> : <Pill tone="neutral">Fixed</Pill>}</td>
                     </tr>
                   ))}

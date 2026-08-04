@@ -99,7 +99,7 @@ export function CostEntryForm({
           <label htmlFor="cost-hours" className="label mb-1.5 block">
             Hours (labor)
           </label>
-          <input id="cost-hours" name="hours" type="number" step="0.25" min="0" className="field text-xs" placeholder="—" />
+          <input id="cost-hours" name="hours" type="number" step="0.25" min="0" className="field text-xs" placeholder="-" />
         </div>
       </div>
 

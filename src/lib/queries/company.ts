@@ -62,7 +62,7 @@ function loadArAging(companyId: string) {
 /**
  * Builds the whole company picture by computing each project through the same
  * engine the project pages use, then aggregating. Slower than a SQL sum, and
- * deliberately so — it is the only way the executive view can never disagree
+ * deliberately so: it is the only way the executive view can never disagree
  * with the project view.
  */
 export const getCompanyDashboard = cache(

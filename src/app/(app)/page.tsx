@@ -112,7 +112,7 @@ export default async function DashboardPage({
             label="Backlog"
             amount={totals.backlog}
             detail={`${percent(totals.weightedPctComplete)} weighted complete`}
-            hint="Current contract value less what has been billed — the revenue still to be earned."
+            hint="Current contract value less what has been billed: the revenue still to be earned."
           />
           {showCompany && (
             <MoneyKpi
@@ -292,7 +292,7 @@ export default async function DashboardPage({
                           {p.clientName}
                         </div>
                       </td>
-                      <td style={{ color: 'var(--text-muted)' }}>{p.pmName ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{p.pmName ?? '-'}</td>
                       <td>
                         <StatusPill status={p.status} />
                       </td>
@@ -325,7 +325,7 @@ export default async function DashboardPage({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4}>Portfolio total — {projects.length} projects</td>
+                  <td colSpan={4}>Portfolio total, {projects.length} projects</td>
                   <td className="num">{money(totals.currentContract)}</td>
                   <td className="num">{money(totals.actualCost)}</td>
                   <td className="num">{money(totals.forecastCost)}</td>

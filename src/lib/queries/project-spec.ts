@@ -4,7 +4,7 @@ import type { SheetSpec } from '@/lib/excel'
 import { titleize } from '@/lib/format'
 
 /**
- * The definition of a full project export — every tab of the project workspace
+ * The definition of a full project export: every tab of the project workspace
  * as one set of sheets. The Excel workbook and the PDF both render from this,
  * so the two exports always carry the same figures.
  */
@@ -29,10 +29,10 @@ export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean):
     { metric: 'Earned value', value: f.earnedValue.earnedValue },
     { metric: 'Cost performance index', value: f.earnedValue.costPerformanceIndex },
     { metric: 'Schedule performance index', value: f.earnedValue.schedulePerformanceIndex },
-    { metric: 'EAC — bottom-up', value: f.eac.bottomUp },
-    { metric: 'EAC — CPI based', value: f.eac.cpiBased },
-    { metric: 'EAC — budget rate', value: f.eac.budgetRate },
-    { metric: `EAC — selected (${titleize(f.eac.method)})`, value: f.eac.selected },
+    { metric: 'EAC, bottom-up', value: f.eac.bottomUp },
+    { metric: 'EAC, CPI based', value: f.eac.cpiBased },
+    { metric: 'EAC, budget rate', value: f.eac.budgetRate },
+    { metric: `EAC, selected (${titleize(f.eac.method)})`, value: f.eac.selected },
     { metric: 'Estimate to complete', value: f.eac.estimateToComplete },
     { metric: 'Variance at completion', value: f.eac.varianceAtCompletion },
     ...(showMargins
@@ -57,7 +57,7 @@ export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean):
   const sheets: SheetSpec[] = [
     {
       name: 'Summary',
-      notes: [`${project.number} — ${project.name}`, `Data date ${asOf} · ${project.client?.name ?? 'No client'}`],
+      notes: [`${project.number} ${project.name}`, `Data date ${asOf} · ${project.client?.name ?? 'No client'}`],
       columns: [
         { header: 'Metric', key: 'metric', width: 34 },
         { header: 'Value', key: 'value', format: 'money2', width: 20 },

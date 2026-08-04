@@ -75,6 +75,7 @@ export async function awardPackage(formData: FormData): Promise<{ error?: string
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'BidPackage',
     entityId: packageId,
     action: 'AWARD',

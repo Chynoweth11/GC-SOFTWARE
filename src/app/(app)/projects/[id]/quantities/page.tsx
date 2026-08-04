@@ -29,7 +29,7 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
     return (
       <EmptyState
         title="No quantity items tracked yet"
-        description="Quantity tracking measures physical production and labour productivity — the earliest warning that a self-perform trade is going wrong."
+        description="Quantity tracking measures physical production and labour productivity: the earliest warning that a self-perform trade is going wrong."
       />
     )
   }
@@ -134,7 +134,7 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
                     <td className="max-w-[16rem] truncate font-medium" title={q.description}>
                       {q.description}
                     </td>
-                    <td style={{ color: 'var(--text-muted)' }}>{q.costCode ?? '—'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{q.costCode ?? '-'}</td>
                     <td style={{ color: 'var(--text-muted)' }}>{q.uom}</td>
                     <td className="num">{fmtNumber(q.budgetQty)}</td>
                     <td className="num">{fmtNumber(q.installedToDate)}</td>
@@ -169,16 +169,16 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
                       </span>
                     </td>
                     <td className="num">{fmtNumber(q.avgDailyProduction, 1)}</td>
-                    <td className="num">{q.daysToComplete || '—'}</td>
+                    <td className="num">{q.daysToComplete || '-'}</td>
                     <td className="num" style={{ color: q.materialOveragePct > 0.1 ? 'var(--caution)' : undefined }}>
-                      {q.materialOrderedQty ? percent(q.materialOveragePct, 1) : '—'}
+                      {q.materialOrderedQty ? percent(q.materialOveragePct, 1) : '-'}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={9}>Total — {quantities.length} work items</td>
+                  <td colSpan={9}>Total, {quantities.length} work items</td>
                   <td className="num">{fmtNumber(totalBudgetHours, 1)}</td>
                   <td className="num">{fmtNumber(totalEarnedHours, 1)}</td>
                   <td className="num">{fmtNumber(totalActualHours, 1)}</td>
@@ -232,8 +232,8 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
                       <td className="num">{fmtNumber(e.installedQty)}</td>
                       <td className="num">{fmtNumber(e.actualHours, 1)}</td>
                       <td className="num">{fmtNumber(e.crewDays)}</td>
-                      <td className="num">{e.installedQty ? (e.actualHours / e.installedQty).toFixed(3) : '—'}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{e.notes ?? '—'}</td>
+                      <td className="num">{e.installedQty ? (e.actualHours / e.installedQty).toFixed(3) : '-'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{e.notes ?? '-'}</td>
                     </tr>
                   )),
                 )}

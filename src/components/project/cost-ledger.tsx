@@ -157,14 +157,14 @@ export function CostLedger({
                   <td className="max-w-[20rem] truncate" title={t.description}>
                     {t.description}
                   </td>
-                  <td style={{ color: 'var(--text-muted)' }}>{t.vendorName ?? '—'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{t.commitmentNumber ?? '—'}</td>
-                  <td style={{ color: 'var(--text-subtle)' }}>{t.reference ?? '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{t.vendorName ?? '-'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{t.commitmentNumber ?? '-'}</td>
+                  <td style={{ color: 'var(--text-subtle)' }}>{t.reference ?? '-'}</td>
                   <td>
                     <Pill tone={t.type === 'ACCRUAL' ? 'caution' : 'neutral'}>{titleize(t.type)}</Pill>
                   </td>
                   <td style={{ color: 'var(--text-muted)' }}>{titleize(t.source)}</td>
-                  <td className="num">{t.hours ?? '—'}</td>
+                  <td className="num">{t.hours ?? '-'}</td>
                   <td className="num font-medium">{money(t.amount)}</td>
                   <td>
                     <div className="flex gap-1">
@@ -274,7 +274,7 @@ export function CostLedger({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={9}>Total — {filtered.length} transactions</td>
+                <td colSpan={9}>Total, {filtered.length} transactions</td>
                 <td className="num">{money(total)}</td>
                 <td colSpan={canEdit ? 2 : 1} />
               </tr>

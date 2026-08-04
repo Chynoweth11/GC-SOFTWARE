@@ -1,4 +1,6 @@
+import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
+import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { Section } from '@/components/ui'
 import { TradeManager } from '@/components/admin/trade-manager'
@@ -9,6 +11,7 @@ export const metadata = { title: 'Trades and divisions' }
 
 export default async function TradesPage() {
   const user = await requireUser()
+  if (!can(user.role, 'manage:reference_data')) forbidden()
 
   const [trades, divisions] = await Promise.all([
     prisma.trade.findMany({

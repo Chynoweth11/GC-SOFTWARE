@@ -2,7 +2,7 @@
 /**
  * Makes sure there is a database to talk to before the app starts.
  *
- * A fresh clone has no SQLite file — it is deliberately not committed, because a
+ * A fresh clone has no SQLite file: it is deliberately not committed, because a
  * binary database in version control goes stale and conflicts on every merge. So
  * the first `npm run dev` creates it from the migrations and loads the workbook
  * seed data. Every run after that finds the file and does nothing, which keeps
@@ -41,7 +41,7 @@ const missing = !existsSync(file) || statSync(file).size === 0
 
 if (!missing) process.exit(0)
 
-console.log(`[ensure-db] No database at ${path.relative(process.cwd(), file)} — creating it.`)
+console.log(`[ensure-db] No database at ${path.relative(process.cwd(), file)}: creating it.`)
 
 try {
   run('npx', ['--yes', 'prisma', 'migrate', 'deploy'])

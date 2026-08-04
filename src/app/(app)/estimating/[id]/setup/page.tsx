@@ -56,10 +56,10 @@ export default async function EstimateSetupPage({ params }: { params: Promise<{ 
             <DataList
               columns={3}
               items={[
-                { label: 'Client', value: estimate.clientName ?? '—' },
-                { label: 'Architect', value: estimate.architect ?? '—' },
-                { label: 'Drawing set', value: estimate.drawingSet ?? '—' },
-                { label: 'Addenda acknowledged', value: estimate.addenda ?? '—' },
+                { label: 'Client', value: estimate.clientName ?? '-' },
+                { label: 'Architect', value: estimate.architect ?? '-' },
+                { label: 'Drawing set', value: estimate.drawingSet ?? '-' },
+                { label: 'Addenda acknowledged', value: estimate.addenda ?? '-' },
                 { label: 'Duration', value: `${estimate.durationWeeks} weeks` },
                 { label: 'Building area', value: `${estimate.buildingAreaSf} SF` },
                 { label: 'Labor burden', value: percent(estimate.laborBurdenPct, 1) },

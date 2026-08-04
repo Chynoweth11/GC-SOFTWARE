@@ -171,7 +171,7 @@ export function buildG702(
 }
 
 /**
- * Project-level billing position — the latest application plus AR across all of them.
+ * Project-level billing position: the latest application plus AR across all of them.
  * Billed-to-date is the maximum cumulative completed-and-stored (Roll-Up ▸ R6), not a
  * sum, because each application restates the cumulative figure.
  */

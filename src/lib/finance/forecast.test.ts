@@ -24,7 +24,7 @@ const WORKBOOK_LINES: CostLineInput[] = [
 
 const lines = deriveCostLines(WORKBOOK_LINES)
 
-describe('earned value — Progress & Forecast C5:C10', () => {
+describe('earned value: Progress & Forecast C5:C10', () => {
   // Planned cumulative % at the 31 Mar 2026 data date was 40%.
   const ev = computeEarnedValue(lines, 0.4)
 
@@ -55,7 +55,7 @@ describe('earned value — Progress & Forecast C5:C10', () => {
   })
 })
 
-describe('estimate at completion — Progress & Forecast F5:F9', () => {
+describe('estimate at completion: Progress & Forecast F5:F9', () => {
   const ev = computeEarnedValue(lines, 0.4)
 
   it('method 1, bottom-up, equals the sum of the line forecasts', () => {

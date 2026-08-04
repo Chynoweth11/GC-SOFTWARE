@@ -36,7 +36,7 @@ export const REPORT_TITLES: Record<string, { title: string; description: string 
 }
 
 /**
- * What a role must hold to open each report — on screen, as a workbook, and as
+ * What a role must hold to open each report: on screen, as a workbook, and as
  * a PDF alike.
  *
  * One map, because the report card, the page and both exports all read it. When
@@ -77,7 +77,7 @@ export async function buildReportSpec(
 
   const asOf = new Date().toISOString().slice(0, 10)
   const notes = (title: string) => [
-    `${title} — ${data.company.name}`,
+    `${title}: ${data.company.name}`,
     `Generated ${asOf} · ${data.projects.length} projects in view`,
   ]
 

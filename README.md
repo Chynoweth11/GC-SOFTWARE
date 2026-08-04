@@ -1,6 +1,6 @@
 # ConstructX
 
-Financial operating system for a general contractor — estimating, bidding, budgets,
+Financial operating system for a general contractor: estimating, bidding, budgets,
 job cost, forecasting, billing and company-wide financial control.
 
 Built from three Excel workbooks (`ConstructX_Project_Controls_WorkbookXX.xlsx`,
@@ -19,13 +19,13 @@ npm run dev                 # http://localhost:3000
 That is the whole setup. `npm install` generates the Prisma client, and the
 first `npm run dev` creates `prisma/dev.db`, applies the migrations and loads all
 three workbooks. Later runs find the database and start immediately. No `.env` is
-needed — both the app and the Prisma CLI default to `file:./prisma/dev.db`; see
+needed: both the app and the Prisma CLI default to `file:./prisma/dev.db`; see
 `.env.example` to point elsewhere.
 
 **Running in a Codespace, Gitpod or behind a tunnel?** It already works. Next
 rejects a Server Action whose `Origin` disagrees with the `Host`, which is what
 breaks sign-in on a forwarded URL; the common development hosts are trusted in
-development only. Production keeps the strict same-origin rule — name your
+development only. Production keeps the strict same-origin rule: name your
 domain in `ALLOWED_ORIGINS` if it sits behind a proxy there.
 
 To start over from the workbooks, delete the database and run dev again:
@@ -34,13 +34,13 @@ To start over from the workbooks, delete the database and run dev again:
 rm prisma/dev.db && npm run dev   # or: npm run db:reset
 ```
 
-Sign in as `owner@constructx.com` / `constructx`. Other demo accounts —
+Sign in as `owner@constructx.com` / `constructx`. Other demo accounts , 
 `o.reed@constructx.com` (project manager), `estimator@constructx.com`,
-`accounting@constructx.com`, `viewer@constructx.com` — use the same password and
+`accounting@constructx.com`, `viewer@constructx.com`: use the same password and
 show how the permission model changes what is visible.
 
 ```bash
-npm test          # 142 tests — financial calculations, PDF output, permissions
+npm test          # 142 tests: financial calculations, PDF output, permissions
 npm run build     # production build
 ```
 
@@ -64,15 +64,15 @@ src/lib/finance/
   leveling.ts      bid leveling with automatic exception detection
   project.ts       assembles one project's complete position
   company.ts       portfolio rollups, WIP, pipeline, revenue forecast
-  alerts.ts        every alert, recomputed live — never stored, never stale
+  alerts.ts        every alert, recomputed live: never stored, never stale
 ```
 
 **One definition per report.** The screen, the Excel workbook and the PDF all
-render from the same sheet spec, and all four surfaces — including the report
-card on the index — read one capability map to decide who may open it. Adding a
+render from the same sheet spec, and all four surfaces: including the report
+card on the index: read one capability map to decide who may open it. Adding a
 column adds it everywhere; there is nowhere else to add it.
 
-**One database.** `prisma/schema.prisma` — 30+ models covering companies, users,
+**One database.** `prisma/schema.prisma`: 30+ models covering companies, users,
 clients, vendors, bids, estimates, projects, budgets and their revisions,
 commitments, change orders, cost transactions, owner and subcontractor billing,
 forecast periods, cash-flow periods, quantities, snapshots and audit records.
@@ -84,7 +84,7 @@ read on screen that would be refused as an export. The dashboard can be reordere
 per user, but preference only arranges what a role is already permitted to see.
 
 **Projects are portable.** `/api/backup/project/[id]` writes the whole job as one
-JSON file — budgets, commitments, costs, change orders, billings, forecasts,
+JSON file: budgets, commitments, costs, change orders, billings, forecasts,
 quantities. It carries stored values only; a restore recomputes every derived
 figure from the engine, and always creates a new project rather than overwriting
 a live one.
@@ -111,7 +111,7 @@ record naming the field, the old value and the new.
 Deliberately **not** a document-management platform. Drawings, specifications,
 RFIs, submittals, daily reports, safety documentation, punch lists and photos
 belong in Procore or equivalent. Attachments here are limited to financial
-records — invoices, quotes, purchase orders and billing backup.
+records: invoices, quotes, purchase orders and billing backup.
 
 ## Stack
 

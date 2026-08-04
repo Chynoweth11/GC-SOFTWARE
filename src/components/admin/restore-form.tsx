@@ -7,8 +7,8 @@ import type { RestoreResult } from '@/lib/backup'
 /**
  * Restore a project from a backup file.
  *
- * A restore always creates a new project — it never writes over a live one —
- * so the worst outcome of a wrong file is a duplicate to delete, not a month
+ * A restore always creates a new project and never writes over a live one, so
+ * the worst outcome of a wrong file is a duplicate to delete rather than a month
  * of budgets and billings overwritten.
  */
 export function RestoreForm({

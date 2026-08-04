@@ -100,7 +100,7 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
               className="rounded-lg border px-3 py-2 text-xs"
               style={{ background: 'var(--caution-soft)', borderColor: 'var(--caution)', color: 'var(--caution)' }}
             >
-              {duplicates.length} transaction{duplicates.length === 1 ? '' : 's'} share a vendor, amount and date with another row —
+              {duplicates.length} transaction{duplicates.length === 1 ? '' : 's'} share a vendor, amount and date with another row.
               likely a duplicated import. They are flagged in the ledger.
             </div>
           )}
@@ -157,9 +157,9 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
         <Section title="Post a cost" description="Manual entries and corrections. Imported transactions land in the same ledger.">
           <CostEntryForm
             projectId={project.id}
-            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} — ${c.description}` }))}
+            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
             vendors={vendors.map((v) => ({ id: v.id, label: v.name }))}
-            commitments={commitments.map((c) => ({ id: c.id, label: `${c.number} — ${c.vendor.name}` }))}
+            commitments={commitments.map((c) => ({ id: c.id, label: `${c.number} ${c.vendor.name}` }))}
             action={createCostTransaction}
           />
         </Section>
@@ -190,7 +190,7 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
               `${t.vendorId ?? 'none'}|${t.amount.toFixed(2)}|${t.date.toISOString().slice(0, 10)}`,
             ),
           }))}
-          costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} — ${c.description}` }))}
+          costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
           canEdit={canEdit}
           recode={canEdit ? recodeTransaction : undefined}
           split={canEdit ? splitTransaction : undefined}

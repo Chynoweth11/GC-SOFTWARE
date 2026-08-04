@@ -73,7 +73,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
           <MoneyKpi label="Rejected / void" amount={summary.rejectedValue} detail={`${summary.rejectedCount} closed out`} />
           <Kpi
             label="Average days pending"
-            value={summary.avgDaysPending ? Math.round(summary.avgDaysPending).toString() : '—'}
+            value={summary.avgDaysPending ? Math.round(summary.avgDaysPending).toString() : '-'}
             tone={summary.avgDaysPending > 30 ? 'caution' : 'neutral'}
             detail={`${summary.scheduleImpactDays} days of approved schedule impact`}
           />
@@ -156,8 +156,8 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
                         <td className="max-w-[20rem] truncate" title={record.description}>
                           {record.description}
                         </td>
-                        <td style={{ color: 'var(--text-muted)' }}>{record.trade?.name ?? '—'}</td>
-                        <td style={{ color: 'var(--text-subtle)' }}>{record.origin ?? '—'}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{record.trade?.name ?? '-'}</td>
+                        <td style={{ color: 'var(--text-subtle)' }}>{record.origin ?? '-'}</td>
                         <td>
                           <StatusPill status={co.status} />
                         </td>
@@ -169,13 +169,13 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
                           </td>
                         )}
                         {showMargins && <td className="num">{percent(co.marginPct)}</td>}
-                        <td className="num">{co.isApproved ? '—' : percent(co.probabilityPct, 0)}</td>
+                        <td className="num">{co.isApproved ? '-' : percent(co.probabilityPct, 0)}</td>
                         <td style={{ color: 'var(--text-muted)' }}>{date(co.dateInitiated)}</td>
                         <td style={{ color: 'var(--text-muted)' }}>{date(co.dateApproved)}</td>
                         <td className="num" style={{ color: co.isPending && co.daysPending > 30 ? 'var(--caution)' : undefined }}>
-                          {co.daysPending || '—'}
+                          {co.daysPending || '-'}
                         </td>
-                        <td className="num">{co.scheduleImpactDays || '—'}</td>
+                        <td className="num">{co.scheduleImpactDays || '-'}</td>
                         {canEdit && (
                           <td className="no-print">
                             <form action={updateChangeOrderStatus} className="flex items-center gap-1">
@@ -199,7 +199,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={6}>Total — {changeOrders.length}</td>
+                    <td colSpan={6}>Total, {changeOrders.length}</td>
                     <td className="num">{money(changeOrders.reduce((a, c) => a + c.ownerAmount, 0))}</td>
                     <td className="num">{money(changeOrders.reduce((a, c) => a + c.costAmount, 0))}</td>
                     {showMargins && <td className="num">{money(changeOrders.reduce((a, c) => a + c.margin, 0))}</td>}
@@ -222,7 +222,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
             <ChangeOrderForm
               projectId={project.id}
               trades={trades.map((t) => ({ id: t.id, label: t.name }))}
-              costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} — ${c.description}` }))}
+              costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
               action={createChangeOrder}
             />
           </Section>

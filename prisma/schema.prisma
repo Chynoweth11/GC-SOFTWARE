@@ -1,4 +1,4 @@
-// ConstructX — construction financial operating system
+// ConstructX, construction financial operating system
 // Single source of truth for estimating, budgets, commitments, job cost,
 // forecasting, billing and company-level financial rollups.
 
@@ -81,7 +81,7 @@ model User {
 }
 
 /// A named filter combination on the dashboard or a report.
-/// Stores the query string only — the figures are always recomputed, so a saved
+/// Stores the query string only. The figures are always recomputed, so a saved
 /// view can never serve a stale number.
 model SavedView {
   id        String   @id @default(cuid())
@@ -105,7 +105,7 @@ model SavedView {
   @@index([companyId, scope])
 }
 
-/// Per-user interface state — which dashboard tiles are shown and in what order.
+/// Per-user interface state: which dashboard tiles are shown and in what order.
 /// Interface preference only; never a financial value.
 model UserPreference {
   id        String   @id @default(cuid())
@@ -131,28 +131,46 @@ model Session {
   @@index([userId])
 }
 
+/// The permanent record of every change made in the system.
+///
+/// Append only. Database triggers reject UPDATE and DELETE on this table, so
+/// the history cannot be rewritten by the application, by a migration, or by
+/// anyone with a database console. Administrators read it; nobody edits it.
+///
+/// The author and the record's name are copied in rather than joined, because a
+/// history that says "user deleted" instead of naming who made the change is not
+/// a history worth keeping.
 model AuditLog {
-  id        String   @id @default(cuid())
-  companyId String
-  userId    String?
-  entity    String
-  entityId  String
-  action    String
-  field     String?
-  oldValue  String?
-  newValue  String?
-  summary   String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  companyId   String
+  userId      String?
+  /// Who made the change, kept even if the user record is later removed.
+  userName    String?
+  userEmail   String?
+  userRole    String?
+  entity      String
+  entityId    String
+  /// What the record was called at the time, so the entry still reads plainly
+  /// after the record itself has been deleted.
+  entityLabel String?
+  action      String
+  field       String?
+  oldValue    String?
+  newValue    String?
+  summary     String?
+  createdAt   DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([companyId, entity, entityId])
   @@index([companyId, createdAt])
+  @@index([companyId, userId])
+  @@index([companyId, action])
 }
 
 // ─────────────────────────────────────────────────────────────
-// Reference data — divisions, trades, cost codes
+// Reference data: divisions, trades, cost codes
 // ─────────────────────────────────────────────────────────────
 
 enum CostCategory {
@@ -247,6 +265,10 @@ model Client {
   companyId String
   name      String
   type      ClientType  @default(OTHER)
+  /// Archived clients stay on their historic projects but are hidden from
+  /// pickers. A client with history is archived rather than deleted, because
+  /// removing it would orphan the projects that reference it.
+  active    Boolean     @default(true)
   contact   String?
   phone     String?
   email     String?
@@ -265,6 +287,7 @@ model Vendor {
   id               String   @id @default(cuid())
   companyId        String
   name             String
+  active           Boolean  @default(true)
   isSubcontractor  Boolean  @default(true)
   tradeId          String?
   contactName      String?
@@ -991,7 +1014,7 @@ model ChangeOrderLine {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Owner billing — schedule of values and pay applications
+// Owner billing: schedule of values and pay applications
 // ─────────────────────────────────────────────────────────────
 
 model SovLine {

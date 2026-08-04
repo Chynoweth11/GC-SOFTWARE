@@ -4,14 +4,14 @@ import { prisma } from '@/lib/db'
 /**
  * Project backup and restore.
  *
- * The backup carries stored values only — budgets, commitments, costs, change
+ * The backup carries stored values only: budgets, commitments, costs, change
  * orders, billings, forecasts and quantities. No derived figure is written into
  * the file, because a restored project must recompute its entire position from
  * the same engine as a live one. A backup that carried a computed margin would
  * become a second source of truth the moment a formula changed.
  *
  * References to shared records (cost codes, trades, vendors, clients, users)
- * travel as their business keys — a cost code's code, a vendor's name — never
+ * travel as their business keys: a cost code's code, a vendor's name, never
  * as database ids, so a project can be restored into a company whose ids differ.
  */
 
@@ -668,7 +668,7 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
         changeOrderId: changeOrderIdByNumber.get(asStr(revision.changeOrderNumber)) ?? null,
         transferGroup: asStr(revision.transferGroup) || null,
         createdBy: asStr(revision.createdBy) || null,
-        // A revision has no separate date field — its creation time is when the
+        // A revision has no separate date field: its creation time is when the
         // budget moved, so it has to survive the restore rather than reset to now.
         ...(asDate(revision.createdAt) ? { createdAt: asDate(revision.createdAt)! } : {}),
       },

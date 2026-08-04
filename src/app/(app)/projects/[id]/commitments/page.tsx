@@ -72,9 +72,9 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
                       <td className="font-medium">{c.number}</td>
                       <td>{c.vendorName}</td>
                       <td className="max-w-[16rem] truncate" title={record?.scopeOfWork ?? record?.description ?? ''} style={{ color: 'var(--text-muted)' }}>
-                        {record?.scopeOfWork ?? record?.description ?? '—'}
+                        {record?.scopeOfWork ?? record?.description ?? '-'}
                       </td>
-                      <td style={{ color: 'var(--text-subtle)' }}>{record?.lines.map((l) => l.costCode.code).join(', ') || '—'}</td>
+                      <td style={{ color: 'var(--text-subtle)' }}>{record?.lines.map((l) => l.costCode.code).join(', ') || '-'}</td>
                       <td>
                         <StatusPill status={c.status} />
                       </td>
@@ -109,7 +109,7 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5}>Total — {rows.length}</td>
+                  <td colSpan={5}>Total, {rows.length}</td>
                   <td className="num">{money(sumBy(rows, (c) => c.originalAmount))}</td>
                   <td className="num">{money(sumBy(rows, (c) => c.approvedChanges))}</td>
                   <td className="num">{money(sumBy(rows, (c) => c.pendingChanges))}</td>
@@ -219,13 +219,13 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
                         <td className="font-medium">{c.number}</td>
                         <td>{c.vendorName}</td>
                         <td className="max-w-[18rem] truncate" style={{ color: 'var(--text-muted)' }}>
-                          {record.description ?? '—'}
+                          {record.description ?? '-'}
                         </td>
                         <td style={{ color: 'var(--text-muted)' }}>{date(record.dateIssued)}</td>
                         <td style={{ color: 'var(--text-muted)' }}>{date(record.expectedDelivery)}</td>
                         <td style={{ color: 'var(--text-muted)' }}>{date(record.actualDelivery)}</td>
                         <td className="num" style={{ color: daysLate > 0 ? 'var(--adverse)' : 'var(--text-muted)' }}>
-                          {daysLate > 0 ? daysLate : '—'}
+                          {daysLate > 0 ? daysLate : '-'}
                         </td>
                         <td className="num">{money(c.currentValue)}</td>
                         <td className="num">{money(record.receivedAmount)}</td>
@@ -251,10 +251,10 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
           <CommitmentForm
             projectId={project.id}
             vendors={vendors.map((v) => ({ id: v.id, label: v.name }))}
-            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} — ${c.description}` }))}
+            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
             defaultRetentionPct={project.defaultSubRetentionPct}
             action={createCommitment}
-            commitments={commitments.map((c) => ({ id: c.id, label: `${c.number} — ${c.vendorName}` }))}
+            commitments={commitments.map((c) => ({ id: c.id, label: `${c.number} ${c.vendorName}` }))}
             changeAction={addCommitmentChange}
           />
         </Section>

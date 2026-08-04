@@ -9,10 +9,15 @@ import { money, moneyShort, number as fmtNumber, percent } from '@/lib/format'
  * Hand-built SVG rather than a charting library: the whole system needs perhaps
  * eight chart forms, all reading the same financial series, and building them
  * directly keeps every axis, tooltip and colour consistent with the rest of the
- * design system — and keeps the client bundle small.
+ * design system, and keeps the client bundle small.
  */
 
 /** Categorical palette. Ordered so the first three read clearly apart at a glance. */
+/** Rounds an SVG coordinate so server and client markup always match exactly. */
+function coord(value: number): string {
+  return (Math.round(value * 100) / 100).toString()
+}
+
 export const SERIES_COLORS = [
   'var(--accent)',
   'var(--favorable)',
@@ -26,7 +31,7 @@ export const SERIES_COLORS = [
 
 /**
  * Charts are client components, so the value formatter is named rather than
- * passed as a function — server components cannot hand a closure across the
+ * passed as a function: server components cannot hand a closure across the
  * boundary. Every chart in the system uses one of these four.
  */
 export type ValueFormat = 'money' | 'moneyShort' | 'percent' | 'number' | 'hours'
@@ -48,7 +53,7 @@ export interface Series {
   label: string
   color?: string
   values: (number | null)[]
-  /** Renders as a dashed line — used for plan vs. actual and scenarios. */
+  /** Renders as a dashed line: used for plan vs. actual and scenarios. */
   dashed?: boolean
   /** Fills the area under a line. */
   area?: boolean
@@ -264,9 +269,9 @@ export function LineChart({
     const defined = points.filter((p): p is { x: number; y: number } => p != null)
     const areaPath =
       s.area && defined.length > 1
-        ? `M${defined[0].x},${scaleY(Math.max(domainMin, 0))} ${defined
+        ? `M${defined[0].x.toFixed(2)},${scaleY(Math.max(domainMin, 0)).toFixed(2)} ${defined
             .map((p) => `L${p.x.toFixed(2)},${p.y.toFixed(2)}`)
-            .join(' ')} L${defined[defined.length - 1].x},${scaleY(Math.max(domainMin, 0))} Z`
+            .join(' ')} L${defined[defined.length - 1].x.toFixed(2)},${scaleY(Math.max(domainMin, 0)).toFixed(2)} Z`
         : null
 
     return { series: s, color, path: segments.join(' '), areaPath }
@@ -526,7 +531,7 @@ export function BarChart({
   )
 }
 
-/** Ranked horizontal bars — the right form for "cost by trade" style comparisons. */
+/** Ranked horizontal bars: the right form for "cost by trade" style comparisons. */
 export function HorizontalBars({
   labels,
   series,
@@ -625,7 +630,11 @@ export function DonutChart({
     const start = -Math.PI / 2 + (offsets[i - 1] ?? 0) * Math.PI * 2
     const end = start + sweep
     const largeArc = sweep > Math.PI ? 1 : 0
-    const p = (r: number, a: number) => `${radius + r * Math.cos(a)},${radius + r * Math.sin(a)}`
+    // Two decimals is finer than any screen can render, and it keeps the markup
+    // byte-identical between the server and the browser. Full double precision
+    // does not: the last digit can differ between the two renders and React
+    // reports it as a hydration mismatch.
+    const p = (r: number, a: number) => `${coord(radius + r * Math.cos(a))},${coord(radius + r * Math.sin(a))}`
     return {
       slice,
       fraction,
@@ -727,7 +736,7 @@ export function Sparkline({
   height?: number
 }) {
   const clean = values.filter((v) => isFinite(v))
-  if (clean.length < 2) return <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>—</span>
+  if (clean.length < 2) return <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>-</span>
   const min = Math.min(...clean)
   const max = Math.max(...clean)
   const span = max - min || 1
@@ -790,7 +799,7 @@ export function Meter({
   )
 }
 
-/** Diverging bar for variances — left of centre is adverse, right is favourable. */
+/** Diverging bar for variances: left of centre is adverse, right is favourable. */
 export function VarianceBar({ value, max }: { value: number; max: number }) {
   const bound = Math.max(Math.abs(max), 1)
   const pct = Math.min(1, Math.abs(value) / bound)

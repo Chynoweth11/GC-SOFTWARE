@@ -204,8 +204,8 @@ export function VendorManager({
               {filtered.map((v) => (
                 <tr key={v.id}>
                   <td className="font-medium">{v.name}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{v.tradeName ?? '—'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{v.contactName ?? '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{v.tradeName ?? '-'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{v.contactName ?? '-'}</td>
                   <td>{v.isSubcontractor ? <Pill tone="accent">Subcontractor</Pill> : <Pill tone="neutral">Vendor</Pill>}</td>
                   <td className="num">{v.commitments}</td>
                   <td className="num">{money(v.contractValue)}</td>

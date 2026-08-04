@@ -65,11 +65,11 @@ const TRADES: [string, string][] = [
   ['Storm Drainage', '33'],
   ['Sanitary Sewer', '33'],
   ['Domestic Water', '33'],
-  ['Concrete — Foundations', '03'],
-  ['Concrete — Footings', '03'],
-  ['Concrete — Foundation Walls', '03'],
-  ['Concrete — Slabs', '03'],
-  ['Concrete — Flatwork', '03'],
+  ['Concrete: Foundations', '03'],
+  ['Concrete: Footings', '03'],
+  ['Concrete: Foundation Walls', '03'],
+  ['Concrete: Slabs', '03'],
+  ['Concrete: Flatwork', '03'],
   ['Cast-in-Place Concrete', '03'],
   ['Masonry', '04'],
   ['Structural Steel', '05'],
@@ -87,9 +87,9 @@ const TRADES: [string, string][] = [
   ['Glass & Glazing', '08'],
   ['Drywall', '09'],
   ['Tile & Stone', '09'],
-  ['Tile — Floors', '09'],
-  ['Tile — Shower Walls', '09'],
-  ['Tile — Shower Pans', '09'],
+  ['Tile: Floors', '09'],
+  ['Tile: Shower Walls', '09'],
+  ['Tile: Shower Pans', '09'],
   ['Flooring', '09'],
   ['Painting', '09'],
   ['Specialties', '10'],
@@ -430,10 +430,10 @@ async function main() {
       clientName: 'Riverview Partners LLC',
       architect: 'Vale + Stone Architects',
       address: '410 Riverview Dr, Kennewick WA',
-      projectType: 'Commercial — Tenant Improvement',
+      projectType: 'Commercial, Tenant Improvement',
       bidDueDate: D('2026-04-17'),
       estimator: 'O. Reed',
-      drawingSet: 'Permit Set — 03/20/2026',
+      drawingSet: 'Permit Set, 03/20/2026',
       addenda: '1, 2',
       durationWeeks: 22,
       buildingAreaSf: 8400,
@@ -464,9 +464,9 @@ async function main() {
 
   // Takeoff rows carry a leading section banner (division blank on the banner row).
   const SECTION_NAMES = [
-    'Excavation & Earthwork', 'Site Utilities', 'Concrete', 'Framing — Rough Carpentry',
+    'Excavation & Earthwork', 'Site Utilities', 'Concrete', 'Framing: Rough Carpentry',
     'Drywall', 'Tile & Stone', 'Roofing & Moisture Protection', 'Openings',
-    'Finishes — Paint, Flooring & Trim', 'Mechanical / Electrical / Plumbing',
+    'Finishes: Paint, Flooring & Trim', 'Mechanical / Electrical / Plumbing',
     'Exterior Improvements', 'Additional Items',
   ]
   const sections = await Promise.all(
@@ -602,7 +602,7 @@ async function main() {
         clientId: clientByName.get(String(row['Client']))?.id,
         city: String(row['Location'] ?? '').split(',')[0]?.trim() || null,
         state: String(row['Location'] ?? '').split(',')[1]?.trim() || null,
-        projectType: isDetailed ? 'Residential — New' : inferType(String(row['Project Name'])),
+        projectType: isDetailed ? 'Residential, New' : inferType(String(row['Project Name'])),
         deliveryMethod: isDetailed ? 'Design-Build' : 'General Contract',
         architect: isDetailed ? 'Vale + Stone Architects' : null,
         pmUserId: pm?.id,
@@ -674,13 +674,13 @@ async function main() {
 }
 
 function inferType(name: string): string {
-  if (/apartment|townhome|residence|estate|home|adu|duplex/i.test(name)) return 'Residential — New'
+  if (/apartment|townhome|residence|estate|home|adu|duplex/i.test(name)) return 'Residential: New'
   if (/medical|dental|office|retail|church|distribution|shell/i.test(name)) return 'Commercial'
   return 'Commercial'
 }
 
 /**
- * Job 26-001 is seeded from the full Project Controls workbook — every budget
+ * Job 26-001 is seeded from the full Project Controls workbook: every budget
  * line, commitment, invoice, pay application, change order and quantity item.
  */
 async function seedDetailedProject(
@@ -755,7 +755,7 @@ async function seedDetailedProject(
             date: month.periodEnd,
             type: 'ACTUAL',
             source: 'IMPORT',
-            description: `${row['Description']} — cost posted for the month`,
+            description: `${row['Description']}, cost posted for the month`,
             reference: `Accounting import ${month.periodEnd.toISOString().slice(0, 7)}`,
             amount,
           },
@@ -771,7 +771,7 @@ async function seedDetailedProject(
           date: D('2026-03-31'),
           type: 'ACCRUAL',
           source: 'MANUAL',
-          description: `${row['Description']} — accrued work in place not yet invoiced`,
+          description: `${row['Description']}, accrued work in place not yet invoiced`,
           amount: accrual,
         },
       })
@@ -1169,7 +1169,7 @@ async function seedDetailedProject(
         confidence: 0.85,
         note:
           eac > currentBudget + 0.005
-            ? 'Forecast above budget — production rate below plan; recovery plan in progress.'
+            ? 'Forecast above budget: production rate below plan; recovery plan in progress.'
             : null,
       },
     })
@@ -1206,7 +1206,7 @@ async function seedSummaryProject(
   const finish = d(row['Forecast Completion']) ?? d(row['Contract Completion'])!
   const dataDate = D('2026-03-31')
 
-  /** Month ends from the contract start to the data date — the elapsed history. */
+  /** Month ends from the contract start to the data date: the elapsed history. */
   const elapsedMonths: Date[] = []
   {
     let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0))
@@ -1276,7 +1276,7 @@ async function seedSummaryProject(
           date: periodEnd,
           type: 'ACTUAL',
           source: 'IMPORT',
-          description: `${costCode.description} — cost posted for the month`,
+          description: `${costCode.description}, cost posted for the month`,
           reference: `Accounting import ${periodEnd.toISOString().slice(0, 7)}`,
           amount,
         },

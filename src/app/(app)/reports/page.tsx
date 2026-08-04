@@ -15,7 +15,7 @@ const REPORTS: { group: string; items: ReportCard[] }[] = [
   {
     group: 'Financial position',
     items: [
-      { slug: 'wip', title: 'Work in progress', description: 'The WIP schedule a bonding agent asks for — contract, cost, earned revenue, over/underbilling and profit by project.' },
+      { slug: 'wip', title: 'Work in progress', description: 'The WIP schedule a bonding agent asks for: contract, cost, earned revenue, over and underbilling, and profit by project.' },
       { slug: 'budget-vs-actual', title: 'Budget vs actual vs forecast', description: 'Every cost code on every project: budget, committed, actual, forecast and variance.' },
       { slug: 'committed', title: 'Budget vs committed', description: 'Where commitments sit against budget, and the exposure where cost is posting without one.' },
       { slug: 'eac', title: 'Estimate at completion', description: 'Cost to complete and EAC by project under each method, with variance at completion.' },
@@ -54,7 +54,7 @@ export default async function ReportsPage() {
     <>
       <PageHeader
         title="Reports"
-        subtitle="Every report reads the same calculation engine as the dashboards — the numbers cannot disagree"
+        subtitle="Every report reads the same calculation engine as the dashboards: the numbers cannot disagree"
       />
 
       <div className="space-y-6">

@@ -1,7 +1,7 @@
 /**
  * The dashboard's panels, and the user's arrangement of them.
  *
- * Which panels a user may see is decided by role, not by preference — hiding a
+ * Which panels a user may see is decided by role, not by preference: hiding a
  * panel is a display choice and can never reveal one the role forbids. The
  * saved layout is filtered through the permitted set on every load, so a role
  * change takes effect immediately regardless of what was saved before.

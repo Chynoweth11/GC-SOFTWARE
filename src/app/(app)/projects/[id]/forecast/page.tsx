@@ -153,9 +153,9 @@ export default async function ForecastPage({ params }: { params: Promise<{ id: s
                   Change method
                 </label>
                 <select id="eac-method" name="eacMethod" className="field text-xs" defaultValue={project.eacMethod}>
-                  <option value="BOTTOM_UP">Bottom-up — the managers&apos; line forecasts</option>
-                  <option value="CPI_BASED">Performance — assumes current efficiency holds</option>
-                  <option value="BUDGET_RATE">Budget rate — assumes remaining work runs at budget</option>
+                  <option value="BOTTOM_UP">Bottom-up: the managers&apos; line forecasts</option>
+                  <option value="CPI_BASED">Performance: assumes current efficiency holds</option>
+                  <option value="BUDGET_RATE">Budget rate: assumes remaining work runs at budget</option>
                 </select>
               </div>
               <button type="submit" className="btn btn-secondary">
@@ -167,7 +167,7 @@ export default async function ForecastPage({ params }: { params: Promise<{ id: s
       </div>
 
       <Section
-        title={current ? `Forecast — period ending ${date(current.periodEnd)}` : 'Forecast'}
+        title={current ? `Forecast: period ending ${date(current.periodEnd)}` : 'Forecast'}
         description="Enter percent complete and, where the budget no longer holds, an estimate to complete. Everything else derives."
         actions={
           current && canLock ? (
@@ -199,7 +199,7 @@ export default async function ForecastPage({ params }: { params: Promise<{ id: s
               <StatusPill status={current.status} />
               {current.lockedAt && (
                 <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
-                  Locked {date(current.lockedAt)} — the snapshot is preserved for comparison
+                  Locked {date(current.lockedAt)}: the snapshot is preserved for comparison
                 </span>
               )}
             </div>

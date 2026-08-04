@@ -10,7 +10,8 @@ import { KpiGrid, MoneyKpi, Section, Variance, EmptyState } from '@/components/u
 import { ChartFrame, HorizontalBars, Meter } from '@/components/charts/primitives'
 import { BudgetTable } from '@/components/project/budget-table'
 import { BudgetTransferForm } from '@/components/project/budget-transfer-form'
-import { transferBudget, reviseBudget } from './actions'
+import { BudgetLineForm, type BudgetLineOption } from '@/components/project/budget-line-form'
+import { transferBudget, reviseBudget, addBudgetLine, deleteBudgetLine } from './actions'
 
 export default async function BudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser()
@@ -21,7 +22,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
   const { project, financials: f } = bundle
   const canEdit = can(user.role, 'edit:budget')
 
-  const [budgetLines, revisions] = await Promise.all([
+  const [budgetLines, revisions, allCodes, costCounts, commitmentCounts] = await Promise.all([
     prisma.budgetLine.findMany({
       where: { projectId: id },
       include: { costCode: { include: { division: true } }, trade: true },
@@ -32,16 +33,40 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
       include: { budgetLine: { include: { costCode: true } }, changeOrder: true },
       orderBy: { createdAt: 'desc' },
     }),
+    prisma.costCode.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { code: 'asc' } }),
+    prisma.costTransaction.groupBy({ by: ['costCodeId'], where: { projectId: id, deletedAt: null }, _count: true }),
+    prisma.commitmentLine.groupBy({ by: ['costCodeId'], where: { commitment: { projectId: id } }, _count: true }),
   ])
 
+  // A line can only be removed while nothing points at it.
+  const costedCodes = new Set(costCounts.map((c) => c.costCodeId))
+  const committedCodes = new Set(commitmentCounts.map((c) => c.costCodeId))
+  const revisedLines = new Set(revisions.map((r) => r.budgetLineId))
+  const onBudget = new Set(budgetLines.map((l) => l.costCodeId))
+  const budgetLineOptions: BudgetLineOption[] = budgetLines.map((line) => {
+    const blocked =
+      costedCodes.has(line.costCodeId) || committedCodes.has(line.costCodeId) || revisedLines.has(line.id)
+    return {
+      budgetLineId: line.id,
+      code: line.costCode.code,
+      description: line.description,
+      originalBudget: line.originalBudget,
+      removable: !blocked,
+      blockedBecause: blocked ? 'This code carries cost, a commitment or a revision' : null,
+    }
+  })
+  const availableCodes = allCodes
+    .filter((c) => !onBudget.has(c.id))
+    .map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))
+
   const byDivision = rollupBy(f.lines, (l) => ({
-    key: l.divisionCode ?? '—',
+    key: l.divisionCode ?? '-',
     label: l.divisionCode ? `${l.divisionCode} ${l.divisionName ?? ''}`.trim() : 'Unassigned division',
   }))
 
   const lineOptions = budgetLines.map((l) => ({
     id: l.id,
-    label: `${l.costCode.code} — ${l.description}`,
+    label: `${l.costCode.code} ${l.description}`,
   }))
 
   return (
@@ -103,7 +128,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
 
       <Section
         title="Cost control"
-        description="One row per cost code. Original budget, revisions, commitment, cost, earned value and forecast — the whole project P&L is built here."
+        description="One row per cost code. Original budget, revisions, commitment, cost, earned value and forecast: the whole project P&L is built here."
       >
         <BudgetTable
           lines={f.lines}
@@ -113,6 +138,22 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
           budgetLineIdByCostCode={Object.fromEntries(budgetLines.map((l) => [l.costCodeId, l.id]))}
         />
       </Section>
+
+      {canEdit && (
+        <Section
+          title="Budget lines"
+          description="Adds a cost code to this job. A code with nothing booked against it can also be removed."
+        >
+          <BudgetLineForm
+            projectId={project.id}
+            availableCodes={availableCodes}
+            lines={budgetLineOptions}
+            add={addBudgetLine}
+            remove={deleteBudgetLine}
+            canDelete={can(user.role, 'delete:records')}
+          />
+        </Section>
+      )}
 
       {canEdit && (
         <Section
@@ -152,7 +193,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
                       <td className="max-w-[26rem] truncate" title={r.reason} style={{ color: 'var(--text-muted)' }}>
                         {r.reason}
                       </td>
-                      <td style={{ color: 'var(--text-muted)' }}>{r.changeOrder?.number ?? '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{r.changeOrder?.number ?? '-'}</td>
                       <td className="num">
                         <Variance value={r.amount} favorableWhen="negative" />
                       </td>

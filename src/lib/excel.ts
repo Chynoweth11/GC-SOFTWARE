@@ -25,14 +25,14 @@ export interface SheetSpec {
   name: string
   columns: SheetColumn[]
   rows: Record<string, CellValue>[]
-  /** Rendered above the header as context — title, filters, as-of date. */
+  /** Rendered above the header as context: title, filters, as-of date. */
   notes?: string[]
   totalsRow?: boolean
 }
 
 const NUMBER_FORMATS: Record<NonNullable<SheetColumn['format']>, string> = {
-  money: '$#,##0;($#,##0);"—"',
-  money2: '$#,##0.00;($#,##0.00);"—"',
+  money: '$#,##0;($#,##0);"-"',
+  money2: '$#,##0.00;($#,##0.00);"-"',
   percent: '0.0%',
   number: '#,##0.##',
   date: 'mmm d, yyyy',

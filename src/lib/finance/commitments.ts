@@ -67,7 +67,7 @@ const PENDING_CHANGE = new Set(['PENDING', 'SUBMITTED'])
  *   W  Balance to Complete = Current Contract − Earned to Date
  *
  * Retention is summed from the invoices actually issued rather than computed
- * from the earned figure — the two diverge whenever a rate changed mid-job.
+ * from the earned figure: the two diverge whenever a rate changed mid-job.
  */
 export function deriveCommitment(input: CommitmentInput): CommitmentDerived {
   const approvedChanges = sumBy(

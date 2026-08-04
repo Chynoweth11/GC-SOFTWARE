@@ -55,7 +55,7 @@ const apps: BillingInput[] = [
   },
 ]
 
-describe('AIA G702 — Owner Billings D6:S41', () => {
+describe('AIA G702: Owner Billings D6:S41', () => {
   const g1 = buildG702(apps[0], apps, sov, 2_450_000, 68_000, D('2026-03-31'))
   const g2 = buildG702(apps[1], apps, sov, 2_450_000, 68_000, D('2026-03-31'))
 

@@ -8,7 +8,7 @@ import { Pill } from '@/components/ui'
 
 const MEASURES = Object.keys(MEASURE_LABELS) as (keyof typeof MEASURE_LABELS)[]
 
-/** Which dimension inputs matter for a given measure — the rest are disabled. */
+/** Which dimension inputs matter for a given measure: the rest are disabled. */
 const DIMENSIONS: Record<string, ('count' | 'length' | 'width' | 'depth')[]> = {
   EA: ['count'],
   TON: ['count'],
@@ -150,7 +150,7 @@ export function TakeoffTable({
           >
             {MEASURES.map((m) => (
               <option key={m} value={m}>
-                {m} — {MEASURE_LABELS[m]}
+                {m}: {MEASURE_LABELS[m]}
               </option>
             ))}
           </select>
@@ -194,7 +194,7 @@ export function TakeoffTable({
             <option value="">None</option>
             {laborClasses.map((c) => (
               <option key={c.className} value={c.className}>
-                {c.className} — {money(c.rate)}/hr
+                {c.className}: {money(c.rate)}/hr
               </option>
             ))}
           </select>
@@ -327,22 +327,22 @@ export function TakeoffTable({
             <tbody>
               {filtered.map((i) => (
                 <tr key={i.id} style={i.qaFlags.length > 0 ? { background: 'color-mix(in oklab, var(--caution) 6%, transparent)' } : undefined}>
-                  <td style={{ color: 'var(--text-muted)' }}>{i.divisionCode ?? '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{i.divisionCode ?? '-'}</td>
                   <td className="max-w-[16rem] truncate font-medium" title={i.description}>
                     {i.description}
                   </td>
-                  <td style={{ color: 'var(--text-subtle)' }}>{i.drawingRef ?? '—'}</td>
+                  <td style={{ color: 'var(--text-subtle)' }}>{i.drawingRef ?? '-'}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{i.measure}</td>
-                  <td className="num">{i.count || '—'}</td>
-                  <td className="num">{i.length || '—'}</td>
-                  <td className="num">{i.width || '—'}</td>
-                  <td className="num">{i.depth || '—'}</td>
+                  <td className="num">{i.count || '-'}</td>
+                  <td className="num">{i.length || '-'}</td>
+                  <td className="num">{i.width || '-'}</td>
+                  <td className="num">{i.depth || '-'}</td>
                   <td className="num calculated">{fmtNumber(i.netQty, 2)}</td>
-                  <td className="num">{i.wastePct ? percent(i.wastePct, 0) : '—'}</td>
+                  <td className="num">{i.wastePct ? percent(i.wastePct, 0) : '-'}</td>
                   <td className="num calculated">{fmtNumber(i.grossQty, 2)}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{i.laborClass ?? '—'}</td>
-                  <td className="num">{i.laborHrsPerUnit || '—'}</td>
-                  <td className="num">{i.laborRate ? money(i.laborRate) : '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{i.laborClass ?? '-'}</td>
+                  <td className="num">{i.laborHrsPerUnit || '-'}</td>
+                  <td className="num">{i.laborRate ? money(i.laborRate) : '-'}</td>
                   <td className="num">{money(i.laborCost)}</td>
                   <td className="num">{money(i.materialCost)}</td>
                   <td className="num">{money(i.equipmentCost)}</td>
@@ -350,7 +350,7 @@ export function TakeoffTable({
                   <td className="num font-medium">{money(i.totalCost)}</td>
                   <td className="max-w-[14rem]">
                     {i.qaFlags.length === 0 ? (
-                      <span style={{ color: 'var(--text-subtle)' }}>—</span>
+                      <span style={{ color: 'var(--text-subtle)' }}>-</span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {i.qaFlags.map((f) => (
@@ -395,7 +395,7 @@ export function TakeoffTable({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={12}>Total — {filtered.length} lines</td>
+                <td colSpan={12}>Total, {filtered.length} lines</td>
                 <td className="num">{fmtNumber(totals.laborHours, 1)} hr</td>
                 <td />
                 <td className="num">{money(totals.laborCost)}</td>

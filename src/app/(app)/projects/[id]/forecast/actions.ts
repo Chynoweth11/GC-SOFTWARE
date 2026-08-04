@@ -99,6 +99,7 @@ export async function saveForecastLine(formData: FormData): Promise<{ error?: st
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'ForecastLine',
     entityId: `${periodId}:${costCodeId}`,
     action: 'SAVE',
@@ -140,7 +141,7 @@ export async function lockForecastPeriod(formData: FormData): Promise<void> {
       create: {
         projectId,
         asOf: period.periodEnd,
-        label: `Forecast lock — ${period.periodEnd.toISOString().slice(0, 10)}`,
+        label: `Forecast lock, ${period.periodEnd.toISOString().slice(0, 10)}`,
         payload: JSON.stringify(bundle.financials),
         createdBy: user.id,
       },
@@ -162,6 +163,7 @@ export async function lockForecastPeriod(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'ForecastPeriod',
     entityId: periodId,
     action: 'LOCK',
@@ -189,6 +191,7 @@ export async function openForecastPeriod(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'ForecastPeriod',
     entityId: periodId,
     action: 'REOPEN',
@@ -213,6 +216,7 @@ export async function setEacMethod(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Project',
     entityId: projectId,
     action: 'UPDATE',

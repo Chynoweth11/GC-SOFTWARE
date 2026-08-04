@@ -139,7 +139,7 @@ export default async function ReportPage({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={2}>Total — {wip.length} projects</td>
+                  <td colSpan={2}>Total, {wip.length} projects</td>
                   <td className="num">{money(sumBy(wip, (r) => r.contractValue))}</td>
                   <td className="num">{money(sumBy(wip, (r) => r.forecastCost))}</td>
                   {showMargins && <td className="num">{money(sumBy(wip, (r) => r.forecastProfit))}</td>}
@@ -160,7 +160,7 @@ export default async function ReportPage({
     )
   }
 
-  // ── Budget vs actual / committed / EAC — cost-code level ───────────────
+  // ── Budget vs actual / committed / EAC: cost-code level ───────────────
   if (slug === 'budget-vs-actual' || slug === 'committed') {
     const rows = bundles.flatMap((p) =>
       p.financials.lines.map((l) => ({ project: p, line: l })),
@@ -214,10 +214,10 @@ export default async function ReportPage({
                       <>
                         <td className="num">{money(Math.max(0, line.currentBudget - line.committed))}</td>
                         <td className="num" style={{ color: line.committed === 0 && line.totalCostToDate > 0 ? 'var(--caution)' : undefined }}>
-                          {line.committed === 0 ? money(line.totalCostToDate) : '—'}
+                          {line.committed === 0 ? money(line.totalCostToDate) : '-'}
                         </td>
                         <td className="num" style={{ color: line.committed > line.currentBudget ? 'var(--adverse)' : undefined }}>
-                          {line.committed > line.currentBudget ? money(line.committed - line.currentBudget) : '—'}
+                          {line.committed > line.currentBudget ? money(line.committed - line.currentBudget) : '-'}
                         </td>
                       </>
                     ) : (
@@ -353,7 +353,7 @@ export default async function ReportPage({
                             </Link>
                           </td>
                           <td className="max-w-[16rem] truncate">{p.name}</td>
-                          <td style={{ color: 'var(--text-muted)' }}>{p.pmName ?? '—'}</td>
+                          <td style={{ color: 'var(--text-muted)' }}>{p.pmName ?? '-'}</td>
                           <td className="num">{money(f.contract.currentContract)}</td>
                           <td className="num">{money(f.forecastCost)}</td>
                           <td className="num">
@@ -653,7 +653,7 @@ export default async function ReportPage({
                       <td className="num">
                         {co.dateInitiated
                           ? Math.round(((co.dateApproved ?? new Date('2026-03-31')).getTime() - co.dateInitiated.getTime()) / 86_400_000)
-                          : '—'}
+                          : '-'}
                       </td>
                     </tr>
                 ))}
@@ -702,7 +702,7 @@ export default async function ReportPage({
                           Estimate: {p.estimate.name}
                         </Link>
                       ) : (
-                        '—'
+                        '-'
                       )}
                     </td>
                     <td className="font-medium">{p.name}</td>
@@ -711,8 +711,8 @@ export default async function ReportPage({
                     </td>
                     <td className="num">{money(p.budgetAmount)}</td>
                     <td className="num">{money(p.awardAmount)}</td>
-                    <td className="num">{p.awardAmount > 0 ? <Variance value={p.budgetAmount - p.awardAmount} /> : '—'}</td>
-                    <td style={{ color: 'var(--text-muted)' }}>{p.awardedVendor?.name ?? '—'}</td>
+                    <td className="num">{p.awardAmount > 0 ? <Variance value={p.budgetAmount - p.awardAmount} /> : '-'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{p.awardedVendor?.name ?? '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -770,7 +770,7 @@ export default async function ReportPage({
                     <td className="num">{money(e.directCost)}</td>
                     <td className="num font-medium">{money(e.totalBid)}</td>
                     <td className="num">{percent(e.margin)}</td>
-                    <td>{e.projects[0]?.number ?? '—'}</td>
+                    <td>{e.projects[0]?.number ?? '-'}</td>
                   </tr>
                 ))}
               </tbody>

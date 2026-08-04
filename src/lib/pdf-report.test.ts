@@ -10,7 +10,7 @@ import type { SheetSpec } from './excel'
 
 const spec: SheetSpec = {
   name: 'Work in progress',
-  notes: ['Work-in-progress schedule — Demo Co', 'Generated 2026-08-03 · 3 projects in view'],
+  notes: ['Work-in-progress schedule, Demo Co', 'Generated 2026-08-03 · 3 projects in view'],
   totalsRow: true,
   columns: [
     { header: 'Job', key: 'number', width: 12 },
@@ -35,13 +35,13 @@ describe('sheet to PDF', () => {
   })
 
   it('renders a zero money value as a dash, matching the workbook and the screen', () => {
-    expect(section.table!.rows[2].contract).toBe('—')
+    expect(section.table!.rows[2].contract).toBe('-')
   })
 
   it('formats percentages and dates', () => {
     expect(section.table!.rows[0].pct).toBe('36.2%')
     expect(section.table!.rows[0].started).toBe('Sep 1, 2025')
-    expect(section.table!.rows[1].started).toBe('—')
+    expect(section.table!.rows[1].started).toBe('-')
   })
 
   it('totals only the columns the workbook totals, and counts the rows', () => {

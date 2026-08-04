@@ -52,10 +52,11 @@ export async function createBid(formData: FormData): Promise<{ error?: string }>
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Bid',
     entityId: bid.id,
     action: 'CREATE',
-    summary: `Added opportunity ${number} — ${name}`,
+    summary: `Added opportunity ${number}, ${name}`,
   })
 
   revalidatePath('/pipeline')
@@ -88,6 +89,7 @@ export async function updateBidStatus(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Bid',
     entityId: bidId,
     action: 'STATUS',
@@ -101,7 +103,7 @@ export async function updateBidStatus(formData: FormData): Promise<void> {
   revalidatePath('/')
 }
 
-/** Logs a contact and pushes the next follow-up a week out — the daily habit. */
+/** Logs a contact and pushes the next follow-up a week out: the daily habit. */
 export async function logTouch(formData: FormData): Promise<void> {
   const user = await requireUser()
   assertCan(user.role, 'edit:pipeline')
@@ -123,6 +125,7 @@ export async function logTouch(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Bid',
     entityId: bidId,
     action: 'TOUCH',

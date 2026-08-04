@@ -3,7 +3,7 @@ import type { getEstimateBundle } from '@/lib/queries/estimate'
 import type { SheetSpec } from '@/lib/excel'
 
 /**
- * The definition of an estimate export — takeoff, general conditions, leveling
+ * The definition of an estimate export: takeoff, general conditions, leveling
  * and the bid build-up. Excel and PDF both render from this one spec.
  */
 export type EstimateBundle = NonNullable<Awaited<ReturnType<typeof getEstimateBundle>>>

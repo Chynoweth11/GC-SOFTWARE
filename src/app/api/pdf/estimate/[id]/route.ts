@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const document = buildPdf(
     sheetsToPdf(sheets, {
-      title: `${estimate.name} — v${estimate.version}`,
+      title: `${estimate.name} v${estimate.version}`,
       subtitle: 'Estimate and bid build-up',
       company: user.companyName,
       notes: [

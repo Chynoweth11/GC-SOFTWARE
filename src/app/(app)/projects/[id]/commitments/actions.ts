@@ -60,6 +60,7 @@ export async function createCommitment(formData: FormData): Promise<{ error?: st
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Commitment',
     entityId: commitment.id,
     action: 'CREATE',
@@ -112,10 +113,11 @@ export async function addCommitmentChange(formData: FormData): Promise<{ error?:
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Commitment',
     entityId: commitmentId,
     action: 'CHANGE',
-    summary: `Added ${status.toLowerCase()} change ${number} of ${amount} — ${description}`,
+    summary: `Added ${status.toLowerCase()} change ${number} of ${amount}, ${description}`,
   })
 
   revalidatePath(`/projects/${commitment.projectId}/commitments`)

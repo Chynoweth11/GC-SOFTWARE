@@ -33,7 +33,7 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <Section title="Users" description="Roles map to capabilities — changing a role changes what the person can see and do immediately">
+      <Section title="Users" description="Roles map to capabilities: changing a role changes what the person can see and do immediately">
         <div className="card-flush">
           <div className="table-wrap">
             <table className="data">
@@ -104,7 +104,7 @@ export default async function UsersPage() {
 
       <Section
         title="What each role can see"
-        description="Sensitive figures — company profit, project margins, labor rates, markups and cash position — are restricted by role"
+        description="Company profit, project margins, labor rates, markups and cash position are restricted by role"
       >
         <div className="card-flush">
           <div className="table-wrap">

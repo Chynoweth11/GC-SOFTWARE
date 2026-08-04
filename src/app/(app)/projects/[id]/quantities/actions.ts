@@ -63,6 +63,7 @@ export async function recordProgress(formData: FormData): Promise<{ error?: stri
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'QuantityEntry',
     entityId: `${itemId}:${periodRaw}`,
     action: 'RECORD',

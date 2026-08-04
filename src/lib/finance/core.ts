@@ -37,7 +37,7 @@ export function round(value: number, places = 2): number {
   return Math.sign(value) * Math.round(Math.abs(value) * factor) / factor
 }
 
-/** Currency rounding — the default for every dollar figure surfaced to a user. */
+/** Currency rounding: the default for every dollar figure surfaced to a user. */
 export function money(value: number): number {
   return round(value, 2)
 }

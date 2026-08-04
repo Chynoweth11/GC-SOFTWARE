@@ -14,7 +14,7 @@ function parseDate(value: FormDataEntryValue | null): Date | null {
 }
 
 /**
- * Issues a pay application. Line amounts are this period's work only — the
+ * Issues a pay application. Line amounts are this period's work only: the
  * certificate's cumulative figures are always derived from the full application
  * history, so a correction to an earlier application flows forward on its own.
  */
@@ -80,6 +80,7 @@ export async function createPayApplication(formData: FormData): Promise<{ error?
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'OwnerBilling',
     entityId: billing.id,
     action: 'CREATE',
@@ -118,6 +119,7 @@ export async function recordPayment(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'OwnerBilling',
     entityId: billing.id,
     action: 'PAYMENT',

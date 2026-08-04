@@ -73,7 +73,7 @@ export async function createSubInvoice(formData: FormData): Promise<{ error?: st
     },
   })
 
-  // The invoice is the cost — post it once, here.
+  // The invoice is the cost: post it once, here.
   await prisma.costTransaction.create({
     data: {
       projectId,
@@ -93,6 +93,7 @@ export async function createSubInvoice(formData: FormData): Promise<{ error?: st
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'SubInvoice',
     entityId: invoice.id,
     action: 'CREATE',
@@ -120,6 +121,7 @@ export async function approveSubInvoice(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'SubInvoice',
     entityId: invoiceId,
     action: 'APPROVE',
@@ -152,6 +154,7 @@ export async function paySubInvoice(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'SubInvoice',
     entityId: invoiceId,
     action: 'PAY',
@@ -181,6 +184,7 @@ export async function toggleVendorHold(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Vendor',
     entityId: vendorId,
     action: hold ? 'HOLD' : 'RELEASE',

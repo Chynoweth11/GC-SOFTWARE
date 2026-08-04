@@ -130,26 +130,26 @@ export function LevelingBoard({
                               <Variance value={q.adjustmentAmount} favorableWhen="negative" />
                             </td>
                             <td className="num font-medium">{money(q.leveledAmount)}</td>
-                            <td className="num">{q.leveledAmount > 0 ? percent(q.varianceToLowPct, 1) : '—'}</td>
+                            <td className="num">{q.leveledAmount > 0 ? percent(q.varianceToLowPct, 1) : '-'}</td>
                             <td className="num">
                               <Variance value={q.leveledAmount > 0 ? q.varianceToBudget : 0} />
                             </td>
                             <td className="num">{money(q.allowances)}</td>
                             <td className="max-w-[14rem] truncate" title={q.inclusions ?? ''} style={{ color: 'var(--text-muted)' }}>
-                              {q.inclusions ?? '—'}
+                              {q.inclusions ?? '-'}
                             </td>
                             <td className="max-w-[14rem] truncate" title={q.exclusions ?? ''} style={{ color: 'var(--text-muted)' }}>
-                              {q.exclusions ?? '—'}
+                              {q.exclusions ?? '-'}
                             </td>
                             <td className="max-w-[12rem] truncate" title={q.qualifications ?? ''} style={{ color: 'var(--text-muted)' }}>
-                              {q.qualifications ?? '—'}
+                              {q.qualifications ?? '-'}
                             </td>
                             <td>
                               <StatusPill status={q.status} />
                             </td>
                             <td className="max-w-[16rem]">
                               {q.flags.length === 0 ? (
-                                <span style={{ color: 'var(--text-subtle)' }}>—</span>
+                                <span style={{ color: 'var(--text-subtle)' }}>-</span>
                               ) : (
                                 <div className="flex flex-wrap gap-1">
                                   {q.flags.map((f) => (

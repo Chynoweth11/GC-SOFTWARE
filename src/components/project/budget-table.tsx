@@ -11,7 +11,7 @@ type SortKey = 'code' | 'currentBudget' | 'totalCostToDate' | 'committed' | 'for
 
 /**
  * The cost-control table. Sortable and filterable client-side because the whole
- * project's lines are already loaded — round-tripping to the server to re-sort
+ * project's lines are already loaded: round-tripping to the server to re-sort
  * a hundred rows would be slower than doing it here.
  */
 export function BudgetTable({
@@ -167,7 +167,7 @@ export function BudgetTable({
                   </td>
                   <td style={{ color: 'var(--text-muted)' }}>{CATEGORY_LABELS[l.category]}</td>
                   <td className="max-w-[10rem] truncate" style={{ color: 'var(--text-muted)' }}>
-                    {l.tradeName ?? '—'}
+                    {l.tradeName ?? '-'}
                   </td>
                   <td className="num">{money(l.originalBudget)}</td>
                   <td className="num">
@@ -255,7 +255,7 @@ export function BudgetTable({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4}>Total — {filtered.length} cost codes</td>
+                <td colSpan={4}>Total, {filtered.length} cost codes</td>
                 <td className="num">{money(totals.originalBudget)}</td>
                 <td className="num">{money(totals.budgetRevisions)}</td>
                 <td className="num">{money(totals.currentBudget)}</td>

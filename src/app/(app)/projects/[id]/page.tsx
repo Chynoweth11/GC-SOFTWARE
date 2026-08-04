@@ -265,11 +265,11 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
           <DataList
             columns={1}
             items={[
-              { label: 'Client', value: project.client?.name ?? '—' },
-              { label: 'Project type', value: project.projectType ?? '—' },
-              { label: 'Delivery method', value: project.deliveryMethod ?? '—' },
-              { label: 'Architect', value: project.architect ?? '—' },
-              { label: 'Superintendent', value: project.superintendent ?? '—' },
+              { label: 'Client', value: project.client?.name ?? '-' },
+              { label: 'Project type', value: project.projectType ?? '-' },
+              { label: 'Delivery method', value: project.deliveryMethod ?? '-' },
+              { label: 'Architect', value: project.architect ?? '-' },
+              { label: 'Superintendent', value: project.superintendent ?? '-' },
             ]}
           />
           <DataList
@@ -283,7 +283,7 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
                 label: 'Schedule position',
                 value:
                   f.health.daysAheadBehind == null ? (
-                    '—'
+                    '-'
                   ) : (
                     <span style={{ color: f.health.daysAheadBehind < 0 ? 'var(--adverse)' : 'var(--favorable)' }}>
                       {days(f.health.daysAheadBehind)}

@@ -9,7 +9,7 @@ import { setPreference } from '@/lib/queries/views'
  * Saved views and dashboard layout.
  *
  * Both are interface state, so they carry no permission check beyond being
- * signed in — a saved view is a query string, and running it goes through the
+ * signed in: a saved view is a query string, and running it goes through the
  * same role filtering every other page request does. Nothing here can widen
  * what a user is allowed to see.
  */

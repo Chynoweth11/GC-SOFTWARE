@@ -7,7 +7,7 @@ import type { SavedViewRow } from '@/lib/queries/views'
 /**
  * Saved filter combinations.
  *
- * The view stores the query string, so applying one is a navigation — every
+ * The view stores the query string, so applying one is a navigation: every
  * figure is recomputed by the page it lands on. There is no cached result to
  * go stale and no second copy of the filter logic.
  */

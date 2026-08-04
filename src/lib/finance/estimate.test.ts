@@ -45,7 +45,7 @@ const item = (over: Partial<EstimateItemInput> = {}): EstimateItemInput => ({
   ...over,
 })
 
-describe('quantity derivation — Takeoff column I', () => {
+describe('quantity derivation: Takeoff column I', () => {
   it('each measure applies its own dimensional formula', () => {
     expect(deriveNetQuantity({ measure: 'EA', count: 12, length: 5, width: 5, depth: 5 })).toBe(12)
     expect(deriveNetQuantity({ measure: 'LF', count: 3, length: 40, width: 0, depth: 0 })).toBe(120)
@@ -66,7 +66,7 @@ describe('quantity derivation — Takeoff column I', () => {
   })
 })
 
-describe('line pricing — Takeoff L,P,R,T,V,W', () => {
+describe('line pricing: Takeoff L,P,R,T,V,W', () => {
   it('waste inflates the quantity everything else prices from', () => {
     const derived = deriveEstimateItem(item({ measure: 'SF', count: 1, length: 100, width: 10, wastePct: 0.1 }), factors)
     expect(derived.netQty).toBe(1_000)
@@ -100,7 +100,7 @@ describe('line pricing — Takeoff L,P,R,T,V,W', () => {
   })
 })
 
-describe('QA flags — Takeoff column X', () => {
+describe('QA flags: Takeoff column X', () => {
   it('an untouched row raises nothing', () => {
     expect(deriveEstimateItem(item(), factors).qaFlags).toEqual([])
   })
@@ -127,7 +127,7 @@ describe('QA flags — Takeoff column X', () => {
   })
 })
 
-describe('general conditions — duration-driven quantities', () => {
+describe('general conditions: duration-driven quantities', () => {
   it('weekly items requantify when the duration changes', () => {
     const gc = { id: 'g', item: 'Superintendent', basis: 'WK', qty: 0, followsDuration: true, unitCost: 2_850 }
     expect(deriveGeneralCondition(gc, 22).total).toBe(62_700)
@@ -140,7 +140,7 @@ describe('general conditions — duration-driven quantities', () => {
   })
 })
 
-describe('markup chain — Bid Summary G5:G16', () => {
+describe('markup chain: Bid Summary G5:G16', () => {
   /** Reproduces the sample bid B-26-014 exactly. */
   const buildUp = buildBidBuildUp({
     directCost: 661_341.68866,
@@ -176,7 +176,7 @@ describe('markup chain — Bid Summary G5:G16', () => {
     expect(buildUp.grossMarginOnBid).toBeCloseTo(0.164914378671245, 10)
   })
 
-  it('markups compound in order — profit is taken on cost plus overhead', () => {
+  it('markups compound in order: profit is taken on cost plus overhead', () => {
     const step = buildUp.steps.find((s) => s.label === 'Profit')!
     expect(step.basis).toBe('Cost subtotal + overhead')
     expect(step.amount).toBeCloseTo((buildUp.costSubtotal + buildUp.overhead) * 0.1, 6)

@@ -151,7 +151,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
 }
 
 /**
- * Risk scoring — Project Summary ▸ W,X,Y,Z.
+ * Risk scoring: Project Summary ▸ W,X,Y,Z.
  *   Behind schedule            +2   (and a further +1 past 14 days)
  *   Margin under target        +2   (and +3 more if the project is losing money)
  *   AR over 25% of contract    +1

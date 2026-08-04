@@ -16,9 +16,9 @@ export interface CashFlowContext {
   dataDate: Date
   contractStart: Date
   forecastCompletion: Date
-  /** Current contract sum — the revenue the S-curve bills against. */
+  /** Current contract sum: the revenue the S-curve bills against. */
   contractValue: number
-  /** Selected estimate at completion — the cost the S-curve spends. */
+  /** Selected estimate at completion: the cost the S-curve spends. */
   forecastCost: number
   /** Actual cost recognised through the data date. */
   costToDate: number
@@ -77,7 +77,7 @@ export function buildCashFlow(
   const retentionMonth = endOfMonth(ctx.forecastCompletion, 1)
 
   // Receivable already outstanding at the data date. It is collected across the
-  // first `lag` forecast months — without this the lag model would re-collect
+  // first `lag` forecast months: without this the lag model would re-collect
   // billings the actual months already brought in.
   const openingReceivable = Math.max(
     0,
@@ -166,8 +166,8 @@ export function buildCashFlow(
 
 /**
  * Three scenarios for the same project.
- *   best   — collections arrive a month sooner and remaining cost lands 3% under
- *   worst  — collections lag an extra month and remaining cost runs 8% over
+ *   best  : collections arrive a month sooner and remaining cost lands 3% under
+ *   worst : collections lag an extra month and remaining cost runs 8% over
  */
 export function buildCashFlowScenarios(
   periods: readonly CashFlowPeriodInput[],

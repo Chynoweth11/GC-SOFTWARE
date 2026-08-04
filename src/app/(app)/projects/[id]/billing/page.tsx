@@ -108,7 +108,7 @@ export default async function BillingPage({
         </ChartFrame>
       </div>
 
-      <Section title="Application register" description="Never delete a prior application — each one restates the cumulative position">
+      <Section title="Application register" description="Never delete a prior application: each one restates the cumulative position">
         {g702s.length === 0 ? (
           <EmptyState title="No applications" description="The register will build as pay applications are issued." />
         ) : (
@@ -161,7 +161,7 @@ export default async function BillingPage({
                         {money(g.arOutstanding)}
                       </td>
                       <td className="num" style={{ color: (g.daysOutstanding ?? 0) > 45 ? 'var(--adverse)' : undefined }}>
-                        {g.daysOutstanding ?? '—'}
+                        {g.daysOutstanding ?? '-'}
                       </td>
                       <td>
                         <StatusPill status={g.status} />
@@ -188,7 +188,7 @@ export default async function BillingPage({
 
       {selected && (
         <Section
-          title={`Application ${selected.appNumber} — AIA G702 / G703`}
+          title={`Application ${selected.appNumber}: AIA G702 / G703`}
           description={`Period to ${date(selected.periodTo)}`}
           actions={
             <ExportMenu
@@ -363,7 +363,7 @@ export default async function BillingPage({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={2}>Total — must equal the contract sum</td>
+                  <td colSpan={2}>Total: must equal the contract sum</td>
                   <td className="num">{money(sumBy(sovLines, (s) => s.scheduledValue))}</td>
                   <td className="num">{money(f.billing.totalCompletedAndStored)}</td>
                   <td className="num">{money(sumBy(sovLines, (s) => s.scheduledValue) - f.billing.totalCompletedAndStored)}</td>
@@ -379,7 +379,7 @@ export default async function BillingPage({
             style={{ background: 'var(--caution-soft)', borderColor: 'var(--caution)', color: 'var(--caution)' }}
           >
             The schedule of values totals {money(sumBy(sovLines, (s) => s.scheduledValue))} but the contract sum is{' '}
-            {money(f.contract.currentContract)} — a difference of{' '}
+            {money(f.contract.currentContract)}: a difference of{' '}
             <Variance value={f.contract.currentContract - sumBy(sovLines, (s) => s.scheduledValue)} />. Add a change-order line to the
             schedule of values so the owner can be billed for the approved changes.
           </div>

@@ -30,7 +30,7 @@ export default async function ProjectLayout({
   return (
     <>
       <PageHeader
-        title={`${project.number} — ${project.name}`}
+        title={`${project.number}: ${project.name}`}
         subtitle={
           <>
             {project.client?.name ?? 'No client on file'} · {[project.city, project.state].filter(Boolean).join(', ') || 'Location not set'} ·{' '}

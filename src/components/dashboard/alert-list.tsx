@@ -14,7 +14,7 @@ export function AlertList({ alerts, showProject = true }: { alerts: Alert[]; sho
         className="rounded-lg border px-3 py-2.5 text-xs"
         style={{ background: 'var(--favorable-soft)', borderColor: 'color-mix(in oklab, var(--favorable) 30%, transparent)', color: 'var(--favorable)' }}
       >
-        Nothing needs attention — no budget overruns, forecast deterioration, margin erosion or overdue positions detected.
+        Nothing needs attention: no budget overruns, forecast deterioration, margin erosion or overdue positions detected.
       </div>
     )
   }

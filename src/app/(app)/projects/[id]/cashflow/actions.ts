@@ -48,6 +48,7 @@ export async function saveCashFlowPeriod(formData: FormData): Promise<{ error?: 
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'CashFlowPeriod',
     entityId: `${projectId}:${periodEnd.toISOString().slice(0, 10)}`,
     action: 'SAVE',
@@ -61,7 +62,7 @@ export async function saveCashFlowPeriod(formData: FormData): Promise<{ error?: 
 
 /**
  * Rebuilds the planned curve from the contract dates, preserving any actuals
- * already recorded — a reset of the plan, not of the history.
+ * already recorded: a reset of the plan, not of the history.
  */
 export async function regenerateCurve(formData: FormData): Promise<void> {
   const user = await requireUser()
@@ -102,6 +103,7 @@ export async function regenerateCurve(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Project',
     entityId: projectId,
     action: 'REBUILD_CURVE',

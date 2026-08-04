@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireUser } from '@/lib/auth'
+import { requireUser, type SessionUser } from '@/lib/auth'
 import { assertCan } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { recordAudit } from '@/lib/audit'
@@ -23,7 +23,8 @@ function parseDate(value: FormDataEntryValue | null): Date | null {
  * change order raises the budget, un-approving it reverses that raise, and the
  * budget's revision history records both movements.
  */
-async function syncBudgetForChangeOrder(changeOrderId: string, userId: string, companyId: string) {
+async function syncBudgetForChangeOrder(changeOrderId: string, actor: SessionUser) {
+  const { id: userId, companyId } = actor
   const co = await prisma.changeOrder.findUniqueOrThrow({
     where: { id: changeOrderId },
     include: { lines: { include: { costCode: true } } },
@@ -38,10 +39,12 @@ async function syncBudgetForChangeOrder(changeOrderId: string, userId: string, c
       await recordAudit({
         companyId,
         userId,
+        actor,
         entity: 'ChangeOrder',
         entityId: changeOrderId,
+        entityLabel: co.number,
         action: 'BUDGET_REVERSED',
-        summary: `Reversed the budget impact of ${co.number} — it is no longer approved`,
+        summary: `Reversed the budget impact of ${co.number}, it is no longer approved`,
       })
     }
     return
@@ -67,7 +70,7 @@ async function syncBudgetForChangeOrder(changeOrderId: string, userId: string, c
         budgetLineId: budgetLine.id,
         type: 'CHANGE_ORDER',
         amount: allocation.amount,
-        reason: `${co.number} approved — ${co.description}`,
+        reason: `${co.number} approved, ${co.description}`,
         changeOrderId,
         createdBy: userId,
       },
@@ -136,15 +139,16 @@ export async function createChangeOrder(formData: FormData): Promise<{ error?: s
     },
   })
 
-  await syncBudgetForChangeOrder(co.id, user.id, user.companyId)
+  await syncBudgetForChangeOrder(co.id, user)
 
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'ChangeOrder',
     entityId: co.id,
     action: 'CREATE',
-    summary: `Raised ${number} for ${ownerAmount} (cost ${costAmount}) — ${description}`,
+    summary: `Raised ${number} for ${ownerAmount} (cost ${costAmount}), ${description}`,
   })
 
   revalidatePath(`/projects/${projectId}/changes`)
@@ -176,11 +180,12 @@ export async function updateChangeOrderStatus(formData: FormData): Promise<void>
     },
   })
 
-  await syncBudgetForChangeOrder(changeOrderId, user.id, user.companyId)
+  await syncBudgetForChangeOrder(changeOrderId, user)
 
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'ChangeOrder',
     entityId: changeOrderId,
     action: 'STATUS',
@@ -210,6 +215,7 @@ export async function setPendingInclusion(formData: FormData): Promise<void> {
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Project',
     entityId: projectId,
     action: 'UPDATE',

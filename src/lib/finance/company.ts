@@ -62,7 +62,7 @@ export interface PortfolioTotals {
 }
 
 /**
- * Company rollup — Executive Dashboard ▸ C8:C27 and Financial Dashboard ▸ C5:C15.
+ * Company rollup: Executive Dashboard ▸ C8:C27 and Financial Dashboard ▸ C5:C15.
  *
  * Every figure here is a straight aggregation of the per-project engine output,
  * so the executive view and the project view can never disagree.
@@ -170,7 +170,7 @@ export function followUpState(row: PipelineRow, asOf: Date): FollowUpState {
 }
 
 /**
- * Pipeline rollup — Bid Pipeline ▸ G4:V4 and Executive Dashboard ▸ C23:F27.
+ * Pipeline rollup: Bid Pipeline ▸ G4:V4 and Executive Dashboard ▸ C23:F27.
  * Weighted value uses the submitted amount once a bid has gone out, otherwise
  * the estimator's value, times the win probability.
  */
@@ -364,7 +364,7 @@ export interface WipRow {
 }
 
 /**
- * Work-in-progress schedule — the report a bonding agent and a bank both ask for.
+ * Work-in-progress schedule: the report a bonding agent and a bank both ask for.
  * Profit earned to date is forecast profit × percent complete.
  */
 export function buildWipSchedule(rows: readonly ProjectRow[]): WipRow[] {

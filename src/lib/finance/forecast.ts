@@ -2,7 +2,7 @@ import { num, safeDiv, sumBy } from './core'
 import type { CostLine, EacMethod, EacResult, EarnedValue } from './types'
 
 /**
- * Earned-value position — Progress & Forecast ▸ C5:C10.
+ * Earned-value position: Progress & Forecast ▸ C5:C10.
  *
  *   BAC = Σ current budget
  *   PV  = BAC × planned cumulative % at the data date
@@ -33,7 +33,7 @@ export function computeEarnedValue(
 }
 
 /**
- * Estimate at completion — Progress & Forecast ▸ F5:F9.
+ * Estimate at completion: Progress & Forecast ▸ F5:F9.
  *
  *   1  Bottom-up   = Σ line forecast at completion (the managers' numbers)
  *   2  Performance = BAC ÷ CPI                     (assumes present efficiency holds)

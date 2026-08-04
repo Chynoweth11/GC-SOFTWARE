@@ -1,4 +1,6 @@
+import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
+import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { COST_CATEGORIES, CATEGORY_LABELS } from '@/lib/finance/cost'
 import { EmptyState, Section } from '@/components/ui'
@@ -9,6 +11,7 @@ export const metadata = { title: 'Cost codes' }
 
 export default async function CostCodesPage() {
   const user = await requireUser()
+  if (!can(user.role, 'manage:reference_data')) forbidden()
 
   const [costCodes, divisions, trades] = await Promise.all([
     prisma.costCode.findMany({
@@ -28,7 +31,7 @@ export default async function CostCodesPage() {
     <div className="space-y-6">
       <Section
         title="Cost codes"
-        description="The spine of the whole system — budgets, commitments, cost and forecasts all hang off these. Retiring a code keeps its history intact; codes are never deleted."
+        description="The spine of the whole system: budgets, commitments, cost and forecasts all hang off these. Retiring a code keeps its history intact; codes are never deleted."
       >
         {costCodes.length === 0 ? (
           <EmptyState title="No cost codes yet" description="Add the first one below." />

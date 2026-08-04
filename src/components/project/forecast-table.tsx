@@ -108,7 +108,7 @@ export function ForecastTable({
                       <StatusPill status={r.riskLevel} />
                     </td>
                     <td className="max-w-[18rem] truncate" title={r.note ?? ''} style={{ color: r.note ? 'var(--text-muted)' : 'var(--text-subtle)' }}>
-                      {r.note ?? (Math.abs(r.delta) > 5_000 ? 'Explanation required' : '—')}
+                      {r.note ?? (Math.abs(r.delta) > 5_000 ? 'Explanation required' : '-')}
                     </td>
                     {canEdit && (
                       <td className="no-print">
@@ -147,7 +147,7 @@ export function ForecastTable({
 
                           <div>
                             <label className="label mb-1 block" htmlFor="fc-pct">
-                              % complete — {row.code}
+                              % complete: {row.code}
                             </label>
                             <input
                               id="fc-pct"
@@ -231,7 +231,7 @@ export function ForecastTable({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={2}>Total — {visible.length} cost codes</td>
+                <td colSpan={2}>Total, {visible.length} cost codes</td>
                 <td className="num">{money(totals.currentBudget)}</td>
                 <td className="num">{money(totals.costToDate)}</td>
                 <td className="num">{money(totals.committed)}</td>

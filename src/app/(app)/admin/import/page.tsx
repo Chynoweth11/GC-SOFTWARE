@@ -48,7 +48,7 @@ export default async function ImportPage() {
 
         <div className="mt-3">
           <ImportForm
-            projects={projects.map((p) => ({ id: p.id, label: `${p.number} — ${p.name}` }))}
+            projects={projects.map((p) => ({ id: p.id, label: `${p.number} ${p.name}` }))}
             action={importCostTransactions}
           />
         </div>
@@ -70,7 +70,7 @@ export default async function ImportPage() {
                   {uncoded.map((row) => (
                     <tr key={row.projectId}>
                       <td className="font-medium">
-                        {projectById.get(row.projectId)?.number} — {projectById.get(row.projectId)?.name}
+                        {projectById.get(row.projectId)?.number}: {projectById.get(row.projectId)?.name}
                       </td>
                       <td className="num">{row._count}</td>
                       <td>

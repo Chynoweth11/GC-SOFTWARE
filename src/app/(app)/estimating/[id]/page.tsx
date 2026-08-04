@@ -41,7 +41,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
           )}
           <Kpi
             label="Cost per square foot"
-            value={summary.metrics.buildingAreaSf ? money(summary.metrics.totalBidPerSf, { cents: true }) : '—'}
+            value={summary.metrics.buildingAreaSf ? money(summary.metrics.totalBidPerSf, { cents: true }) : '-'}
             detail={summary.metrics.buildingAreaSf ? `${fmtNumber(summary.metrics.buildingAreaSf)} SF` : 'No area entered'}
           />
         </KpiGrid>
@@ -69,7 +69,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
                 Bid build-up
               </h3>
               <p className="mt-0.5 text-xs" style={{ color: 'var(--text-subtle)' }}>
-                Every step, compounded in order — exactly how the final number was reached
+                Every step, compounded in order: exactly how the final number was reached
               </p>
             </div>
             <div className="table-wrap">
@@ -91,7 +91,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
                     >
                       <td>{step.label}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{step.basis}</td>
-                      <td className="num">{step.rate == null ? '—' : percent(step.rate, 2)}</td>
+                      <td className="num">{step.rate == null ? '-' : percent(step.rate, 2)}</td>
                       <td className="num">{money(step.amount)}</td>
                       <td className="num">{money(step.runningTotal)}</td>
                     </tr>
@@ -129,9 +129,9 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
             <DataList
               columns={1}
               items={[
-                { label: 'Building area', value: summary.metrics.buildingAreaSf ? `${fmtNumber(summary.metrics.buildingAreaSf)} SF` : '—' },
-                { label: 'Direct cost / SF', value: summary.metrics.buildingAreaSf ? money(summary.metrics.directCostPerSf, { cents: true }) : '—' },
-                { label: 'Total bid / SF', value: summary.metrics.buildingAreaSf ? money(summary.metrics.totalBidPerSf, { cents: true }) : '—' },
+                { label: 'Building area', value: summary.metrics.buildingAreaSf ? `${fmtNumber(summary.metrics.buildingAreaSf)} SF` : '-' },
+                { label: 'Direct cost / SF', value: summary.metrics.buildingAreaSf ? money(summary.metrics.directCostPerSf, { cents: true }) : '-' },
+                { label: 'Total bid / SF', value: summary.metrics.buildingAreaSf ? money(summary.metrics.totalBidPerSf, { cents: true }) : '-' },
                 { label: 'Labor share of direct', value: percent(summary.metrics.laborShareOfDirect) },
                 { label: 'Subcontract share of direct', value: percent(summary.metrics.subShareOfDirect) },
                 { label: 'Total labor hours', value: fmtNumber(summary.laborHours, 0) },
@@ -267,7 +267,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
         <InfoNote>
           This estimate has been converted to project{' '}
           <Link href={`/projects/${estimate.projects[0].id}`} className="underline">
-            {estimate.projects[0].number} — {estimate.projects[0].name}
+            {estimate.projects[0].number}: {estimate.projects[0].name}
           </Link>
           . The estimate is preserved as a locked historical record.
         </InfoNote>
@@ -275,7 +275,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
         canAward && (
           <Section
             title="Convert to a project"
-            description="Creates the project, its original contract value, the budget by cost code and the opening cash-flow curve — the estimate stays locked as the historical record."
+            description="Creates the project, its original contract value, the budget by cost code and the opening cash-flow curve: the estimate stays locked as the historical record."
           >
             <ConvertToProjectForm
               estimateId={estimate.id}

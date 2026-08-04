@@ -11,12 +11,12 @@ import { setPocMethod } from './actions'
 
 const METHOD_EXPLANATIONS: Record<string, string> = {
   COST_TO_COST: 'Cost incurred ÷ forecast final cost. The default and the most defensible under ASC 606.',
-  QUANTITY: 'Earned labour hours ÷ budget hours from quantity tracking — physical progress, not spend.',
+  QUANTITY: 'Earned labour hours ÷ budget hours from quantity tracking, physical progress, not spend.',
   SUBCONTRACTOR_PROGRESS: 'Weighted average of subcontract percent complete, by contract value.',
   SCHEDULE: 'Elapsed time between contract start and forecast completion.',
   MANUAL: "Management's own assessment, entered directly.",
   EARNED_VALUE: 'Earned value ÷ budget at completion.',
-  BILLING: 'Amount billed ÷ contract value. The weakest measure — billing can lead or lag the work.',
+  BILLING: 'Amount billed ÷ contract value. The weakest measure, billing can lead or lag the work.',
 }
 
 export default async function PocPage({ params }: { params: Promise<{ id: string }> }) {
@@ -124,7 +124,7 @@ export default async function PocPage({ params }: { params: Promise<{ id: string
 
       <InfoNote>
         Under <strong>{titleize(f.revenue.method)}</strong>, this project has earned {money(f.revenue.revenueEarned)} of its{' '}
-        {money(f.contract.currentContract)} contract and billed {money(f.revenue.amountBilled)} —{' '}
+        {money(f.contract.currentContract)} contract and billed {money(f.revenue.amountBilled)}.{' '}
         {f.revenue.overbilled > 0 ? `overbilled by ${money(f.revenue.overbilled)}` : `underbilled by ${money(f.revenue.underbilled)}`}.
         {showMargins && ` Profit earned to date is ${money(f.forecastProfit * f.revenue.pctComplete)} of a forecast ${money(f.forecastProfit)}.`}
       </InfoNote>
@@ -154,11 +154,11 @@ export default async function PocPage({ params }: { params: Promise<{ id: string
                     <td className="max-w-[24rem]" style={{ color: 'var(--text-muted)' }}>
                       {METHOD_EXPLANATIONS[m.method]}
                     </td>
-                    <td className="num">{m.available ? percent(m.pct) : '—'}</td>
+                    <td className="num">{m.available ? percent(m.pct) : '-'}</td>
                     <td>{m.available ? <Meter value={m.pct} showLabel={false} /> : <span style={{ color: 'var(--text-subtle)' }}>No data</span>}</td>
-                    <td className="num">{m.available ? money(m.revenue) : '—'}</td>
-                    <td className="num">{m.available ? <Variance value={m.overUnder} favorableWhen="positive" /> : '—'}</td>
-                    <td>{m.method === project.pocMethod ? <strong style={{ color: 'var(--accent)' }}>In use</strong> : '—'}</td>
+                    <td className="num">{m.available ? money(m.revenue) : '-'}</td>
+                    <td className="num">{m.available ? <Variance value={m.overUnder} favorableWhen="positive" /> : '-'}</td>
+                    <td>{m.method === project.pocMethod ? <strong style={{ color: 'var(--accent)' }}>In use</strong> : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -176,7 +176,7 @@ export default async function PocPage({ params }: { params: Promise<{ id: string
               <select id="poc-method" name="pocMethod" className="field text-xs" defaultValue={project.pocMethod}>
                 {methods.map((m) => (
                   <option key={m.method} value={m.method}>
-                    {titleize(m.method)} — {percent(m.pct)}
+                    {titleize(m.method)}: {percent(m.pct)}
                   </option>
                 ))}
               </select>
@@ -194,7 +194,7 @@ export default async function PocPage({ params }: { params: Promise<{ id: string
                 max="1"
                 className="field w-32 text-xs"
                 defaultValue={project.manualPctComplete ?? ''}
-                placeholder="—"
+                placeholder="-"
               />
             </div>
             <button type="submit" className="btn btn-primary">

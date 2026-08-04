@@ -158,8 +158,8 @@ export function CostCodeManager({
                   <td className="font-medium">{c.code}</td>
                   <td className="max-w-[24rem] truncate">{c.description}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{categories.find((x) => x.value === c.category)?.label ?? c.category}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{c.divisionLabel ?? '—'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{c.tradeName ?? '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{c.divisionLabel ?? '-'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{c.tradeName ?? '-'}</td>
                   <td className="num">{c.inUse}</td>
                   <td>{c.active ? <Pill tone="favorable">Active</Pill> : <Pill tone="neutral">Retired</Pill>}</td>
                   <td className="no-print">

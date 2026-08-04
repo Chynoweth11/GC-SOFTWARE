@@ -22,7 +22,7 @@ export interface ImportResult {
  *
  * Two safeguards matter more than speed here: a hash of the source row prevents
  * the same export being loaded twice, and a row whose cost code doesn't exist on
- * the project is still imported but flagged for coding rather than dropped —
+ * the project is still imported but flagged for coding rather than dropped,
  * losing a cost silently is far worse than showing it uncoded.
  */
 export async function importCostTransactions(formData: FormData): Promise<ImportResult> {
@@ -134,10 +134,11 @@ export async function importCostTransactions(formData: FormData): Promise<Import
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
+    actor: user,
     entity: 'Project',
     entityId: projectId,
     action: 'IMPORT',
-    summary: `Imported ${imported} cost transactions from "${file.name}" — ${skippedDuplicates} duplicates skipped, ${needsCoding} needing a cost code`,
+    summary: `Imported ${imported} cost transactions from "${file.name}", ${skippedDuplicates} duplicates skipped, ${needsCoding} needing a cost code`,
   })
 
   revalidatePath(`/projects/${projectId}/costs`)
@@ -151,7 +152,7 @@ export async function importCostTransactions(formData: FormData): Promise<Import
     unmatchedCodes: [...unmatchedCodes].slice(0, 20),
     message:
       imported === 0
-        ? 'Nothing new was imported — every row was already in the ledger.'
+        ? 'Nothing new was imported: every row was already in the ledger.'
         : `Imported ${imported} transaction${imported === 1 ? '' : 's'}.${needsCoding > 0 ? ` ${needsCoding} need a cost code assigning on the job cost tab.` : ''}`,
   }
 }

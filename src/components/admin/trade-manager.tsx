@@ -106,7 +106,7 @@ export function TradeManager({
               {visible.map((t) => (
                 <tr key={t.id} style={t.active ? undefined : { opacity: 0.6 }}>
                   <td className="font-medium">{t.name}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{t.divisionLabel ?? '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{t.divisionLabel ?? '-'}</td>
                   <td className="num">{t.costCodes}</td>
                   <td className="num">{t.budgetLines}</td>
                   <td className="num">{t.vendors}</td>
