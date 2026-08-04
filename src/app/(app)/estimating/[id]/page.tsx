@@ -275,7 +275,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
         canAward && (
           <Section
             title="Convert to a project"
-            description="Creates the project, its original contract value, the budget by cost code and the opening cash-flow curve: the estimate stays locked as the historical record."
+            description="Creates the project, its original contract value, the budget by line item and the opening cash-flow curve: the estimate stays locked as the historical record."
           >
             <ConvertToProjectForm
               estimateId={estimate.id}

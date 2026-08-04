@@ -47,7 +47,7 @@ export interface CostLineInput {
   notes?: string | null
 }
 
-/** Fully derived cost-control row: one per cost code. */
+/** Fully derived cost-control row: one per line item. */
 export interface CostLine extends CostLineInput {
   currentBudget: number
   totalCostToDate: number

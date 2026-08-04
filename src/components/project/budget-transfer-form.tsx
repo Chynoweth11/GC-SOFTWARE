@@ -31,7 +31,7 @@ export function BudgetTransferForm({
         setConfirmation(null)
         const result = await action(formData)
         if (result?.error) setError(result.error)
-        else setConfirmation('Transfer posted. Both cost codes now show the movement in their revision history.')
+        else setConfirmation('Transfer posted. Both line items now show the movement in their revision history.')
       }}
       className="card space-y-3 p-4"
     >
@@ -58,7 +58,7 @@ export function BudgetTransferForm({
             Transfer from
           </label>
           <select id="fromLineId" name="fromLineId" required className="field text-xs">
-            <option value="">Select a cost code</option>
+            <option value="">Select a line item</option>
             {lines.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.label}
@@ -72,7 +72,7 @@ export function BudgetTransferForm({
             Transfer to
           </label>
           <select id="toLineId" name="toLineId" required className="field text-xs">
-            <option value="">Select a cost code</option>
+            <option value="">Select a line item</option>
             {lines.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.label}

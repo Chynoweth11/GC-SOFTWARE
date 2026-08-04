@@ -12,9 +12,9 @@ export interface AlertContext {
   commitments: CommitmentDerived[]
   /** Latest locked forecast period end, null when the project has never been forecast. */
   lastForecastPeriodEnd: Date | null
-  /** Previous period EAC by cost code, for month-over-month movement. */
+  /** Previous period EAC by line item, for month-over-month movement. */
   previousEacByCostCode: ReadonlyMap<string, number>
-  /** Cost codes that carry cost but no commitment. */
+  /** Line items that carry cost but no commitment. */
   targetMarginPct: number
 }
 
@@ -60,7 +60,7 @@ export function buildProjectAlerts(ctx: AlertContext): Alert[] {
       alert(
         Math.abs(total) > 0.02 * f.currentBudget ? 'CRITICAL' : 'WARNING',
         'Budget',
-        `${overrunLines.length} cost code${overrunLines.length === 1 ? '' : 's'} forecast over budget`,
+        `${overrunLines.length} line item${overrunLines.length === 1 ? '' : 's'} forecast over budget`,
         `Forecast exceeds the current budget by ${formatShort(Math.abs(total))} across ${overrunLines
           .slice(0, 3)
           .map((l) => l.code)
@@ -78,7 +78,7 @@ export function buildProjectAlerts(ctx: AlertContext): Alert[] {
       alert(
         'CRITICAL',
         'Budget',
-        `${negativeRemaining.length} cost code${negativeRemaining.length === 1 ? '' : 's'} with a negative remaining balance`,
+        `${negativeRemaining.length} line item${negativeRemaining.length === 1 ? '' : 's'} with a negative remaining balance`,
         `Cost to date already exceeds the current budget on ${negativeRemaining.map((l) => l.code).slice(0, 4).join(', ')}.`,
         ctx,
         { href: `${href}/budget` },
@@ -154,7 +154,7 @@ export function buildProjectAlerts(ctx: AlertContext): Alert[] {
     )
     if (deterioration > LARGE_MOVE_ABS) {
       out.push(
-        alert('WARNING', 'Forecast', 'Forecast deteriorated against last month', `Total forecast cost rose ${formatShort(deterioration)} across ${deteriorated.length} cost codes.`, ctx, {
+        alert('WARNING', 'Forecast', 'Forecast deteriorated against last month', `Total forecast cost rose ${formatShort(deterioration)} across ${deteriorated.length} line items.`, ctx, {
           href: `${href}/forecast`,
           value: deterioration,
         }),
@@ -171,7 +171,7 @@ export function buildProjectAlerts(ctx: AlertContext): Alert[] {
   )
   if (uncommitted.length > 0) {
     out.push(
-      alert('WARNING', 'Commitments', `${uncommitted.length} cost code${uncommitted.length === 1 ? '' : 's'} carrying cost with no commitment`, `Cost is posting against ${uncommitted.map((l) => l.code).slice(0, 4).join(', ')} with no subcontract or purchase order behind it.`, ctx, {
+      alert('WARNING', 'Commitments', `${uncommitted.length} line item${uncommitted.length === 1 ? '' : 's'} carrying cost with no commitment`, `Cost is posting against ${uncommitted.map((l) => l.code).slice(0, 4).join(', ')} with no subcontract or purchase order behind it.`, ctx, {
         href: `${href}/costs`,
       }),
     )
@@ -205,7 +205,7 @@ export function buildProjectAlerts(ctx: AlertContext): Alert[] {
   )
   if (runaway.length > 0) {
     out.push(
-      alert('WARNING', 'Cost trend', `${runaway.length} cost code${runaway.length === 1 ? '' : 's'} spending ahead of progress`, `Spend is running more than 15 points ahead of physical progress on ${runaway.map((l) => l.code).slice(0, 4).join(', ')}.`, ctx, {
+      alert('WARNING', 'Cost trend', `${runaway.length} line item${runaway.length === 1 ? '' : 's'} spending ahead of progress`, `Spend is running more than 15 points ahead of physical progress on ${runaway.map((l) => l.code).slice(0, 4).join(', ')}.`, ctx, {
         href: `${href}/costs`,
       }),
     )

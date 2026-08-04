@@ -51,7 +51,7 @@ export async function createSubInvoice(formData: FormData): Promise<{ error?: st
   }
 
   const targetCostCodeId = costCodeId || commitment.lines[0]?.costCodeId
-  if (!targetCostCodeId) return { error: 'This subcontract has no cost code to charge.' }
+  if (!targetCostCodeId) return { error: 'This subcontract has no line item to charge.' }
 
   const retentionPct = Number(formData.get('retentionPct'))
   const periodEnd = parseDate(formData.get('periodEnd'))

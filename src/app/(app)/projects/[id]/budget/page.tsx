@@ -11,7 +11,7 @@ import { ChartFrame, HorizontalBars, Meter } from '@/components/charts/primitive
 import { BudgetTable } from '@/components/project/budget-table'
 import { BudgetTransferForm } from '@/components/project/budget-transfer-form'
 import { BudgetLineForm, type BudgetLineOption } from '@/components/project/budget-line-form'
-import { transferBudget, reviseBudget, addBudgetLine, deleteBudgetLine } from './actions'
+import { transferBudget, reviseBudget, addBudgetLine, updateBudgetLine, deleteBudgetLine } from './actions'
 
 export default async function BudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser()
@@ -22,7 +22,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
   const { project, financials: f } = bundle
   const canEdit = can(user.role, 'edit:budget')
 
-  const [budgetLines, revisions, allCodes, costCounts, commitmentCounts] = await Promise.all([
+  const [budgetLines, revisions, trades, costCounts, commitmentCounts] = await Promise.all([
     prisma.budgetLine.findMany({
       where: { projectId: id },
       include: { costCode: { include: { division: true } }, trade: true },
@@ -33,7 +33,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
       include: { budgetLine: { include: { costCode: true } }, changeOrder: true },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.costCode.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { code: 'asc' } }),
+    prisma.trade.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { sortOrder: 'asc' } }),
     prisma.costTransaction.groupBy({ by: ['costCodeId'], where: { projectId: id, deletedAt: null }, _count: true }),
     prisma.commitmentLine.groupBy({ by: ['costCodeId'], where: { commitment: { projectId: id } }, _count: true }),
   ])
@@ -42,22 +42,15 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
   const costedCodes = new Set(costCounts.map((c) => c.costCodeId))
   const committedCodes = new Set(commitmentCounts.map((c) => c.costCodeId))
   const revisedLines = new Set(revisions.map((r) => r.budgetLineId))
-  const onBudget = new Set(budgetLines.map((l) => l.costCodeId))
-  const budgetLineOptions: BudgetLineOption[] = budgetLines.map((line) => {
-    const blocked =
-      costedCodes.has(line.costCodeId) || committedCodes.has(line.costCodeId) || revisedLines.has(line.id)
-    return {
-      budgetLineId: line.id,
-      code: line.costCode.code,
-      description: line.description,
-      originalBudget: line.originalBudget,
-      removable: !blocked,
-      blockedBecause: blocked ? 'This code carries cost, a commitment or a revision' : null,
-    }
-  })
-  const availableCodes = allCodes
-    .filter((c) => !onBudget.has(c.id))
-    .map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))
+  const budgetLineOptions: BudgetLineOption[] = budgetLines.map((line) => ({
+    budgetLineId: line.id,
+    description: line.description,
+    category: line.category,
+    tradeId: line.tradeId,
+    originalBudget: line.originalBudget,
+    removable:
+      !costedCodes.has(line.costCodeId) && !committedCodes.has(line.costCodeId) && !revisedLines.has(line.id),
+  }))
 
   const byDivision = rollupBy(f.lines, (l) => ({
     key: l.divisionCode ?? '-',
@@ -128,7 +121,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
 
       <Section
         title="Cost control"
-        description="One row per cost code. Original budget, revisions, commitment, cost, earned value and forecast: the whole project P&L is built here."
+        description="One row per line item. Original budget, revisions, commitment, cost, earned value and forecast: the whole project P&L is built here."
       >
         <BudgetTable
           lines={f.lines}
@@ -142,13 +135,14 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
       {canEdit && (
         <Section
           title="Budget lines"
-          description="Adds a cost code to this job. A code with nothing booked against it can also be removed."
+          description="A line is a cost type and a description. Lines with nothing booked against them can be renamed, reclassified or removed."
         >
           <BudgetLineForm
             projectId={project.id}
-            availableCodes={availableCodes}
             lines={budgetLineOptions}
+            trades={trades.map((t) => ({ id: t.id, label: t.name }))}
             add={addBudgetLine}
+            update={updateBudgetLine}
             remove={deleteBudgetLine}
             canDelete={can(user.role, 'delete:records')}
           />
@@ -158,7 +152,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
       {canEdit && (
         <Section
           title="Budget transfer"
-          description="Moves budget between cost codes. Both halves are recorded as revisions so the original budget is never overwritten."
+          description="Moves budget between line items. Both halves are recorded as revisions so the original budget is never overwritten."
         >
           <BudgetTransferForm lines={lineOptions} action={transferBudget} projectId={project.id} />
         </Section>
@@ -177,7 +171,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th>Cost code</th>
+                    <th>Line item</th>
                     <th>Type</th>
                     <th>Reason</th>
                     <th>Change order</th>

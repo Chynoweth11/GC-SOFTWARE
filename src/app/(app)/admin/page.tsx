@@ -36,7 +36,7 @@ export default async function AdminCompanyPage() {
         <KpiGrid cols={6}>
           <Kpi label="Projects" value={projects.toString()} />
           <Kpi label="Active users" value={users.toString()} />
-          <Kpi label="Cost codes" value={costCodes.toString()} />
+          <Kpi label="Budget lines" value={costCodes.toString()} />
           <Kpi label="Vendors" value={vendors.toString()} />
           <Kpi label="Cost transactions" value={transactions.toLocaleString('en-US')} />
           <Kpi label="Audit records" value={auditEntries.toLocaleString('en-US')} />

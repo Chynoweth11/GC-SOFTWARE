@@ -7,7 +7,7 @@ import { AdminTabs } from '@/components/admin/admin-tabs'
 /**
  * Entry is granted by holding any one of the settings capabilities, not by
  * holding the reference-data one specifically. An executive who may read the
- * audit history but not edit a cost code still needs to get through this door.
+ * audit history but not edit a line item still needs to get through this door.
  */
 const SETTINGS_CAPABILITIES: Capability[] = [
   'manage:reference_data',

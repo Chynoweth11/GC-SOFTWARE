@@ -28,7 +28,7 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
       include: { costCode: true, vendor: true, commitment: true },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     }),
-    prisma.costCode.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { code: 'asc' } }),
+    prisma.budgetLine.findMany({ where: { projectId: id }, orderBy: [{ category: 'asc' }, { description: 'asc' }] }),
     prisma.vendor.findMany({ where: { companyId: user.companyId }, orderBy: { name: 'asc' } }),
     prisma.commitment.findMany({ where: { projectId: id }, include: { vendor: true }, orderBy: { number: 'asc' } }),
   ])
@@ -146,7 +146,7 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
         <Section title="Post a cost" description="Manual entries and corrections. Imported transactions land in the same ledger.">
           <CostEntryForm
             projectId={project.id}
-            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
+            costCodes={costCodes.map((c) => ({ id: c.costCodeId, label: `${c.description} (${CATEGORY_LABELS[c.category]})` }))}
             vendors={vendors.map((v) => ({ id: v.id, label: v.name }))}
             commitments={commitments.map((c) => ({ id: c.id, label: `${c.number} ${c.vendor.name}` }))}
             action={createCostTransaction}
@@ -179,7 +179,7 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
               `${t.vendorId ?? 'none'}|${t.amount.toFixed(2)}|${t.date.toISOString().slice(0, 10)}`,
             ),
           }))}
-          costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
+          costCodes={costCodes.map((c) => ({ id: c.costCodeId, label: `${c.description} (${CATEGORY_LABELS[c.category]})` }))}
           canEdit={canEdit}
           recode={canEdit ? recodeTransaction : undefined}
           split={canEdit ? splitTransaction : undefined}

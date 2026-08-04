@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { prisma } from '@/lib/db'
+import { CATEGORY_LABELS } from '@/lib/finance/cost'
 import { changeOrderSummary } from '@/lib/finance'
 import { date, money, moneyShort, percent, titleize } from '@/lib/format'
 import { EmptyState, KpiGrid, MoneyKpi, Kpi, Section, StatusPill, Variance, InfoNote } from '@/components/ui'
@@ -22,7 +23,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
 
   const [trades, costCodes] = await Promise.all([
     prisma.trade.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { sortOrder: 'asc' } }),
-    prisma.costCode.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { code: 'asc' } }),
+    prisma.budgetLine.findMany({ where: { projectId: id }, orderBy: [{ category: 'asc' }, { description: 'asc' }] }),
   ])
 
   const summary = changeOrderSummary(changeOrders)
@@ -222,7 +223,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
             <ChangeOrderForm
               projectId={project.id}
               trades={trades.map((t) => ({ id: t.id, label: t.name }))}
-              costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
+              costCodes={costCodes.map((c) => ({ id: c.costCodeId, label: `${c.description} (${CATEGORY_LABELS[c.category]})` }))}
               action={createChangeOrder}
             />
           </Section>

@@ -123,7 +123,7 @@ export function BudgetTable({
           Over budget only
         </label>
         <span className="ml-auto text-xs" style={{ color: 'var(--text-subtle)' }}>
-          {filtered.length} of {lines.length} cost codes
+          {filtered.length} of {lines.length} line items
         </span>
       </div>
 
@@ -255,7 +255,7 @@ export function BudgetTable({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4}>Total, {filtered.length} cost codes</td>
+                <td colSpan={4}>Total, {filtered.length} line items</td>
                 <td className="num">{money(totals.originalBudget)}</td>
                 <td className="num">{money(totals.budgetRevisions)}</td>
                 <td className="num">{money(totals.currentBudget)}</td>

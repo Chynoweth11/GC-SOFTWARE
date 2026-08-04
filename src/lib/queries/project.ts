@@ -139,7 +139,7 @@ export const getProjectBundle = cache(
       }),
     ])
 
-    // ── Aggregate the transactional records onto their cost codes ─────────
+    // ── Aggregate the transactional records onto their line items ─────────
     const revisionByLine = new Map<string, number>()
     for (const r of revisions) {
       revisionByLine.set(r.budgetLineId, (revisionByLine.get(r.budgetLineId) ?? 0) + r.amount)
@@ -152,7 +152,7 @@ export const getProjectBundle = cache(
         (ch) => ch.amount,
       )
       const lineTotal = sumBy(c.lines, (l) => l.amount)
-      // Approved changes are spread pro-rata across the commitment's cost codes.
+      // Approved changes are spread pro-rata across the commitment's line items.
       for (const line of c.lines) {
         const share = safeDiv(line.amount, lineTotal)
         const value = line.amount + approvedChangeTotal * share

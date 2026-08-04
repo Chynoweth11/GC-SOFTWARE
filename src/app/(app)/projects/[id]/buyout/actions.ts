@@ -10,7 +10,7 @@ import { recordAudit } from '@/lib/audit'
  * Awards a bid package to a bidder at their leveled amount.
  *
  * On a project this is the buyout decision, so it also drafts the subcontract:
- * the awarded value becomes a commitment against the package's cost code, and
+ * the awarded value becomes a commitment against the package's line item, and
  * the buyout saving falls out of the budget comparison automatically.
  */
 export async function awardPackage(formData: FormData): Promise<{ error?: string }> {

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getCompanyDashboard, parseProjectFilter } from '@/lib/queries/company'
-import { money, moneyShort, month, percent, number as fmtNumber } from '@/lib/format'
+import { money, moneyShort, percent, number as fmtNumber } from '@/lib/format'
 import {
   DataList,
   EmptyState,
@@ -16,7 +16,8 @@ import {
   StatusPill,
   Variance,
 } from '@/components/ui'
-import { ChartFrame, DonutChart, HorizontalBars, LineChart, BarChart, Meter } from '@/components/charts/primitives'
+import { ChartFrame, DonutChart, HorizontalBars, Meter } from '@/components/charts/primitives'
+import { PeriodSeriesChart } from '@/components/charts/period-series'
 import { ProjectFilters } from '@/components/dashboard/project-filters'
 import { SavedViews } from '@/components/dashboard/saved-views'
 import { listSavedViews } from '@/lib/queries/views'
@@ -42,6 +43,7 @@ export default async function DashboardPage({
     getPreference(user.id, 'dashboard.layout'),
   ])
   const { totals, projects, pipeline, cashFlow, revenueForecast, alerts } = data
+  const asOfIso = (cashFlow.at(-1)?.periodEnd ?? new Date()).toISOString()
 
   const showCompany = can(user.role, 'view:company_financials')
   const showMargins = can(user.role, 'view:margins')
@@ -79,11 +81,6 @@ export default async function DashboardPage({
   }
 
   // ── Chart data, all derived from the same engine output the tiles use ───
-  const cashLabels = cashFlow.map((r) => month(r.periodEnd))
-  const forecastStart = cashFlow.findIndex((r) => r.periodEnd > new Date('2026-03-31T00:00:00Z'))
-
-  const revenueLabels = revenueForecast.map((r) => month(r.periodEnd))
-
   const backlogByProject = [...projects]
     .sort((a, b) => b.financials.backlog - a.financials.backlog)
     .slice(0, 10)
@@ -167,27 +164,23 @@ export default async function DashboardPage({
       </Section>
     ),
     cashflow: (
-      <ChartFrame
+      <PeriodSeriesChart
         title="Company cash flow"
         subtitle="Collections against cost, with the cumulative position"
         className="xl:col-span-2"
-      >
-        {cashFlow.length > 0 ? (
-          <LineChart
-            labels={cashLabels}
-            height={260}
-            format="moneyShort"
-            forecastFromIndex={forecastStart >= 0 ? forecastStart : undefined}
-            series={[
-              { key: 'cash', label: 'Cumulative cash', values: cashFlow.map((r) => r.cumulativeCash), color: 'var(--accent)', area: true },
-              { key: 'collections', label: 'Collections', values: cashFlow.map((r) => r.collections), color: 'var(--favorable)' },
-              { key: 'costs', label: 'Cost outflow', values: cashFlow.map((r) => r.costs), color: 'var(--adverse)' },
-            ]}
-          />
-        ) : (
-          <EmptyState title="No cash-flow periods yet" description="Set a contract start and forecast completion on a project to generate its S-curve." />
-        )}
-      </ChartFrame>
+        kind="line"
+        height={260}
+        asOf={asOfIso}
+        points={cashFlow.map((r) => ({
+          date: r.periodEnd.toISOString(),
+          values: { cash: r.cumulativeCash, collections: r.collections, costs: r.costs },
+        }))}
+        series={[
+          { key: 'cash', label: 'Cumulative cash', color: 'var(--accent)', area: true, cumulative: true },
+          { key: 'collections', label: 'Collections', color: 'var(--favorable)' },
+          { key: 'costs', label: 'Cost outflow', color: 'var(--adverse)' },
+        ]}
+      />
     ),
     backlog: (
       <ChartFrame title="Backlog by project" subtitle="Revenue still to be earned">
@@ -199,22 +192,22 @@ export default async function DashboardPage({
       </ChartFrame>
     ),
     revenue: (
-      <ChartFrame title="Revenue and profit forecast" subtitle="Monthly, derived from every project's cost curve" className="xl:col-span-2">
-        {revenueForecast.length > 0 ? (
-          <BarChart
-            labels={revenueLabels}
-            height={250}
-            format="moneyShort"
-            series={[
-              { key: 'revenue', label: 'Revenue', values: revenueForecast.map((r) => r.revenue), color: 'var(--accent)' },
-              { key: 'cost', label: 'Cost', values: revenueForecast.map((r) => r.cost), color: 'var(--series-neutral)' },
-              { key: 'profit', label: 'Gross profit', values: revenueForecast.map((r) => r.grossProfit), color: 'var(--favorable)' },
-            ]}
-          />
-        ) : (
-          <EmptyState title="No forecast periods" />
-        )}
-      </ChartFrame>
+      <PeriodSeriesChart
+        title="Revenue and profit forecast"
+        subtitle="Derived from every project's cost curve"
+        className="xl:col-span-2"
+        height={250}
+        asOf={asOfIso}
+        points={revenueForecast.map((r) => ({
+          date: r.periodEnd.toISOString(),
+          values: { revenue: r.revenue, cost: r.cost, profit: r.grossProfit },
+        }))}
+        series={[
+          { key: 'revenue', label: 'Revenue', color: 'var(--accent)' },
+          { key: 'cost', label: 'Cost', color: 'var(--series-neutral)' },
+          { key: 'profit', label: 'Gross profit', color: 'var(--favorable)' },
+        ]}
+      />
     ),
     billing: (
       <ChartFrame title="Billing position" subtitle="Over- and underbilling across the portfolio">

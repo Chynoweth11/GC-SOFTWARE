@@ -22,6 +22,8 @@ export interface ProjectFilter {
   projectType?: string
   location?: string
   health?: ('OK' | 'WATCH' | 'HIGH RISK')[]
+  /** Narrows line-level reports to one or more general cost types. */
+  costType?: string[]
 }
 
 export interface CompanyDashboardData {
@@ -192,5 +194,6 @@ export function parseProjectFilter(searchParams: Record<string, string | string[
     projectType: first(searchParams.type) || undefined,
     location: first(searchParams.location) || undefined,
     health: many(searchParams.health) as ProjectFilter['health'],
+    costType: many(searchParams.costType),
   }
 }

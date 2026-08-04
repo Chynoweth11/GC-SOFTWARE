@@ -95,7 +95,7 @@ export function TradeManager({
               <tr>
                 <th>Trade / scope</th>
                 <th>CSI division</th>
-                <th className="num">Cost codes</th>
+                <th className="num">Budget lines</th>
                 <th className="num">Budget lines</th>
                 <th className="num">Vendors</th>
                 <th>Status</th>

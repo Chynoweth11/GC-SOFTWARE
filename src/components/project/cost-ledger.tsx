@@ -93,8 +93,8 @@ export function CostLedger({
           <option value="ACTUAL">Actual</option>
           <option value="ACCRUAL">Accrual</option>
         </select>
-        <select className="field w-auto py-1.5 text-xs" value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} aria-label="Filter by cost code">
-          <option value="">All cost codes</option>
+        <select className="field w-auto py-1.5 text-xs" value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} aria-label="Filter by line item">
+          <option value="">All line items</option>
           {uniqueCodes.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -128,7 +128,7 @@ export function CostLedger({
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Cost code</th>
+                <th>Line item</th>
                 <th>Description</th>
                 <th>Vendor</th>
                 <th>Commitment</th>
@@ -214,7 +214,7 @@ export function CostLedger({
                             Move this transaction to
                           </label>
                           <select id="recode-code" name="costCodeId" required className="field py-1.5 text-xs">
-                            <option value="">Select a cost code</option>
+                            <option value="">Select a line item</option>
                             {costCodes.map((c) => (
                               <option key={c.id} value={c.id}>
                                 {c.label}
@@ -249,10 +249,10 @@ export function CostLedger({
                         </div>
                         <div className="min-w-[18rem] flex-1">
                           <label className="label mb-1 block" htmlFor="split-code">
-                            Into cost code
+                            Into line item
                           </label>
                           <select id="split-code" name="splitCostCodeId" required className="field py-1.5 text-xs">
-                            <option value="">Select a cost code</option>
+                            <option value="">Select a line item</option>
                             {costCodes.map((c) => (
                               <option key={c.id} value={c.id}>
                                 {c.label}

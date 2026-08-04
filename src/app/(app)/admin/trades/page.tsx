@@ -49,7 +49,7 @@ export default async function TradesPage() {
         />
       </Section>
 
-      <Section title="CSI divisions" description="The division structure estimates and cost codes roll up to">
+      <Section title="CSI divisions" description="The division structure estimates and line items roll up to">
         <div className="card-flush">
           <div className="table-wrap">
             <table className="data">
@@ -58,7 +58,7 @@ export default async function TradesPage() {
                   <th>Code</th>
                   <th>Name</th>
                   <th className="num">Trades</th>
-                  <th className="num">Cost codes</th>
+                  <th className="num">Budget lines</th>
                 </tr>
               </thead>
               <tbody>

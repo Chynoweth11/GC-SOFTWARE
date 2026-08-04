@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback } from 'react'
 import type { ProjectFilter } from '@/lib/queries/company'
+import { CATEGORY_LABELS, COST_CATEGORIES } from '@/lib/finance/cost'
 
 const STATUSES = [
   ['ACTIVE', 'Active'],
@@ -24,6 +25,7 @@ const HEALTH = [
 export function ProjectFilters({
   options,
   current,
+  showCostTypes = false,
 }: {
   options: {
     managers: { id: string; name: string }[]
@@ -32,6 +34,8 @@ export function ProjectFilters({
     locations: string[]
   }
   current: ProjectFilter
+  /** Only the line-level reports have a cost type to narrow by. */
+  showCostTypes?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -62,6 +66,7 @@ export function ProjectFilters({
   const activeCount =
     (current.status?.length ?? 0) +
     (current.health?.length ?? 0) +
+    (current.costType?.length ?? 0) +
     (current.pmUserId ? 1 : 0) +
     (current.clientId ? 1 : 0) +
     (current.projectType ? 1 : 0) +
@@ -110,6 +115,29 @@ export function ProjectFilters({
           )
         })}
       </div>
+
+      {showCostTypes && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="label mr-1">Cost type</span>
+          {COST_CATEGORIES.map((value) => {
+            const active = current.costType?.includes(value)
+            return (
+              <button
+                key={value}
+                onClick={() => toggleMulti('costType', value)}
+                className="pill transition-colors"
+                style={{
+                  background: active ? 'var(--accent)' : 'var(--surface-inset)',
+                  color: active ? '#fff' : 'var(--text-muted)',
+                }}
+                aria-pressed={active}
+              >
+                {CATEGORY_LABELS[value]}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <select
         className="field w-auto py-1 text-xs"

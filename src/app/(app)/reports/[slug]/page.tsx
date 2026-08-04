@@ -77,7 +77,11 @@ export default async function ReportPage({
   const filters = (
     <>
       <SavedViews scope={slug} views={savedViews} save={saveView} remove={deleteView} />
-      <ProjectFilters options={data.filterOptions} current={filter} />
+      <ProjectFilters
+        options={data.filterOptions}
+        current={filter}
+        showCostTypes={slug === 'budget-vs-actual' || slug === 'committed'}
+      />
     </>
   )
 
@@ -160,10 +164,12 @@ export default async function ReportPage({
     )
   }
 
-  // ── Budget vs actual / committed / EAC: cost-code level ───────────────
+  // ── Budget vs actual and committed: line level ────────────────────────
   if (slug === 'budget-vs-actual' || slug === 'committed') {
     const rows = bundles.flatMap((p) =>
-      p.financials.lines.map((l) => ({ project: p, line: l })),
+      p.financials.lines
+        .filter((l) => !filter.costType?.length || filter.costType.includes(l.category))
+        .map((l) => ({ project: p, line: l })),
     )
     const isCommitted = slug === 'committed'
     return (
@@ -176,9 +182,8 @@ export default async function ReportPage({
               <thead>
                 <tr>
                   <th>Job</th>
-                  <th>Code</th>
-                  <th>Description</th>
-                  <th>Category</th>
+                  <th>Line item</th>
+                  <th>Cost type</th>
                   <th className="num">Current budget</th>
                   <th className="num">Committed</th>
                   {isCommitted ? (
@@ -205,8 +210,7 @@ export default async function ReportPage({
                         {project.number}
                       </Link>
                     </td>
-                    <td className="font-medium">{line.code}</td>
-                    <td className="max-w-[16rem] truncate">{line.description}</td>
+                    <td className="max-w-[20rem] truncate font-medium">{line.description}</td>
                     <td style={{ color: 'var(--text-muted)' }}>{titleize(line.category)}</td>
                     <td className="num">{money(line.currentBudget)}</td>
                     <td className="num">{money(line.committed)}</td>

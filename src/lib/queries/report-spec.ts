@@ -18,8 +18,8 @@ import { titleize } from '@/lib/format'
 
 export const REPORT_TITLES: Record<string, { title: string; description: string }> = {
   wip: { title: 'Work in progress', description: 'Percentage-of-completion schedule across the portfolio' },
-  'budget-vs-actual': { title: 'Budget vs actual vs forecast', description: 'Every cost code on every project' },
-  committed: { title: 'Budget vs committed', description: 'Commitment coverage and exposure by cost code' },
+  'budget-vs-actual': { title: 'Budget vs actual vs forecast', description: 'Every line item on every project' },
+  committed: { title: 'Budget vs committed', description: 'Commitment coverage and exposure by line item' },
   eac: { title: 'Estimate at completion', description: 'Cost to complete and EAC by project' },
   profitability: { title: 'Profitability', description: 'Forecast profit and margin by project and by dimension' },
   'billing-position': { title: 'Over / underbilling', description: 'Earned revenue against amount billed' },
@@ -130,9 +130,8 @@ export async function buildReportSpec(
           columns: [
             { header: 'Job', key: 'job', width: 12 },
             { header: 'Project', key: 'project', width: 26 },
-            { header: 'Cost code', key: 'code', width: 14 },
-            { header: 'Description', key: 'description', width: 32 },
-            { header: 'Category', key: 'category', width: 18 },
+            { header: 'Line item', key: 'description', width: 34 },
+            { header: 'Cost type', key: 'category', width: 18 },
             { header: 'Trade', key: 'trade', width: 22 },
             { header: 'Original budget', key: 'originalBudget', format: 'money', total: true },
             { header: 'Revisions', key: 'budgetRevisions', format: 'money', total: true },
@@ -147,10 +146,11 @@ export async function buildReportSpec(
             { header: 'FAC variance', key: 'facVariance', format: 'money', total: true },
           ],
           rows: data.projects.flatMap((p) =>
-            p.financials.lines.map((l) => ({
+            p.financials.lines
+              .filter((l) => !filter.costType?.length || filter.costType.includes(l.category))
+              .map((l) => ({
               job: p.number,
               project: p.name,
-              code: l.code,
               description: l.description,
               category: titleize(l.category),
               trade: l.tradeName ?? '',

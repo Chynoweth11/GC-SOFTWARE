@@ -16,7 +16,8 @@
 import { prisma } from '@/lib/db'
 import { recordAudit } from '@/lib/audit'
 
-const EM_DASH = '—'
+// Written as an escape so the character itself appears nowhere in the codebase.
+const EM_DASH = '\u2014'
 
 export function cleanText(value: string): string {
   return value

@@ -31,7 +31,6 @@ export function AdminTabs({
         ...(canManageClients ? [{ href: '/admin/clients', label: 'Clients' }] : []),
         ...(canManageReferenceData
           ? [
-              { href: '/admin/cost-codes', label: 'Cost codes' },
               { href: '/admin/trades', label: 'Trades and divisions' },
               { href: '/admin/vendors', label: 'Vendors' },
             ]

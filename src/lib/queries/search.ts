@@ -25,7 +25,7 @@ export type SearchKind =
   | 'Cost'
   | 'Budget line'
   | 'Report'
-  | 'Cost code'
+  | 'Line item'
   | 'Setting'
 
 export interface SearchHit {
@@ -52,7 +52,7 @@ const DESTINATIONS: { title: string; subtitle: string; href: string; needs?: Par
   { title: 'Work in progress report', subtitle: 'The WIP schedule', href: '/reports/wip', needs: 'view:company_financials' },
   { title: 'Profitability report', subtitle: 'Forecast profit and margin', href: '/reports/profitability', needs: 'view:margins' },
   { title: 'Company cash flow report', subtitle: 'Collections against outflow', href: '/reports/cashflow', needs: 'view:cash_position' },
-  { title: 'Budget vs actual report', subtitle: 'Every cost code on every project', href: '/reports/budget-vs-actual' },
+  { title: 'Budget vs actual report', subtitle: 'Every line item on every project', href: '/reports/budget-vs-actual' },
   { title: 'Estimate at completion report', subtitle: 'Cost to complete by project', href: '/reports/eac' },
   { title: 'Change orders report', subtitle: 'Every change across the portfolio', href: '/reports/change-orders' },
   { title: 'Subcontractor payments report', subtitle: 'Invoiced, paid and outstanding', href: '/reports/subcontractors' },

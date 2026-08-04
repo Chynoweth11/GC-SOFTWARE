@@ -111,7 +111,7 @@ export default async function ForecastPage({ params }: { params: Promise<{ id: s
 
       {missingNotes.length > 0 && (
         <InfoNote>
-          {missingNotes.length} cost code{missingNotes.length === 1 ? '' : 's'} moved more than $5,000 without an explanation:{' '}
+          {missingNotes.length} line item{missingNotes.length === 1 ? '' : 's'} moved more than $5,000 without an explanation:{' '}
           {missingNotes.map((r) => r.code).join(', ')}. Every material movement needs a written reason before the period is locked.
         </InfoNote>
       )}

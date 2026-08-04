@@ -21,7 +21,7 @@ export interface ImportResult {
  * Imports accounting cost transactions from a spreadsheet.
  *
  * Two safeguards matter more than speed here: a hash of the source row prevents
- * the same export being loaded twice, and a row whose cost code doesn't exist on
+ * the same export being loaded twice, and a row whose line item doesn't exist on
  * the project is still imported but flagged for coding rather than dropped,
  * losing a cost silently is far worse than showing it uncoded.
  */
@@ -48,11 +48,11 @@ export async function importCostTransactions(formData: FormData): Promise<Import
 
   if (parsed.rows.length === 0) return { error: 'No data rows found. The first row must be the column headers.' }
 
-  const required = ['date', 'cost code', 'description', 'amount']
+  const required = ['date', 'line item', 'description', 'amount']
   const missing = required.filter((header) => !parsed.headers.includes(header))
   if (missing.length > 0) {
     return {
-      error: `The spreadsheet is missing these columns: ${missing.join(', ')}. Expected headers: date, cost code, description, amount, and optionally vendor, reference, type and hours.`,
+      error: `The spreadsheet is missing these columns: ${missing.join(', ')}. Expected headers: date, line item, description, amount, and optionally vendor, reference, type and hours.`,
     }
   }
 
@@ -73,7 +73,7 @@ export async function importCostTransactions(formData: FormData): Promise<Import
       data: {
         companyId: user.companyId,
         code: 'UNCODED',
-        description: 'Imported cost awaiting a cost code',
+        description: 'Imported cost awaiting a line item',
         category: 'OTHER',
         sortOrder: 9999,
       },
@@ -87,7 +87,7 @@ export async function importCostTransactions(formData: FormData): Promise<Import
 
   for (const row of parsed.rows) {
     const date = asDate(row.values['date'])
-    const codeText = asText(row.values['cost code']).toUpperCase()
+    const codeText = asText(row.values['line item']).toUpperCase()
     const description = asText(row.values['description'])
     const amount = asNumber(row.values['amount'])
 
@@ -138,7 +138,7 @@ export async function importCostTransactions(formData: FormData): Promise<Import
     entity: 'Project',
     entityId: projectId,
     action: 'IMPORT',
-    summary: `Imported ${imported} cost transactions from "${file.name}", ${skippedDuplicates} duplicates skipped, ${needsCoding} needing a cost code`,
+    summary: `Imported ${imported} cost transactions from "${file.name}", ${skippedDuplicates} duplicates skipped, ${needsCoding} needing a line item`,
   })
 
   revalidatePath(`/projects/${projectId}/costs`)
@@ -153,6 +153,6 @@ export async function importCostTransactions(formData: FormData): Promise<Import
     message:
       imported === 0
         ? 'Nothing new was imported: every row was already in the ledger.'
-        : `Imported ${imported} transaction${imported === 1 ? '' : 's'}.${needsCoding > 0 ? ` ${needsCoding} need a cost code assigning on the job cost tab.` : ''}`,
+        : `Imported ${imported} transaction${imported === 1 ? '' : 's'}.${needsCoding > 0 ? ` ${needsCoding} need a line item assigning on the job cost tab.` : ''}`,
   }
 }

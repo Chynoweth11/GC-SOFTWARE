@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { prisma } from '@/lib/db'
+import { CATEGORY_LABELS } from '@/lib/finance/cost'
 import { paymentStatus, sumBy } from '@/lib/finance'
 import { date, money, percent } from '@/lib/format'
 import { EmptyState, KpiGrid, MoneyKpi, Section, StatusPill, Variance, Pill } from '@/components/ui'
@@ -25,7 +26,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
       include: { vendor: true, commitment: true, costCode: true },
       orderBy: [{ periodEnd: 'desc' }, { invoiceNumber: 'asc' }],
     }),
-    prisma.costCode.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { code: 'asc' } }),
+    prisma.budgetLine.findMany({ where: { projectId: id }, orderBy: [{ category: 'asc' }, { description: 'asc' }] }),
   ])
 
   const dataDate = project.dataDate ?? new Date()
@@ -244,7 +245,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
                   <tr>
                     <th>Invoice</th>
                     <th>Subcontractor</th>
-                    <th>Cost code</th>
+                    <th>Line item</th>
                     <th>Period end</th>
                     <th className="num">Amount</th>
                     <th className="num">Retention</th>
@@ -337,7 +338,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
               label: `${c.number} ${c.vendorName}`,
               retentionPct: c.retentionPct,
             }))}
-            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
+            costCodes={costCodes.map((c) => ({ id: c.costCodeId, label: `${c.description} (${CATEGORY_LABELS[c.category]})` }))}
             action={createSubInvoice}
           />
         </Section>

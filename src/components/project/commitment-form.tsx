@@ -132,7 +132,7 @@ export function CommitmentForm({
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
             <div className="lg:col-span-2">
               <label htmlFor="c-code" className="label mb-1.5 block">
-                Cost code
+                Line item
               </label>
               <select id="c-code" name="costCodeId" required className="field text-xs">
                 <option value="">Select</option>

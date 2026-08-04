@@ -113,7 +113,7 @@ describe('pdf writer', () => {
     const columns = [
       { header: 'Job', key: 'job', width: 12 },
       { header: 'Project', key: 'project', width: 26 },
-      { header: 'Cost code', key: 'code', width: 14 },
+      { header: 'Line item', key: 'code', width: 14 },
       { header: 'Description', key: 'description', width: 32 },
       ...Array.from({ length: 13 }, (_, i) => ({
         header: `Money column ${i}`,

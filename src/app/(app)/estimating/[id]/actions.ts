@@ -22,7 +22,7 @@ function parseDate(value: FormDataEntryValue | null): Date | null {
  *
  * Everything the estimator built becomes the project's opening position: the
  * bid becomes the contract value, each trade section becomes a budget line on a
- * cost code, the labour/material/equipment/subcontract split is preserved, and
+ * line item, the labour/material/equipment/subcontract split is preserved, and
  * a planned progress curve is generated across the contract dates. The estimate
  * itself is locked, so the basis of the bid is never edited after award.
  */
@@ -53,7 +53,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
 
   const company = await prisma.company.findUniqueOrThrow({ where: { id: user.companyId } })
 
-  // Cost codes are created per trade section and cost category, so the budget
+  // Line items are created per trade section and cost category, so the budget
   // carries the estimator's own structure rather than a generic template.
   const { summary } = bundle
   const categoryTotals = new Map<string, { section: string; category: CostCategory; amount: number }>()
@@ -118,7 +118,7 @@ export async function convertEstimateToProject(formData: FormData): Promise<{ er
     },
   })
 
-  // Budget lines, on cost codes created or reused per section and category.
+  // Budget lines, on line items created or reused per section and category.
   const codePrefix: Record<CostCategory, string> = {
     LABOR: 'L', MATERIAL: 'M', EQUIPMENT: 'E', SUBCONTRACT: 'S',
     GENERAL_CONDITIONS: 'G', OVERHEAD: 'O', CONTINGENCY: 'C', OTHER: 'X',

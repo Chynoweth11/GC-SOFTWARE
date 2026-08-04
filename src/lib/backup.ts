@@ -10,8 +10,8 @@ import { prisma } from '@/lib/db'
  * the same engine as a live one. A backup that carried a computed margin would
  * become a second source of truth the moment a formula changed.
  *
- * References to shared records (cost codes, trades, vendors, clients, users)
- * travel as their business keys: a cost code's code, a vendor's name, never
+ * References to shared records (line items, trades, vendors, clients, users)
+ * travel as their business keys: a line item's code, a vendor's name, never
  * as database ids, so a project can be restored into a company whose ids differ.
  */
 
@@ -104,7 +104,7 @@ export async function exportProject(projectId: string, companyId: string): Promi
       prisma.projectSnapshot.findMany({ where: { projectId }, orderBy: { asOf: 'asc' } }),
     ])
 
-  // Every cost code the project touches, so a restore into a fresh company can
+  // Every line item the project touches, so a restore into a fresh company can
   // recreate them with their category and trade rather than guessing.
   const codeMap = new Map<string, { code: string; description: string; category: string; tradeName: string | null }>()
   const noteCode = (costCode: { code: string; description: string; category: string } | null, tradeName: string | null) => {
@@ -480,7 +480,7 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
 
     const definition = codeDefinitions.get(key)
     if (!definition) {
-      warnings.push(`Cost code ${key} was referenced but not defined in the backup; it was created without a category.`)
+      warnings.push(`Line item ${key} was referenced but not defined in the backup; it was created without a category.`)
     }
     const record = await prisma.costCode.create({
       data: {
@@ -655,7 +655,7 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
   for (const revision of rows(doc.budgetRevisions)) {
     const budgetLineId = budgetLineIdByCode.get(asStr(revision.costCode))
     if (!budgetLineId) {
-      warnings.push(`A budget revision referenced cost code ${asStr(revision.costCode)}, which has no budget line; it was skipped.`)
+      warnings.push(`A budget revision referenced line item ${asStr(revision.costCode)}, which has no budget line; it was skipped.`)
       continue
     }
     await prisma.budgetRevision.create({

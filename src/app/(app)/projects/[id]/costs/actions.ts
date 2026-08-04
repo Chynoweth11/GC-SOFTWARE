@@ -21,7 +21,7 @@ export async function createCostTransaction(formData: FormData): Promise<{ error
   const amount = Number(formData.get('amount'))
   const description = String(formData.get('description') ?? '').trim()
 
-  if (!costCodeId) return { error: 'Choose a cost code.' }
+  if (!costCodeId) return { error: 'Choose a line item.' }
   if (!isFinite(amount) || amount === 0) return { error: 'Enter an amount.' }
   if (!description) return { error: 'Enter a description so the transaction can be recognised later.' }
 
@@ -65,14 +65,14 @@ export async function createCostTransaction(formData: FormData): Promise<{ error
   return {}
 }
 
-/** Corrects the cost code on a transaction, keeping a record of what it was. */
+/** Corrects the line item on a transaction, keeping a record of what it was. */
 export async function recodeTransaction(formData: FormData): Promise<{ error?: string }> {
   const user = await requireUser()
   assertCan(user.role, 'edit:costs')
 
   const transactionId = String(formData.get('transactionId'))
   const costCodeId = String(formData.get('costCodeId'))
-  if (!costCodeId) return { error: 'Choose the cost code to move this transaction to.' }
+  if (!costCodeId) return { error: 'Choose the line item to move this transaction to.' }
 
   const existing = await prisma.costTransaction.findFirst({
     where: { id: transactionId, project: { companyId: user.companyId } },
@@ -81,7 +81,7 @@ export async function recodeTransaction(formData: FormData): Promise<{ error?: s
   if (!existing) return { error: 'Transaction not found.' }
 
   const target = await prisma.costCode.findFirst({ where: { id: costCodeId, companyId: user.companyId } })
-  if (!target) return { error: 'That cost code does not belong to this company.' }
+  if (!target) return { error: 'That line item does not belong to this company.' }
 
   await prisma.costTransaction.update({
     where: { id: transactionId },
@@ -107,7 +107,7 @@ export async function recodeTransaction(formData: FormData): Promise<{ error?: s
 }
 
 /**
- * Splits one transaction across two cost codes. The original is reduced rather
+ * Splits one transaction across two line items. The original is reduced rather
  * than deleted so the source document still ties to a row in the ledger.
  */
 export async function splitTransaction(formData: FormData): Promise<{ error?: string }> {
@@ -123,7 +123,7 @@ export async function splitTransaction(formData: FormData): Promise<{ error?: st
     include: { costCode: true },
   })
   if (!existing) return { error: 'Transaction not found.' }
-  if (!costCodeId) return { error: 'Choose the cost code to split into.' }
+  if (!costCodeId) return { error: 'Choose the line item to split into.' }
   if (!isFinite(splitAmount) || splitAmount <= 0) return { error: 'Enter a split amount greater than zero.' }
   if (Math.abs(splitAmount) >= Math.abs(existing.amount)) {
     return { error: 'The split must be smaller than the transaction. To move the whole amount, recode it instead.' }
@@ -161,7 +161,7 @@ export async function splitTransaction(formData: FormData): Promise<{ error?: st
     entity: 'CostTransaction',
     entityId: transactionId,
     action: 'SPLIT',
-    summary: `Split ${moved} out of ${existing.description} into a second cost code`,
+    summary: `Split ${moved} out of ${existing.description} into a second line item`,
   })
 
   revalidatePath(`/projects/${existing.projectId}/costs`)

@@ -46,11 +46,11 @@ export function ImportForm({
           <ul className="mt-1 space-y-0.5">
             <li>Imported: {result.imported}</li>
             <li>Duplicates skipped: {result.skippedDuplicates}</li>
-            <li>Needing a cost code: {result.needsCoding}</li>
+            <li>Needing a line item: {result.needsCoding}</li>
           </ul>
           {result.unmatchedCodes && result.unmatchedCodes.length > 0 && (
             <p className="mt-1.5">
-              Cost codes not recognised: <span className="font-mono">{result.unmatchedCodes.join(', ')}</span>. Add them under Cost codes,
+              Line items not recognised: <span className="font-mono">{result.unmatchedCodes.join(', ')}</span>. Add them under Line items,
               then recode those transactions.
             </p>
           )}

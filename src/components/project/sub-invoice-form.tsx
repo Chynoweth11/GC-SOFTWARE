@@ -140,10 +140,10 @@ export function SubInvoiceForm({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
         <div className="lg:col-span-2">
           <label htmlFor="si-code" className="label mb-1.5 block">
-            Cost code (defaults to the subcontract&apos;s)
+            Line item (defaults to the subcontract&apos;s)
           </label>
           <select id="si-code" name="costCodeId" className="field text-xs">
-            <option value="">Use the subcontract&apos;s cost code</option>
+            <option value="">Use the subcontract&apos;s line item</option>
             {costCodes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}

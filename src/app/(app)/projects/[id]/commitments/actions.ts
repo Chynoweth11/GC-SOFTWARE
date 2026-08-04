@@ -25,7 +25,7 @@ export async function createCommitment(formData: FormData): Promise<{ error?: st
   const amount = Number(formData.get('originalAmount'))
 
   if (!vendorId) return { error: 'Choose a vendor or subcontractor.' }
-  if (!costCodeId) return { error: 'Choose the cost code this commitment charges.' }
+  if (!costCodeId) return { error: 'Choose the line item this commitment charges.' }
   if (!number) return { error: 'Enter a contract or purchase-order number.' }
   if (!isFinite(amount) || amount <= 0) return { error: 'Enter a commitment value greater than zero.' }
 
@@ -37,7 +37,7 @@ export async function createCommitment(formData: FormData): Promise<{ error?: st
 
   const budgetLine = await prisma.budgetLine.findFirst({ where: { projectId, costCodeId } })
   if (!budgetLine) {
-    return { error: 'That cost code has no budget line on this project. Add it to the budget before committing against it.' }
+    return { error: 'That line item has no budget line on this project. Add it to the budget before committing against it.' }
   }
 
   const commitment = await prisma.commitment.create({
@@ -75,7 +75,7 @@ export async function createCommitment(formData: FormData): Promise<{ error?: st
 
 /**
  * Posts a change against an existing commitment. Approved changes raise the
- * committed value on the affected cost codes automatically, because the engine
+ * committed value on the affected line items automatically, because the engine
  * derives the current value from original plus approved changes.
  */
 export async function addCommitmentChange(formData: FormData): Promise<{ error?: string }> {

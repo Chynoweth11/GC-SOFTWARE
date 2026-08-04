@@ -45,7 +45,7 @@ export function ForecastTable({
           Only lines that moved this period
         </label>
         <span className="ml-auto text-xs" style={{ color: 'var(--text-subtle)' }}>
-          {visible.length} of {rows.length} cost codes
+          {visible.length} of {rows.length} line items
         </span>
       </div>
 
@@ -231,7 +231,7 @@ export function ForecastTable({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={2}>Total, {visible.length} cost codes</td>
+                <td colSpan={2}>Total, {visible.length} line items</td>
                 <td className="num">{money(totals.currentBudget)}</td>
                 <td className="num">{money(totals.costToDate)}</td>
                 <td className="num">{money(totals.committed)}</td>

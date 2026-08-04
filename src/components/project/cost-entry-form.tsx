@@ -52,7 +52,7 @@ export function CostEntryForm({
           style={{ background: 'var(--favorable-soft)', borderColor: 'color-mix(in oklab, var(--favorable) 40%, transparent)', color: 'var(--favorable)' }}
           role="status"
         >
-          Cost posted. Every budget, forecast and dashboard reading this cost code has already updated.
+          Cost posted. Every budget, forecast and dashboard reading this line item has already updated.
         </div>
       )}
 
@@ -66,10 +66,10 @@ export function CostEntryForm({
 
         <div className="lg:col-span-2">
           <label htmlFor="cost-code" className="label mb-1.5 block">
-            Cost code
+            Line item
           </label>
           <select id="cost-code" name="costCodeId" required className="field text-xs">
-            <option value="">Select a cost code</option>
+            <option value="">Select a line item</option>
             {costCodes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}

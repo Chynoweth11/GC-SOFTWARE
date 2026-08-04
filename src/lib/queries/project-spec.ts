@@ -68,7 +68,7 @@ export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean):
       name: 'Cost control',
       totalsRow: true,
       columns: [
-        { header: 'Cost code', key: 'code', width: 14 },
+        { header: 'Line item', key: 'code', width: 14 },
         { header: 'Description', key: 'description', width: 34 },
         { header: 'Category', key: 'category', width: 18 },
         { header: 'Trade', key: 'trade', width: 22 },
@@ -213,7 +213,7 @@ export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean):
             totalsRow: true,
             columns: [
               { header: 'Work item', key: 'description', width: 32 },
-              { header: 'Cost code', key: 'costCode', width: 14 },
+              { header: 'Line item', key: 'costCode', width: 14 },
               { header: 'UOM', key: 'uom', width: 10 },
               { header: 'Budget qty', key: 'budgetQty', format: 'number' as const, total: true },
               { header: 'Installed', key: 'installedToDate', format: 'number' as const, total: true },

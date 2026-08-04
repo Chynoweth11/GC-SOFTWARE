@@ -53,7 +53,7 @@ async function syncBudgetForChangeOrder(changeOrderId: string, actor: SessionUse
   if (existing.length > 0) return // already posted
 
   // Lines carry the breakdown; without them the whole cost impact lands on the
-  // cost code the change order is tagged to, or is skipped if there isn't one.
+  // line item the change order is tagged to, or is skipped if there isn't one.
   const allocations =
     co.lines.length > 0
       ? co.lines.map((l) => ({ costCodeId: l.costCodeId, amount: l.amount }))

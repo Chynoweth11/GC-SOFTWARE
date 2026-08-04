@@ -41,7 +41,7 @@ export default async function ImportPage() {
         description="Load a cost export from your accounting system. Rows already in the ledger are skipped, and anything that cannot be coded is flagged rather than dropped."
       >
         <InfoNote>
-          The first row must be headers. Required: <strong>date</strong>, <strong>cost code</strong>, <strong>description</strong>,{' '}
+          The first row must be headers. Required: <strong>date</strong>, <strong>line item</strong>, <strong>description</strong>,{' '}
           <strong>amount</strong>. Optional: <strong>vendor</strong>, <strong>reference</strong>, <strong>type</strong> (actual or accrual),{' '}
           <strong>hours</strong>. Column order does not matter and header case is ignored.
         </InfoNote>
@@ -55,7 +55,7 @@ export default async function ImportPage() {
       </Section>
 
       {uncoded.length > 0 && (
-        <Section title="Transactions awaiting a cost code" description="Imported cost that could not be matched to a code">
+        <Section title="Transactions awaiting a line item" description="Imported cost that could not be matched to a code">
           <div className="card-flush">
             <div className="table-wrap">
               <table className="data">

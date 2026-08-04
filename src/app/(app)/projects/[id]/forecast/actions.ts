@@ -40,7 +40,7 @@ export async function saveForecastLine(formData: FormData): Promise<{ error?: st
     where: { projectId, costCodeId },
     include: { revisions: true },
   })
-  if (!budgetLine) return { error: 'That cost code has no budget on this project.' }
+  if (!budgetLine) return { error: 'That line item has no budget on this project.' }
 
   const currentBudget = budgetLine.originalBudget + budgetLine.revisions.reduce((a, r) => a + r.amount, 0)
   const costTx = await prisma.costTransaction.findMany({ where: { projectId, costCodeId, deletedAt: null } })

@@ -108,7 +108,7 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
               <thead>
                 <tr>
                   <th>Work item</th>
-                  <th>Cost code</th>
+                  <th>Line item</th>
                   <th>UOM</th>
                   <th className="num">Budget qty</th>
                   <th className="num">Installed</th>

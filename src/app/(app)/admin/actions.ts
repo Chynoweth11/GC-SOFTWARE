@@ -5,7 +5,7 @@ import { requireUser, hashPassword } from '@/lib/auth'
 import { assertCan } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { recordAudit } from '@/lib/audit'
-import type { CostCategory, Role } from '@/generated/prisma/client'
+import type { Role } from '@/generated/prisma/client'
 
 // ── Company defaults ──────────────────────────────────────────────────────
 
@@ -158,79 +158,9 @@ export async function toggleUserActive(formData: FormData): Promise<void> {
   revalidatePath('/admin/users')
 }
 
-// ── Cost codes ────────────────────────────────────────────────────────────
+// ── Line items ────────────────────────────────────────────────────────────
 
-export async function saveCostCode(formData: FormData): Promise<{ error?: string }> {
-  const user = await requireUser()
-  assertCan(user.role, 'manage:reference_data')
 
-  const costCodeId = String(formData.get('costCodeId') ?? '')
-  const code = String(formData.get('code') ?? '').trim().toUpperCase()
-  const description = String(formData.get('description') ?? '').trim()
-  const category = String(formData.get('category') ?? 'OTHER') as CostCategory
-
-  if (!code) return { error: 'Enter a cost code.' }
-  if (!description) return { error: 'Enter a description.' }
-
-  const clash = await prisma.costCode.findFirst({ where: { companyId: user.companyId, code } })
-  if (clash && clash.id !== costCodeId) return { error: `Cost code ${code} already exists.` }
-
-  const data = {
-    companyId: user.companyId,
-    code,
-    description,
-    category,
-    divisionId: String(formData.get('divisionId') ?? '') || null,
-    tradeId: String(formData.get('tradeId') ?? '') || null,
-    regionId: String(formData.get('regionId') ?? '') || null,
-  }
-
-  if (costCodeId) await prisma.costCode.update({ where: { id: costCodeId }, data })
-  else {
-    const count = await prisma.costCode.count({ where: { companyId: user.companyId } })
-    await prisma.costCode.create({ data: { ...data, sortOrder: count } })
-  }
-
-  await recordAudit({
-    companyId: user.companyId,
-    userId: user.id,
-    actor: user,
-    entity: 'CostCode',
-    entityId: costCodeId || code,
-    action: costCodeId ? 'UPDATE' : 'CREATE',
-    summary: `${costCodeId ? 'Updated' : 'Added'} cost code ${code}, ${description}`,
-  })
-
-  revalidatePath('/admin/cost-codes')
-  return {}
-}
-
-/**
- * Retires a cost code rather than deleting it. Budget lines, commitments and
- * posted cost all reference it; deleting would orphan financial history.
- */
-export async function toggleCostCodeActive(formData: FormData): Promise<void> {
-  const user = await requireUser()
-  assertCan(user.role, 'manage:reference_data')
-
-  const costCodeId = String(formData.get('costCodeId'))
-  const code = await prisma.costCode.findFirst({ where: { id: costCodeId, companyId: user.companyId } })
-  if (!code) return
-
-  await prisma.costCode.update({ where: { id: costCodeId }, data: { active: !code.active } })
-
-  await recordAudit({
-    companyId: user.companyId,
-    userId: user.id,
-    actor: user,
-    entity: 'CostCode',
-    entityId: costCodeId,
-    action: code.active ? 'RETIRE' : 'REINSTATE',
-    summary: `${code.code} ${code.active ? 'retired, existing history is unaffected' : 'reinstated'}`,
-  })
-
-  revalidatePath('/admin/cost-codes')
-}
 
 // ── Trades and divisions ──────────────────────────────────────────────────
 

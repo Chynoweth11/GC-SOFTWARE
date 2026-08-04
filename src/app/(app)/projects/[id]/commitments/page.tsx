@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { prisma } from '@/lib/db'
+import { CATEGORY_LABELS } from '@/lib/finance/cost'
 import { sumBy } from '@/lib/finance'
 import { date, money, moneyShort, percent } from '@/lib/format'
 import { EmptyState, KpiGrid, MoneyKpi, Section, StatusPill, Variance } from '@/components/ui'
@@ -21,7 +22,7 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
 
   const [vendors, costCodes] = await Promise.all([
     prisma.vendor.findMany({ where: { companyId: user.companyId }, orderBy: { name: 'asc' } }),
-    prisma.costCode.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { code: 'asc' } }),
+    prisma.budgetLine.findMany({ where: { projectId: id }, orderBy: [{ category: 'asc' }, { description: 'asc' }] }),
   ])
 
   const recordById = new Map(commitmentRecords.map((c) => [c.id, c]))
@@ -48,7 +49,7 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
                   <th>Number</th>
                   <th>Vendor</th>
                   <th>Scope</th>
-                  <th>Cost codes</th>
+                  <th>Line items</th>
                   <th>Status</th>
                   <th className="num">Original</th>
                   <th className="num">Approved changes</th>
@@ -154,13 +155,13 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
           className="rounded-lg border px-3 py-2 text-xs"
           style={{ background: 'var(--adverse-soft)', borderColor: 'var(--adverse)', color: 'var(--adverse)' }}
         >
-          {overCommitted.length} cost code{overCommitted.length === 1 ? '' : 's'} carry more commitment than budget:{' '}
+          {overCommitted.length} line item{overCommitted.length === 1 ? '' : 's'} carry more commitment than budget:{' '}
           {overCommitted.map((l) => `${l.code} (${money(l.committed - l.currentBudget)} over)`).join(', ')}.
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartFrame title="Commitment against budget by cost code" subtitle="Anything past the budget bar needs a change order">
+        <ChartFrame title="Commitment against budget by line item" subtitle="Anything past the budget bar needs a change order">
           <HorizontalBars
             labels={f.lines.filter((l) => l.committed > 0).map((l) => `${l.code} ${l.description}`)}
             format="moneyShort"
@@ -251,7 +252,7 @@ export default async function CommitmentsPage({ params }: { params: Promise<{ id
           <CommitmentForm
             projectId={project.id}
             vendors={vendors.map((v) => ({ id: v.id, label: v.name }))}
-            costCodes={costCodes.map((c) => ({ id: c.id, label: `${c.code} ${c.description}` }))}
+            costCodes={costCodes.map((c) => ({ id: c.costCodeId, label: `${c.description} (${CATEGORY_LABELS[c.category]})` }))}
             defaultRetentionPct={project.defaultSubRetentionPct}
             action={createCommitment}
             commitments={commitments.map((c) => ({ id: c.id, label: `${c.number} ${c.vendorName}` }))}
