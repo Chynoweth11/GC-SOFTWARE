@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { money } from '@/lib/format'
 import { Pill } from '@/components/ui'
+import { ConfirmButton } from '@/components/ui/confirm-button'
 
 interface VendorRow {
   id: string
@@ -10,6 +12,11 @@ interface VendorRow {
   isSubcontractor: boolean
   tradeId: string | null
   tradeName: string | null
+  active: boolean
+  stateId: string | null
+  stateName: string | null
+  regionId: string | null
+  regionName: string | null
   contactName: string | null
   phone: string | null
   email: string | null
@@ -40,28 +47,54 @@ const COI_TONE: Record<string, 'favorable' | 'caution' | 'adverse' | 'neutral'> 
 export function VendorManager({
   vendors,
   trades,
+  regions,
+  canDelete,
   save,
+  setActive,
+  remove,
 }: {
   vendors: VendorRow[]
   trades: { id: string; label: string }[]
+  regions: { id: string; stateName: string; label: string }[]
+  canDelete: boolean
   save: (formData: FormData) => Promise<{ error?: string }>
+  setActive: (formData: FormData) => Promise<{ error?: string }>
+  remove: (formData: FormData) => Promise<{ error?: string }>
 }) {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [onlySubs, setOnlySubs] = useState(false)
   const [onlyIssues, setOnlyIssues] = useState(false)
+  const [stateFilter, setStateFilter] = useState('')
+  const [regionFilter, setRegionFilter] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const stateNames = useMemo(() => [...new Set(regions.map((r) => r.stateName))].sort(), [regions])
+  const regionsForState = useMemo(
+    () => (stateFilter ? regions.filter((r) => r.stateName === stateFilter) : regions),
+    [regions, stateFilter],
+  )
   const [editing, setEditing] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     let rows = vendors
+    if (!showArchived) rows = rows.filter((v) => v.active)
+    if (stateFilter) rows = rows.filter((v) => v.stateName === stateFilter)
+    if (regionFilter) rows = rows.filter((v) => v.regionId === regionFilter)
     if (onlySubs) rows = rows.filter((v) => v.isSubcontractor)
     if (onlyIssues) rows = rows.filter((v) => v.coiStatus !== 'CURRENT' || v.paymentHold || !v.w9OnFile)
     if (search.trim()) {
       const q = search.toLowerCase()
-      rows = rows.filter((v) => v.name.toLowerCase().includes(q) || (v.tradeName ?? '').toLowerCase().includes(q))
+      rows = rows.filter(
+        (v) =>
+          v.name.toLowerCase().includes(q) ||
+          (v.tradeName ?? '').toLowerCase().includes(q) ||
+          (v.regionName ?? '').toLowerCase().includes(q) ||
+          (v.stateName ?? '').toLowerCase().includes(q),
+      )
     }
     return rows
-  }, [vendors, search, onlySubs, onlyIssues])
+  }, [vendors, search, onlySubs, onlyIssues, stateFilter, regionFilter, showArchived])
 
   const editingRow = editing && editing !== 'new' ? vendors.find((v) => v.id === editing) : null
 
@@ -87,6 +120,15 @@ export function VendorManager({
             <option value="">None</option>
             {trades.map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label mb-1 block" htmlFor="v-region">Region</label>
+          <select id="v-region" name="regionId" defaultValue={editingRow?.regionId ?? ''} className="field py-1.5 text-xs">
+            <option value="">Unassigned</option>
+            {regions.map((r) => (
+              <option key={r.id} value={r.id}>{r.label}</option>
             ))}
           </select>
         </div>
@@ -158,9 +200,35 @@ export function VendorManager({
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Search vendors"
         />
+        <select
+          className="field w-40 py-1.5 text-xs"
+          value={stateFilter}
+          onChange={(e) => { setStateFilter(e.target.value); setRegionFilter('') }}
+          aria-label="Filter by state"
+        >
+          <option value="">All states</option>
+          {stateNames.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        <select
+          className="field w-52 py-1.5 text-xs"
+          value={regionFilter}
+          onChange={(e) => setRegionFilter(e.target.value)}
+          aria-label="Filter by region"
+        >
+          <option value="">All regions</option>
+          {regionsForState.map((r) => (
+            <option key={r.id} value={r.id}>{stateFilter ? r.label.split(' / ')[1] : r.label}</option>
+          ))}
+        </select>
         <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
           <input type="checkbox" checked={onlySubs} onChange={(e) => setOnlySubs(e.target.checked)} />
           Subcontractors only
+        </label>
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+          Show archived
         </label>
         <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
           <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} />
@@ -185,6 +253,8 @@ export function VendorManager({
             <thead>
               <tr>
                 <th>Vendor</th>
+                <th>State</th>
+                <th>Region</th>
                 <th>Trade</th>
                 <th>Contact</th>
                 <th>Type</th>
@@ -203,7 +273,16 @@ export function VendorManager({
             <tbody>
               {filtered.map((v) => (
                 <tr key={v.id}>
-                  <td className="font-medium">{v.name}</td>
+                  <td className="font-medium" style={v.active ? undefined : { opacity: 0.6 }}>
+                    {v.name}
+                    {!v.active && (
+                      <span className="ml-1.5 text-[10px] uppercase tracking-[0.04em]" style={{ color: 'var(--text-subtle)' }}>
+                        archived
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ color: 'var(--text-muted)' }}>{v.stateName ?? 'Unassigned'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{v.regionName ?? 'Unassigned'}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{v.tradeName ?? '-'}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{v.contactName ?? '-'}</td>
                   <td>{v.isSubcontractor ? <Pill tone="accent">Subcontractor</Pill> : <Pill tone="neutral">Vendor</Pill>}</td>
@@ -223,15 +302,46 @@ export function VendorManager({
                   <td>{v.w9OnFile ? <Pill tone="favorable">On file</Pill> : <Pill tone="caution">Missing</Pill>}</td>
                   <td>{v.paymentHold ? <Pill tone="adverse">Hold</Pill> : <Pill tone="favorable">Clear</Pill>}</td>
                   <td className="no-print">
-                    <button className="btn btn-ghost px-1.5 py-0.5 text-[11px]" onClick={() => setEditing(editing === v.id ? null : v.id)}>
-                      Edit
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button className="btn btn-ghost px-1.5 py-0.5 text-[11px]" onClick={() => setEditing(editing === v.id ? null : v.id)}>
+                        Edit
+                      </button>
+                      <form
+                        action={async (formData) => {
+                          setError(null)
+                          const result = await setActive(formData)
+                          if (result?.error) setError(result.error)
+                          else router.refresh()
+                        }}
+                      >
+                        <input type="hidden" name="id" value={v.id} />
+                        <input type="hidden" name="active" value={String(!v.active)} />
+                        <button type="submit" className="btn btn-ghost px-1.5 py-0.5 text-[11px]">
+                          {v.active ? 'Archive' : 'Restore'}
+                        </button>
+                      </form>
+                      {canDelete && v.commitments === 0 && v.invoices === 0 && (
+                        <ConfirmButton
+                          label="Delete"
+                          confirmLabel="Confirm delete"
+                          title={`Delete ${v.name}`}
+                          description="This vendor has no commitments or invoices, so it can be removed entirely. The deletion is recorded permanently in the audit history."
+                          onConfirm={async () => {
+                            const formData = new FormData()
+                            formData.set('id', v.id)
+                            const result = await remove(formData)
+                            if (result?.error) setError(result.error)
+                            else router.refresh()
+                          }}
+                        />
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
               {editingRow && (
                 <tr>
-                  <td colSpan={14} style={{ background: 'var(--surface-inset)' }}>
+                  <td colSpan={16} style={{ background: 'var(--surface-inset)' }}>
                     {form}
                   </td>
                 </tr>

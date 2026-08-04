@@ -4,6 +4,7 @@ import { getProjectBundle } from '@/lib/queries/project'
 import { date, moneyShort, percent } from '@/lib/format'
 import { ExportMenu, PageHeader, Pill, StatusPill } from '@/components/ui'
 import { ProjectTabs } from '@/components/project/project-tabs'
+import { ProjectSearch } from '@/components/project/project-search'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser()
@@ -51,11 +52,14 @@ export default async function ProjectLayout({
           </>
         }
         actions={
-          <ExportMenu
-            excelHref={`/api/export/project/${project.id}`}
-            pdfHref={`/api/pdf/project/${project.id}`}
-            label="Export project"
-          />
+          <>
+            <ProjectSearch projectId={project.id} />
+            <ExportMenu
+              excelHref={`/api/export/project/${project.id}`}
+              pdfHref={`/api/pdf/project/${project.id}`}
+              label="Export project"
+            />
+          </>
         }
       />
 

@@ -5,9 +5,10 @@ import { getProjectBundle } from '@/lib/queries/project'
 import { prisma } from '@/lib/db'
 import { rollupBy, sumBy } from '@/lib/finance'
 import { CATEGORY_LABELS } from '@/lib/finance/cost'
-import { money, moneyShort, month, percent } from '@/lib/format'
+import { money, moneyShort, percent } from '@/lib/format'
 import { KpiGrid, MoneyKpi, Section, InfoNote } from '@/components/ui'
-import { ChartFrame, BarChart, DonutChart, HorizontalBars } from '@/components/charts/primitives'
+import { ChartFrame, DonutChart, HorizontalBars } from '@/components/charts/primitives'
+import { CostTrend } from '@/components/charts/cost-trend'
 import { CostLedger } from '@/components/project/cost-ledger'
 import { CostEntryForm } from '@/components/project/cost-entry-form'
 import { createCostTransaction, recodeTransaction, splitTransaction, softDeleteTransaction } from './actions'
@@ -44,18 +45,6 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
   const duplicates = transactions.filter((t) =>
     duplicateKeys.has(`${t.vendorId ?? 'none'}|${t.amount.toFixed(2)}|${t.date.toISOString().slice(0, 10)}`),
   )
-
-  // Monthly spend from the ledger itself.
-  const byMonth = new Map<string, { periodEnd: Date; actual: number; accrual: number }>()
-  for (const t of transactions) {
-    const periodEnd = new Date(Date.UTC(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1, 0))
-    const key = periodEnd.toISOString().slice(0, 7)
-    const entry = byMonth.get(key) ?? { periodEnd, actual: 0, accrual: 0 }
-    if (t.type === 'ACCRUAL') entry.accrual += t.amount
-    else entry.actual += t.amount
-    byMonth.set(key, entry)
-  }
-  const monthly = [...byMonth.values()].sort((a, b) => a.periodEnd.getTime() - b.periodEnd.getTime())
 
   const byTrade = rollupBy(f.lines, (l) => ({
     key: l.tradeName ?? l.category,
@@ -108,18 +97,18 @@ export default async function CostsPage({ params }: { params: Promise<{ id: stri
       )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <ChartFrame title="Cost by month" subtitle="Posted actuals and accruals from the ledger" className="xl:col-span-2">
-          <BarChart
-            labels={monthly.map((m) => month(m.periodEnd))}
-            height={230}
-            format="moneyShort"
-            stacked
-            series={[
-              { key: 'actual', label: 'Actual', values: monthly.map((m) => m.actual), color: 'var(--accent)' },
-              { key: 'accrual', label: 'Accrual', values: monthly.map((m) => m.accrual), color: 'var(--caution)' },
-            ]}
+        <div className="xl:col-span-2">
+          <CostTrend
+            points={transactions.map((t) => ({
+              date: t.date.toISOString(),
+              amount: t.amount,
+              accrual: t.type === 'ACCRUAL',
+            }))}
+            asOf={(project.dataDate ?? new Date()).toISOString()}
+            title="Cost over time"
+            subtitle="Every posted transaction, grouped by week, month, quarter or year"
           />
-        </ChartFrame>
+        </div>
 
         <ChartFrame title="Cost by category">
           <DonutChart

@@ -182,6 +182,7 @@ export async function saveCostCode(formData: FormData): Promise<{ error?: string
     category,
     divisionId: String(formData.get('divisionId') ?? '') || null,
     tradeId: String(formData.get('tradeId') ?? '') || null,
+    regionId: String(formData.get('regionId') ?? '') || null,
   }
 
   if (costCodeId) await prisma.costCode.update({ where: { id: costCodeId }, data })
@@ -341,6 +342,7 @@ export async function saveVendor(formData: FormData): Promise<{ error?: string }
     name,
     isSubcontractor: formData.get('isSubcontractor') === 'on',
     tradeId: String(formData.get('tradeId') ?? '') || null,
+    regionId: String(formData.get('regionId') ?? '') || null,
     contactName: String(formData.get('contactName') ?? '') || null,
     phone: String(formData.get('phone') ?? '') || null,
     email: String(formData.get('email') ?? '') || null,
@@ -352,8 +354,15 @@ export async function saveVendor(formData: FormData): Promise<{ error?: string }
     umbrellaExpiration: parseDate('umbrellaExpiration'),
   }
 
-  if (vendorId) await prisma.vendor.update({ where: { id: vendorId }, data })
-  else await prisma.vendor.create({ data })
+  // The state follows from the region, so it is never set inconsistently.
+  const regionId = data.regionId
+  const stateId = regionId
+    ? (await prisma.vendorRegion.findFirst({ where: { id: regionId, companyId: user.companyId } }))?.stateId ?? null
+    : null
+  const record = { ...data, stateId }
+
+  if (vendorId) await prisma.vendor.update({ where: { id: vendorId }, data: record })
+  else await prisma.vendor.create({ data: record })
 
   await recordAudit({
     companyId: user.companyId,

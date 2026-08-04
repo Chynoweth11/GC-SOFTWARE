@@ -44,6 +44,8 @@ model Company {
   arAging        ArAgingBucket[]
   auditLogs      AuditLog[]
   savedViews     SavedView[]
+  vendorStates   VendorState[]
+  vendorRegions  VendorRegion[]
 }
 
 enum Role {
@@ -283,12 +285,55 @@ model Client {
   @@index([companyId])
 }
 
+/// A state a vendor can work in. Regions hang off it.
+model VendorState {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  /// Two-letter abbreviation, used in compact tables.
+  code      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  regions VendorRegion[]
+  vendors Vendor[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+/// A working area inside a state, for example Tri-Cities or Denver Metro.
+/// Fully user-defined so each company can name its own patch.
+model VendorRegion {
+  id        String   @id @default(cuid())
+  companyId String
+  stateId   String
+  name      String
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  state   VendorState @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  vendors Vendor[]
+
+  @@unique([stateId, name])
+  @@index([companyId])
+}
+
 model Vendor {
   id               String   @id @default(cuid())
   companyId        String
   name             String
   active           Boolean  @default(true)
   isSubcontractor  Boolean  @default(true)
+  /// Where this vendor works. Both are optional so a vendor is never blocked
+  /// from being created before its area is known.
+  stateId          String?
+  regionId         String?
   tradeId          String?
   contactName      String?
   phone            String?
@@ -311,6 +356,8 @@ model Vendor {
   notes            String?
   createdAt        DateTime @default(now())
 
+  state       VendorState?     @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  region      VendorRegion?    @relation(fields: [regionId], references: [id], onDelete: SetNull)
   company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   trade       Trade?           @relation(fields: [tradeId], references: [id], onDelete: SetNull)
   commitments Commitment[]

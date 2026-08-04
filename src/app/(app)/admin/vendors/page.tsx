@@ -5,7 +5,14 @@ import { prisma } from '@/lib/db'
 import { date, dateInput } from '@/lib/format'
 import { EmptyState, Section } from '@/components/ui'
 import { VendorManager } from '@/components/admin/vendor-manager'
-import { saveVendor } from '../actions'
+import { RegionManager, type StateNode } from '@/components/admin/region-manager'
+import { saveVendor, setVendorActive, deleteVendor } from '../actions'
+import {
+  saveVendorState,
+  deleteVendorState,
+  saveVendorRegion,
+  deleteVendorRegion,
+} from './regions-actions'
 
 export const metadata = { title: 'Vendors' }
 
@@ -13,18 +20,39 @@ export default async function VendorsPage() {
   const user = await requireUser()
   if (!can(user.role, 'manage:reference_data')) forbidden()
 
-  const [vendors, trades] = await Promise.all([
+  const [vendors, trades, states] = await Promise.all([
     prisma.vendor.findMany({
       where: { companyId: user.companyId },
       include: {
         trade: true,
+        state: true,
+        region: true,
         commitments: { include: { invoices: true, changes: true } },
         _count: { select: { commitments: true, invoices: true } },
       },
       orderBy: { name: 'asc' },
     }),
     prisma.trade.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { sortOrder: 'asc' } }),
+    prisma.vendorState.findMany({
+      where: { companyId: user.companyId },
+      include: {
+        regions: { include: { _count: { select: { vendors: true } } }, orderBy: { sortOrder: 'asc' } },
+        _count: { select: { vendors: true } },
+      },
+      orderBy: { sortOrder: 'asc' },
+    }),
   ])
+
+  const stateNodes: StateNode[] = states.map((state) => ({
+    id: state.id,
+    name: state.name,
+    code: state.code,
+    vendorCount: state._count.vendors,
+    regions: state.regions.map((r) => ({ id: r.id, name: r.name, notes: r.notes, vendorCount: r._count.vendors })),
+  }))
+  const regionOptions = states.flatMap((state) =>
+    state.regions.map((r) => ({ id: r.id, stateName: state.name, label: `${state.name} / ${r.name}` })),
+  )
 
   const asOf = new Date('2026-03-31T00:00:00.000Z')
 
@@ -52,6 +80,11 @@ export default async function VendorsPage() {
       isSubcontractor: v.isSubcontractor,
       tradeId: v.tradeId,
       tradeName: v.trade?.name ?? null,
+      active: v.active,
+      stateId: v.stateId,
+      stateName: v.state?.name ?? null,
+      regionId: v.regionId,
+      regionName: v.region?.name ?? null,
       contactName: v.contactName,
       phone: v.phone,
       email: v.email,
@@ -76,6 +109,19 @@ export default async function VendorsPage() {
   return (
     <div className="space-y-6">
       <Section
+        title="Territory"
+        description="States and the regions inside them. Assign a vendor to a region and the vendor list can be narrowed to the area a project is in."
+      >
+        <RegionManager
+          states={stateNodes}
+          saveState={saveVendorState}
+          removeState={deleteVendorState}
+          saveRegion={saveVendorRegion}
+          removeRegion={deleteVendorRegion}
+        />
+      </Section>
+
+      <Section
         title="Vendors and subcontractors"
         description="Financial and insurance records. Compliance holds set here block payment on every project."
       >
@@ -85,7 +131,11 @@ export default async function VendorsPage() {
           <VendorManager
             vendors={rows}
             trades={trades.map((t) => ({ id: t.id, label: t.name }))}
+            regions={regionOptions}
+            canDelete={can(user.role, 'delete:records')}
             save={saveVendor}
+            setActive={setVendorActive}
+            remove={deleteVendor}
           />
         )}
       </Section>

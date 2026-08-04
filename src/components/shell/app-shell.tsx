@@ -1,5 +1,7 @@
 'use client'
 
+import { GlobalSearch } from './global-search'
+
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, type ReactNode } from 'react'
@@ -202,6 +204,10 @@ export function AppShell({ user, company, projects, signOut, capabilities, child
           </button>
 
           <ProjectSelector projects={projects} />
+
+          <div className="hidden min-w-0 flex-1 md:flex md:justify-center">
+            <GlobalSearch />
+          </div>
 
           <div className="ml-auto flex items-center gap-1.5">
             <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-subtle)' }}>
