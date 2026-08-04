@@ -22,6 +22,12 @@ three workbooks. Later runs find the database and start immediately. No `.env` i
 needed — both the app and the Prisma CLI default to `file:./prisma/dev.db`; see
 `.env.example` to point elsewhere.
 
+**Running in a Codespace, Gitpod or behind a tunnel?** It already works. Next
+rejects a Server Action whose `Origin` disagrees with the `Host`, which is what
+breaks sign-in on a forwarded URL; the common development hosts are trusted in
+development only. Production keeps the strict same-origin rule — name your
+domain in `ALLOWED_ORIGINS` if it sits behind a proxy there.
+
 To start over from the workbooks, delete the database and run dev again:
 
 ```bash
