@@ -57,7 +57,7 @@ const PENDING_CHANGE = new Set(['PENDING', 'SUBMITTED'])
 /**
  * Derives one commitment's financial position.
  *
- * Workbook source: Subcontractors ▸ O–W and Sub Payments ▸ F–S.
+ * Workbook source: Subcontractors ▸ O-W and Sub Payments ▸ F-S.
  *   O  Current Contract    = Original + Approved COs
  *   Q  Earned to Date      = Current Contract × % Complete
  *   S  Retention Held      = Σ invoice retention withheld

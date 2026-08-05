@@ -42,3 +42,20 @@ export function parseMonthKey(key: string): Date {
   const [y, m] = key.split('-').map(Number)
   return new Date(Date.UTC(y, m, 0))
 }
+
+/**
+ * Today, at midnight UTC.
+ *
+ * Financial figures are stated as at the project data date, which is when the
+ * books were closed. Some questions are not about the books at all: whether a
+ * bid is due next week, whether a follow-up has gone past due, whether a
+ * certificate of insurance has expired. Those are about today.
+ *
+ * Every one of those reads this, so no two pages can answer the same question
+ * differently. They previously did: the pipeline page and the pipeline report
+ * each carried their own date, and the vendor list carried a third.
+ */
+export function today(): Date {
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+}

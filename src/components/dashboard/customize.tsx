@@ -151,7 +151,7 @@ export function CustomizeDashboard({
                 Cancel
               </button>
               <button type="button" onClick={apply} disabled={pending} className="btn btn-primary text-xs">
-                {pending ? 'Saving…' : 'Save layout'}
+                {pending ? 'Saving...' : 'Save layout'}
               </button>
             </div>
           </div>

@@ -235,7 +235,7 @@ export default async function DashboardPage({
     ),
     alerts: (
       <Section title="Attention required" description="Recomputed from live data every time this page loads">
-        <AlertList alerts={alerts.slice(0, 8)} />
+        <AlertList alerts={alerts} />
       </Section>
     ),
     projects: (

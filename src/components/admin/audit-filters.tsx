@@ -48,9 +48,15 @@ export function AuditFilters({
         <input
           id="audit-q"
           name="q"
+          key={value('q')}
           defaultValue={value('q')}
           placeholder="Record, field, value or person"
           className="field h-8 text-xs"
+          // Applies on Enter, and also when the field is left. Typing a phrase
+          // and then clicking a dropdown used to discard it silently.
+          onBlur={(event) => {
+            if (value('q') !== event.target.value.trim()) apply('q', event.target.value.trim())
+          }}
         />
       </div>
 

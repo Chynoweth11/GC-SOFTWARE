@@ -129,7 +129,7 @@ export function SavedViews({
             <input type="checkbox" name="isDefault" defaultChecked={activeView?.isDefault} /> Default
           </label>
           <button type="submit" disabled={pending} className="btn btn-primary text-xs">
-            {pending ? 'Saving…' : 'Save'}
+            {pending ? 'Saving...' : 'Save'}
           </button>
           <button type="button" onClick={() => setNaming(false)} className="btn btn-ghost text-xs">
             Cancel

@@ -32,7 +32,7 @@ export function RestoreForm({
           </p>
         </div>
         <button type="submit" disabled={pending} className="btn btn-primary">
-          {pending ? 'Restoring…' : 'Restore project'}
+          {pending ? 'Restoring...' : 'Restore project'}
         </button>
       </form>
 

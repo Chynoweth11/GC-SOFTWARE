@@ -40,7 +40,7 @@ export interface CostLineInput {
   costToDate: number
   /** Accrued or pending cost not yet invoiced. */
   accruals: number
-  /** Physical percent complete, 0–1. Falls back to % spent when null. */
+  /** Physical percent complete, 0-1. Falls back to % spent when null. */
   pctComplete: number | null
   /** Manager's estimate of remaining cost. Null derives it from budget × remaining %. */
   etcOverride?: number | null
@@ -223,4 +223,10 @@ export interface Alert {
   projectName?: string
   href?: string
   value?: number
+  /** What the money at stake means, so the figure is never shown bare. */
+  valueLabel?: string
+  /** The next step, written as an instruction. Pairs with href. */
+  action?: string
+  /** The records the alert is about, named the way the user named them. */
+  subjects?: string[]
 }

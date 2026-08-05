@@ -212,7 +212,21 @@
     white-space: nowrap;
   }
 
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /*
+    A wide table scrolls inside its own card. The gradients make that visible:
+    a soft shadow appears on whichever edge has content beyond it and
+    disappears when that edge is reached, so nobody has to guess whether there
+    are more columns.
+  */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, var(--surface-raised) 30%, transparent) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, var(--surface-raised) 30%, transparent) right center / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.14), transparent) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.14), transparent) right center / 12px 100% no-repeat scroll;
+  }
 
   table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
   table.data thead th {
@@ -230,6 +244,24 @@
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
   }
+  /*
+    Cells hold their line rather than wrapping.
+
+    A financial table has many narrow columns, and at width:100% the browser
+    squeezes them under their content, so a job number reads "26-" / "003" over
+    two lines and a date takes three. Holding the line makes each column as wide
+    as the figure in it and lets the whole table scroll inside its own card,
+    which is the behaviour these tables want: every row one line tall, every
+    figure readable at a glance.
+
+    Long prose opts back in with .wrap, or truncates with a max width.
+  */
+  table.data tbody td,
+  table.data tfoot td { white-space: nowrap; }
+  table.data .wrap { white-space: normal; }
+  /* Alignment for cells whose content stacks, such as a name over its detail. */
+  table.data td.top { vertical-align: top; }
+
   table.data tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   table.data tbody tr:last-child td { border-bottom: none; }
   table.data tbody tr:hover { background: color-mix(in oklab, var(--accent) 4%, transparent); }

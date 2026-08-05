@@ -7,7 +7,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Adding…' : 'Add opportunity'}
+      {pending ? 'Adding...' : 'Add opportunity'}
     </button>
   )
 }
@@ -105,7 +105,7 @@ export function BidForm({
           <input id="b-value" name="estimatedValue" type="number" step="1000" min="0" className="field text-xs" />
         </div>
         <div>
-          <label htmlFor="b-prob" className="label mb-1.5 block">Win probability (0–1)</label>
+          <label htmlFor="b-prob" className="label mb-1.5 block">Win probability (0-1)</label>
           <input id="b-prob" name="winProbability" type="number" step="0.05" min="0" max="1" className="field text-xs" defaultValue="0.3" />
         </div>
       </div>

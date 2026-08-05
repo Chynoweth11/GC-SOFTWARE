@@ -8,7 +8,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Raise change order'}
+      {pending ? 'Saving...' : 'Raise change order'}
     </button>
   )
 }
@@ -174,7 +174,7 @@ export function ChangeOrderForm({
         </div>
         <div>
           <label htmlFor="co-probability" className="label mb-1.5 block">
-            Probability (0–1)
+            Probability (0-1)
           </label>
           <input id="co-probability" name="probabilityPct" type="number" step="0.05" min="0" max="1" className="field text-xs" defaultValue="0.5" />
         </div>

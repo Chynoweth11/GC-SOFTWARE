@@ -77,7 +77,7 @@ function escapeText(value: string): string {
 }
 
 /**
- * Widths of Helvetica at 1pt, indexed by char code 32–126. Used to truncate a
+ * Widths of Helvetica at 1pt, indexed by char code 32-126. Used to truncate a
  * cell to its column rather than letting it overrun the next one.
  */
 const HELVETICA_WIDTHS = [
@@ -429,7 +429,7 @@ function assemble(pages: ContentStream[], title: string, pageWidth: number): Buf
   const pagesId = 2
   const fontRegularId = 3
   const fontBoldId = 4
-  objects.push('', '', '', '') // reserve 1–4
+  objects.push('', '', '', '') // reserve 1-4
 
   objects[fontRegularId - 1] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'
   objects[fontBoldId - 1] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'

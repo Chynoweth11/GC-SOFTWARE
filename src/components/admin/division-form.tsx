@@ -7,7 +7,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Adding…' : 'Add division'}
+      {pending ? 'Adding...' : 'Add division'}
     </button>
   )
 }

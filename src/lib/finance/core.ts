@@ -52,7 +52,7 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-/** Fractions are stored 0–1 everywhere; this keeps percent-complete honest. */
+/** Fractions are stored 0-1 everywhere; this keeps percent-complete honest. */
 export function clampPct(value: number): number {
   return clamp(num(value), 0, 1)
 }

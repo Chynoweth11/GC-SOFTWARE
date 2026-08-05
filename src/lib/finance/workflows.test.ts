@@ -107,7 +107,7 @@ const commitment = (over: Partial<CommitmentInput> = {}): CommitmentInput => ({
   ...over,
 })
 
-describe('commitments: Subcontractors O–W', () => {
+describe('commitments: Subcontractors O-W', () => {
   it('reproduces the Basalt Site Works row', () => {
     const derived = deriveCommitment(
       commitment({
@@ -406,7 +406,7 @@ describe('project health: Project Summary W,X,Y,Z', () => {
   })
 })
 
-describe('quantity productivity: Quantity Tracking H–AB', () => {
+describe('quantity productivity: Quantity Tracking H-AB', () => {
   const item = {
     itemId: 'q',
     description: '8" PVC sanitary main',

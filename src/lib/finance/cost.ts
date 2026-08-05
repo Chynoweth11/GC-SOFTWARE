@@ -26,7 +26,7 @@ export const CATEGORY_LABELS: Record<CostCategory, string> = {
 /**
  * Derives one cost-control row.
  *
- * Workbook source: Project Controls ▸ Financials, columns G–S.
+ * Workbook source: Project Controls ▸ Financials, columns G-S.
  *   G  Current Budget          = Original + Approved CO Budget
  *   K  Total Cost to Date      = Cost to Date + Accruals
  *   L  % Spent                 = Total Cost to Date ÷ Current Budget

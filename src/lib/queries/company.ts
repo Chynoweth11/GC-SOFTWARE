@@ -7,6 +7,7 @@ import {
   buildRevenueForecast,
   buildWipSchedule,
   rollupPipeline,
+  today,
   rollupPortfolio,
   sortAlerts,
   type Alert,
@@ -36,6 +37,8 @@ export interface CompanyDashboardData {
   revenueForecast: ReturnType<typeof buildRevenueForecast>
   wip: ReturnType<typeof buildWipSchedule>
   alerts: Alert[]
+  /** The date the financial figures are stated at. */
+  asOf: Date
   monthlyActuals: Awaited<ReturnType<typeof loadMonthlyActuals>>
   arAging: Awaited<ReturnType<typeof loadArAging>>
   filterOptions: {
@@ -162,12 +165,15 @@ export const getCompanyDashboard = cache(
       company,
       projects,
       totals,
-      pipeline: rollupPipeline(pipelineRows, asOf),
+      // Bid timing is measured against today, not the accounting data date, and
+      // reads the same helper the pipeline page uses so the two always agree.
+      pipeline: rollupPipeline(pipelineRows, today()),
       pipelineRows,
       cashFlow,
       revenueForecast,
       wip: buildWipSchedule(projects),
       alerts,
+      asOf,
       monthlyActuals,
       arAging,
       filterOptions: {

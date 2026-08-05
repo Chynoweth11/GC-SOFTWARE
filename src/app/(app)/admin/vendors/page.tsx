@@ -2,6 +2,7 @@ import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
+import { today } from '@/lib/finance'
 import { date, dateInput } from '@/lib/format'
 import { EmptyState, Section } from '@/components/ui'
 import { VendorManager } from '@/components/admin/vendor-manager'
@@ -54,7 +55,9 @@ export default async function VendorsPage() {
     state.regions.map((r) => ({ id: r.id, stateName: state.name, label: `${state.name} / ${r.name}` })),
   )
 
-  const asOf = new Date('2026-03-31T00:00:00.000Z')
+  // Whether cover has lapsed is a question about today, not about the
+  // accounting period the financial figures are stated in.
+  const asOf = today()
 
   const rows = vendors.map((v) => {
     const expirations = [v.glExpiration, v.wcExpiration, v.autoExpiration, v.umbrellaExpiration].filter((d): d is Date => d != null)

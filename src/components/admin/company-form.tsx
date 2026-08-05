@@ -7,7 +7,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Save company defaults'}
+      {pending ? 'Saving...' : 'Save company defaults'}
     </button>
   )
 }
@@ -103,20 +103,20 @@ export function CompanyForm({
         </h3>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div>
-            <label htmlFor="c-margin" className="label mb-1.5 block">Target gross margin (0–1)</label>
+            <label htmlFor="c-margin" className="label mb-1.5 block">Target gross margin (0-1)</label>
             <input id="c-margin" name="targetMarginPct" type="number" step="0.01" min="0" max="1" defaultValue={company.targetMarginPct} className="field text-xs" />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--text-subtle)' }}>Drives the margin health flag on every project</p>
           </div>
           <div>
-            <label htmlFor="c-retention" className="label mb-1.5 block">Default retention (0–1)</label>
+            <label htmlFor="c-retention" className="label mb-1.5 block">Default retention (0-1)</label>
             <input id="c-retention" name="defaultRetentionPct" type="number" step="0.01" min="0" max="0.5" defaultValue={company.defaultRetentionPct} className="field text-xs" />
           </div>
           <div>
-            <label htmlFor="c-burden" className="label mb-1.5 block">Default labor burden (0–1)</label>
+            <label htmlFor="c-burden" className="label mb-1.5 block">Default labor burden (0-1)</label>
             <input id="c-burden" name="defaultLaborBurdenPct" type="number" step="0.01" min="0" max="1" defaultValue={company.defaultLaborBurdenPct} className="field text-xs" />
           </div>
           <div>
-            <label htmlFor="c-overhead" className="label mb-1.5 block">Default overhead (0–1)</label>
+            <label htmlFor="c-overhead" className="label mb-1.5 block">Default overhead (0-1)</label>
             <input id="c-overhead" name="defaultOverheadPct" type="number" step="0.01" min="0" max="1" defaultValue={company.defaultOverheadPct} className="field text-xs" />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--text-subtle)' }}>Applied to revenue in the company profit forecast</p>
           </div>

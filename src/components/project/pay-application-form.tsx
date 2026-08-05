@@ -16,7 +16,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Issuing…' : 'Issue application'}
+      {pending ? 'Issuing...' : 'Issue application'}
     </button>
   )
 }
@@ -118,7 +118,7 @@ export function PayApplicationForm({
         </div>
         <div>
           <label htmlFor="pa-retainage" className="label mb-1.5 block">
-            Retainage (0–1)
+            Retainage (0-1)
           </label>
           <input
             id="pa-retainage"

@@ -39,7 +39,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Save project setup'}
+      {pending ? 'Saving...' : 'Save project setup'}
     </button>
   )
 }
@@ -207,19 +207,19 @@ export function ProjectSettingsForm({
           <Field id="p-contract" label="Original contract sum" hint="Approved change orders add to this automatically.">
             <input id="p-contract" name="originalContractSum" type="number" step="0.01" defaultValue={project.originalContractSum} className="field text-xs" />
           </Field>
-          <Field id="p-ownerret" label="Owner retention (0–1)">
+          <Field id="p-ownerret" label="Owner retention (0-1)">
             <input id="p-ownerret" name="ownerRetentionPct" type="number" step="0.01" min="0" max="0.5" defaultValue={project.ownerRetentionPct} className="field text-xs" />
           </Field>
-          <Field id="p-subret" label="Default sub retention (0–1)">
+          <Field id="p-subret" label="Default sub retention (0-1)">
             <input id="p-subret" name="defaultSubRetentionPct" type="number" step="0.01" min="0" max="0.5" defaultValue={project.defaultSubRetentionPct} className="field text-xs" />
           </Field>
-          <Field id="p-margin" label="Target margin (0–1)">
+          <Field id="p-margin" label="Target margin (0-1)">
             <input id="p-margin" name="targetMarginPct" type="number" step="0.01" min="0" max="1" defaultValue={project.targetMarginPct} className="field text-xs" />
           </Field>
-          <Field id="p-burden" label="Labor burden (0–1)">
+          <Field id="p-burden" label="Labor burden (0-1)">
             <input id="p-burden" name="laborBurdenPct" type="number" step="0.01" min="0" max="1" defaultValue={project.laborBurdenPct} className="field text-xs" />
           </Field>
-          <Field id="p-overhead" label="Overhead allocation (0–1)">
+          <Field id="p-overhead" label="Overhead allocation (0-1)">
             <input id="p-overhead" name="overheadPct" type="number" step="0.01" min="0" max="1" defaultValue={project.overheadPct} className="field text-xs" />
           </Field>
         </div>
@@ -233,13 +233,13 @@ export function ProjectSettingsForm({
           <Field id="p-workdays" label="Work days per week">
             <input id="p-workdays" name="workDaysPerWeek" type="number" min="1" max="7" defaultValue={project.workDaysPerWeek} className="field text-xs" />
           </Field>
-          <Field id="p-safety" label="Safety score (1–5)">
+          <Field id="p-safety" label="Safety score (1-5)">
             <input id="p-safety" name="safetyScore" type="number" step="0.1" min="0" max="5" defaultValue={project.safetyScore ?? ''} className="field text-xs" />
           </Field>
-          <Field id="p-quality" label="Quality score (1–5)">
+          <Field id="p-quality" label="Quality score (1-5)">
             <input id="p-quality" name="qualityScore" type="number" step="0.1" min="0" max="5" defaultValue={project.qualityScore ?? ''} className="field text-xs" />
           </Field>
-          <Field id="p-clientsat" label="Client satisfaction (1–5)">
+          <Field id="p-clientsat" label="Client satisfaction (1-5)">
             <input id="p-clientsat" name="clientSatScore" type="number" step="0.1" min="0" max="5" defaultValue={project.clientSatScore ?? ''} className="field text-xs" />
           </Field>
         </div>

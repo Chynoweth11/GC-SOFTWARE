@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getCompanyDashboard, parseProjectFilter } from '@/lib/queries/company'
 import { prisma } from '@/lib/db'
-import { buildWipSchedule, followUpState, rollupByDimension, sumBy } from '@/lib/finance'
+import { buildWipSchedule, followUpState, rollupByDimension, sumBy, today } from '@/lib/finance'
 import { date, money, month, percent, titleize } from '@/lib/format'
 import { ExportMenu, PageHeader, Section, StatusPill, Variance } from '@/components/ui'
 import { REPORT_TITLES, canOpenReport } from '@/lib/queries/report-spec'
@@ -55,6 +55,9 @@ export default async function ReportPage({
   const showMargins = can(user.role, 'view:margins')
 
   const bundles = data.projects
+  // The date the financial figures are stated at, read from the data rather
+  // than written into the page.
+  const dataDate = data.asOf
 
   const header = (
     <PageHeader
@@ -656,7 +659,7 @@ export default async function ReportPage({
                       <td style={{ color: 'var(--text-muted)' }}>{date(co.dateInitiated)}</td>
                       <td className="num">
                         {co.dateInitiated
-                          ? Math.round(((co.dateApproved ?? new Date('2026-03-31')).getTime() - co.dateInitiated.getTime()) / 86_400_000)
+                          ? Math.round(((co.dateApproved ?? dataDate).getTime() - co.dateInitiated.getTime()) / 86_400_000)
                           : '-'}
                       </td>
                     </tr>
@@ -786,7 +789,7 @@ export default async function ReportPage({
   }
 
   // ── Pipeline ───────────────────────────────────────────────────────────
-  const asOf = new Date('2026-08-03T00:00:00.000Z')
+  const asOf = today()
   return (
     <>
       {header}

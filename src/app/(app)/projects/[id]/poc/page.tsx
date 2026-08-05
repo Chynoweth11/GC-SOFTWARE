@@ -183,7 +183,7 @@ export default async function PocPage({ params }: { params: Promise<{ id: string
             </div>
             <div>
               <label htmlFor="poc-manual" className="label mb-1.5 block">
-                Manual assessment (0–1)
+                Manual assessment (0-1)
               </label>
               <input
                 id="poc-manual"

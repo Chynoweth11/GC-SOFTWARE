@@ -8,7 +8,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Logging…' : 'Log invoice'}
+      {pending ? 'Logging...' : 'Log invoice'}
     </button>
   )
 }
@@ -121,7 +121,7 @@ export function SubInvoiceForm({
         </div>
         <div>
           <label htmlFor="si-retention" className="label mb-1.5 block">
-            Retention (0–1)
+            Retention (0-1)
           </label>
           <input
             id="si-retention"

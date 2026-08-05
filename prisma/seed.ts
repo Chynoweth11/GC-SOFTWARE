@@ -16,7 +16,34 @@ const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? 'file
 const prisma = new PrismaClient({ adapter })
 
 type Row = Record<string, string | number | boolean | null>
-const raw = JSON.parse(readFileSync(join(process.cwd(), 'prisma', 'seed-data.json'), 'utf8')) as Record<string, Row[]>
+/**
+ * The workbooks were written in Word-styled prose, so the extraction carries em
+ * dashes, en dashes and ellipses. This software does not use them anywhere, so
+ * every incoming string is normalised once as the file is read rather than at
+ * each of the hundred places the data is used.
+ */
+function normaliseText(value: string): string {
+  return value
+    .replace(/ \u2014 /g, ', ')
+    .replace(/\u2014 /g, '')
+    .replace(/ \u2014/g, '')
+    .replace(/\u2014/g, '-')
+    .replace(/\u2013/g, '-')
+    .replace(/\u2026/g, '...')
+}
+
+function normaliseDeep(value: unknown): unknown {
+  if (typeof value === 'string') return normaliseText(value)
+  if (Array.isArray(value)) return value.map(normaliseDeep)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, normaliseDeep(entry)]))
+  }
+  return value
+}
+
+const raw = normaliseDeep(
+  JSON.parse(readFileSync(join(process.cwd(), 'prisma', 'seed-data.json'), 'utf8')),
+) as Record<string, Row[]>
 
 // ── helpers ───────────────────────────────────────────────────────────────
 const n = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 0)
@@ -200,18 +227,50 @@ const MEASURE_MAP: Record<string, string> = {
 
 // ── seed ──────────────────────────────────────────────────────────────────
 
+/**
+ * Rebuilds the database from the workbooks.
+ *
+ * Seeding destroys and recreates every table, so the append-only guards on the
+ * audit history have to come off for the duration and go straight back on. This
+ * is not an edit to a live history: nothing the old entries referred to survives
+ * the rebuild. The guards are reinstated before the function returns, and
+ * `src/lib/db.ts` reinstates them again on every boot, so a seed that dies
+ * halfway through still leaves the history protected.
+ */
+async function withAuditGuardsLifted<T>(run: () => Promise<T>): Promise<T> {
+  await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS audit_log_is_append_only_update')
+  await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS audit_log_is_append_only_delete')
+  try {
+    return await run()
+  } finally {
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_update
+       BEFORE UPDATE ON "AuditLog"
+       BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be modified.'); END`,
+    )
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_delete
+       BEFORE DELETE ON "AuditLog"
+       BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be deleted.'); END`,
+    )
+  }
+}
+
 async function main() {
-  console.log('Clearing existing data…')
+  console.log('Clearing existing data...')
   const tables = [
-    'auditLog', 'session', 'projectSnapshot', 'quantityEntry', 'quantityItem',
+    'session', 'projectSnapshot', 'quantityEntry', 'quantityItem',
     'cashFlowPeriod', 'forecastLine', 'forecastPeriod', 'ownerBillingLine', 'ownerBilling',
     'sovLine', 'subInvoice', 'costTransaction', 'changeOrderLine', 'changeOrder',
     'commitmentChange', 'commitmentLine', 'commitment', 'budgetRevision', 'budgetLine',
     'bidPackageQuote', 'bidPackage', 'estimateClarification', 'estimateAlternate',
     'generalConditionItem', 'estimateItem', 'estimateSection', 'laborRate',
-    'project', 'estimate', 'bid', 'vendor', 'client', 'costCode', 'trade', 'csiDivision',
+    'project', 'estimate', 'bid', 'vendor', 'vendorRegion', 'vendorState', 'client', 'costCode', 'trade', 'csiDivision',
     'arAgingBucket', 'companyMonthly', 'user', 'company',
   ] as const
+  await withAuditGuardsLifted(async () => {
+    await prisma.$executeRawUnsafe('DELETE FROM "AuditLog"')
+  })
   for (const t of tables) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (prisma as any)[t].deleteMany({})
@@ -344,6 +403,25 @@ async function main() {
   for (const row of raw.purchaseOrders) {
     const v = s(row['Vendor'])
     if (v) extraVendorNames.add(v)
+  }
+
+  // ── Vendor geography ────────────────────────────────────────────────────
+  // The states and regions the company works in. This is a starting set: every
+  // name here can be renamed, added to, or removed in Settings, and vendors are
+  // left unfiled so the team files them the way they actually work.
+  const GEOGRAPHY: [string, string, string[]][] = [
+    ['Washington', 'WA', ['Tri-Cities', 'Seattle Area', 'Spokane Area', 'Central Washington']],
+    ['Colorado', 'CO', ['Vail Valley', 'Denver Metro', 'Aspen and Roaring Fork Valley', 'Colorado Springs']],
+  ]
+  for (const [stateIndex, [stateName, stateCode, regionNames]] of GEOGRAPHY.entries()) {
+    const state = await prisma.vendorState.create({
+      data: { companyId: company.id, name: stateName, code: stateCode, sortOrder: stateIndex },
+    })
+    for (const [regionIndex, regionName] of regionNames.entries()) {
+      await prisma.vendorRegion.create({
+        data: { companyId: company.id, stateId: state.id, name: regionName, sortOrder: regionIndex },
+      })
+    }
   }
 
   const vendors: { id: string; name: string }[] = []
@@ -589,7 +667,7 @@ async function main() {
   // ── Projects ────────────────────────────────────────────────────────────
   const detailedJob = '26-001'
 
-  for (const [index, row] of raw.projectSummary.entries()) {
+  for (const row of raw.projectSummary) {
     const number = String(row['Job #'])
     const isDetailed = number === detailedJob
     const pm = userByName.get(String(row['Project Manager']))
@@ -633,7 +711,7 @@ async function main() {
     })
 
     if (isDetailed) {
-      await seedDetailedProject(project.id, company.id, codeByCode, tradeByName, vendorByName, index)
+      await seedDetailedProject(project.id, company.id, codeByCode, tradeByName, vendorByName)
     } else {
       await seedSummaryProject(project.id, row, codeByCode)
     }
@@ -656,9 +734,9 @@ async function main() {
 
   await prisma.arAgingBucket.createMany({
     data: [
-      ['Current (0–30 days)', 1_240_000],
-      ['31–60 days', 486_000],
-      ['61–90 days', 198_000],
+      ['Current (0-30 days)', 1_240_000],
+      ['31-60 days', 486_000],
+      ['61-90 days', 198_000],
       ['Over 90 days', 62_000],
     ].map(([bucket, amount], i) => ({
       companyId: company.id,
@@ -689,7 +767,6 @@ async function seedDetailedProject(
   codeByCode: Map<string, { id: string; code: string; description: string; category: CostCategory }>,
   tradeByName: Map<string, { id: string }>,
   vendorByName: Map<string, { id: string; name: string }>,
-  _index: number,
 ) {
   // Budget lines + the change-order budget as a revision, preserving history.
   const budgetLineByCode = new Map<string, { id: string }>()

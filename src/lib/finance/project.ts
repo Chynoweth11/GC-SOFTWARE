@@ -38,11 +38,11 @@ export interface ProjectFinancialsInput {
   commitments: CommitmentDerived[]
   billings: BillingInput[]
   sovLines: SovLineInput[]
-  /** Physical progress from quantity tracking, 0–1, when available. */
+  /** Physical progress from quantity tracking, 0-1, when available. */
   quantityPctComplete: number | null
-  /** Weighted average subcontract progress, 0–1. */
+  /** Weighted average subcontract progress, 0-1. */
   subcontractorPctComplete: number | null
-  /** Schedule-based progress, 0–1. */
+  /** Schedule-based progress, 0-1. */
   schedulePctComplete: number | null
 }
 
@@ -235,7 +235,7 @@ export interface QuantityProgress {
 }
 
 /**
- * Quantity Tracking ▸ H–AB.
+ * Quantity Tracking ▸ H-AB.
  *   Productivity Factor = Earned Hours ÷ Actual Hours   (>1 means beating budget)
  *   Forecast Hours      = Budget Hours ÷ Productivity Factor
  *   Actual Unit Rate    = Actual Hours ÷ Installed to Date

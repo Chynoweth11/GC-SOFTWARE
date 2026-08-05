@@ -9,6 +9,7 @@ export function ProjectTabs({ projectId, alertCount }: { projectId: string; aler
 
   const tabs = [
     { href: base, label: 'Summary', badge: alertCount },
+    { href: `${base}/estimate`, label: 'Estimate and takeoff' },
     { href: `${base}/budget`, label: 'Budget' },
     { href: `${base}/costs`, label: 'Job cost' },
     { href: `${base}/commitments`, label: 'Commitments' },

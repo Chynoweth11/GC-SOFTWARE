@@ -182,7 +182,7 @@ export function TakeoffTable({
         ))}
         <div>
           <label className="label mb-1 block" htmlFor="tk-waste">
-            Waste (0–1)
+            Waste (0-1)
           </label>
           <input id="tk-waste" name="wastePct" type="number" step="0.01" min="0" max="1" defaultValue={editingItem?.wastePct ?? 0} className="field py-1.5 text-xs" />
         </div>

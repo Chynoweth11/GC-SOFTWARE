@@ -7,7 +7,7 @@ function Submit({ label }: { label: string }) {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Saving…' : label}
+      {pending ? 'Saving...' : label}
     </button>
   )
 }
@@ -151,7 +151,7 @@ export function CommitmentForm({
             </div>
             <div>
               <label htmlFor="c-retention" className="label mb-1.5 block">
-                Retention (0–1)
+                Retention (0-1)
               </label>
               <input
                 id="c-retention"

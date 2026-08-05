@@ -33,7 +33,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Save setup'}
+      {pending ? 'Saving...' : 'Save setup'}
     </button>
   )
 }
@@ -180,19 +180,19 @@ export function EstimateSetupForm({
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <label htmlFor="e-burden" className="label mb-1.5 block">
-              Labor burden (0–1)
+              Labor burden (0-1)
             </label>
             <input id="e-burden" name="laborBurdenPct" type="number" step="0.001" min="0" max="1" defaultValue={estimate.laborBurdenPct} className="field text-xs" />
           </div>
           <div>
             <label htmlFor="e-tax" className="label mb-1.5 block">
-              Sales tax on materials (0–1)
+              Sales tax on materials (0-1)
             </label>
             <input id="e-tax" name="salesTaxPct" type="number" step="0.001" min="0" max="1" defaultValue={estimate.salesTaxPct} className="field text-xs" />
           </div>
           <div>
             <label htmlFor="e-tools" className="label mb-1.5 block">
-              Small tools, % of labor (0–1)
+              Small tools, % of labor (0-1)
             </label>
             <input id="e-tools" name="smallToolsPct" type="number" step="0.001" min="0" max="1" defaultValue={estimate.smallToolsPct} className="field text-xs" />
           </div>
@@ -211,7 +211,7 @@ export function EstimateSetupForm({
             {markups.map(([key, label, basis]) => (
               <div key={key}>
                 <label htmlFor={`e-${key}`} className="label mb-1.5 block">
-                  {label} (0–1)
+                  {label} (0-1)
                 </label>
                 <input
                   id={`e-${key}`}

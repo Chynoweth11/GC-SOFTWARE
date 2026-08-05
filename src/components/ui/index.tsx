@@ -358,7 +358,13 @@ export function Tabs({
   active: string
 }) {
   return (
-    <nav className="mb-5 flex gap-0.5 overflow-x-auto border-b no-print" style={{ borderColor: 'var(--border)' }}>
+    // Scrolls sideways on a phone, where there is no room to do anything else,
+    // and wraps onto a second row from tablet width up, so a long tab set is
+    // read in full rather than hidden behind a scrollbar.
+    <nav
+      className="mb-5 flex gap-x-0.5 gap-y-1 overflow-x-auto border-b pb-px no-print sm:flex-wrap sm:overflow-visible"
+      style={{ borderColor: 'var(--border)' }}
+    >
       {tabs.map((tab) => {
         const isActive = active === tab.href
         return (

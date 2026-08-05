@@ -166,7 +166,7 @@ describe('percentage of completion methods', () => {
     expect(computePercentComplete({ ...inputs, method: 'BILLING' })).toBeCloseTo(0.415409054805, 10)
   })
 
-  it('percent complete is clamped to 0–1 however it is measured', () => {
+  it('percent complete is clamped to 0-1 however it is measured', () => {
     expect(computePercentComplete({ ...inputs, method: 'MANUAL', manualPctComplete: 1.4 })).toBe(1)
     expect(computePercentComplete({ ...inputs, method: 'MANUAL', manualPctComplete: -0.2 })).toBe(0)
   })

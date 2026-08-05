@@ -3,7 +3,7 @@ import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import { followUpState, rollupPipeline, type PipelineRow } from '@/lib/finance'
+import { followUpState, rollupPipeline, today, type PipelineRow } from '@/lib/finance'
 import { date, money, moneyShort, percent, titleize } from '@/lib/format'
 import { EmptyState, KpiGrid, Kpi, MoneyKpi, PageHeader, Section, StatusPill, Pill } from '@/components/ui'
 import { ChartFrame, DonutChart, HorizontalBars } from '@/components/charts/primitives'
@@ -36,7 +36,7 @@ export default async function PipelinePage({
     prisma.client.findMany({ where: { companyId: user.companyId }, orderBy: { name: 'asc' } }),
   ])
 
-  const asOf = new Date('2026-08-03T00:00:00.000Z')
+  const asOf = today()
 
   const rows: PipelineRow[] = bids.map((b) => ({
     id: b.id,

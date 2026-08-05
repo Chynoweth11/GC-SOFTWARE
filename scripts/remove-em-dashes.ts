@@ -1,89 +1,78 @@
 /**
- * Rewrites em dashes out of every stored text value.
+ * Sweeps em dashes, en dashes and ellipsis characters out of stored text.
  *
- * The source no longer produces them, but rows written before that change still
- * carry them. Rather than list the columns by hand and miss some, this walks the
- * schema itself: every text column of every table is checked, so a field added
- * later is covered without anyone remembering to update this script.
+ * The software does not use them anywhere, but data arrives from spreadsheets
+ * and pasted documents that do. This walks every text column in the database
+ * generically, so a new table is covered the moment it exists.
  *
- * A dash separating a clause becomes a comma, and one joining two halves of a
- * name becomes a hyphen, which is how these read in practice: "Framing labor,
- * self-perform" and "Residential, New".
- *
- * Safe to run repeatedly. The audit history records that it ran.
+ * The audit history is skipped: it is append only by design, and rewriting it
+ * to fix punctuation would be exactly the kind of edit it exists to prevent.
  */
+import { prisma } from '../src/lib/db'
 
-import { prisma } from '@/lib/db'
-import { recordAudit } from '@/lib/audit'
+const EM_DASH = '—'
+const EN_DASH = '–'
+const ELLIPSIS = '…'
 
-// Written as an escape so the character itself appears nowhere in the codebase.
-const EM_DASH = '\u2014'
+const SKIP_TABLES = new Set(['AuditLog', '_prisma_migrations'])
 
-export function cleanText(value: string): string {
+/** Replaces the characters, keeping the sentence readable rather than literal. */
+export function clean(value: string): string {
   return value
-    .replace(new RegExp(`\\s+${EM_DASH}\\s+`, 'g'), ', ')
+    .replace(new RegExp(` ${EM_DASH} `, 'g'), ', ')
+    .replace(new RegExp(`${EM_DASH} `, 'g'), '')
+    .replace(new RegExp(` ${EM_DASH}`, 'g'), '')
     .replace(new RegExp(EM_DASH, 'g'), '-')
-    .replace(/\s+,/g, ',')
-    .replace(/,\s*,/g, ',')
-    .trim()
+    .replace(new RegExp(EN_DASH, 'g'), '-')
+    .replace(new RegExp(ELLIPSIS, 'g'), '...')
 }
 
-/** Identity columns are left alone: rewriting a primary key would break relations. */
-const SKIP_COLUMNS = new Set(['id'])
-
 async function main() {
-  const company = await prisma.company.findFirst()
-
   const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(
-    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma%'`,
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
   )
 
-  let total = 0
-  const samples: string[] = []
+  let columnsScanned = 0
+  let rowsChanged = 0
+  const touched: string[] = []
 
   for (const { name: table } of tables) {
-    // The audit history is append only by design, and is not rewritten here.
-    if (table === 'AuditLog') continue
+    if (SKIP_TABLES.has(table)) continue
 
-    const columns = await prisma.$queryRawUnsafe<{ name: string; type: string; pk: number }[]>(
+    // PRAGMA returns integers as BigInt through this driver, so compare numerically.
+    const columns = await prisma.$queryRawUnsafe<{ name: string; type: string; pk: number | bigint }[]>(
       `PRAGMA table_info("${table}")`,
     )
+    const key = columns.find((column) => Number(column.pk) === 1)
+    if (!key) continue
 
-    for (const column of columns) {
-      if (!column.type.toUpperCase().includes('TEXT')) continue
-      if (column.pk === 1 || SKIP_COLUMNS.has(column.name)) continue
-
-      const rows = await prisma.$queryRawUnsafe<{ id: string; value: string }[]>(
-        `SELECT "id" AS id, "${column.name}" AS value FROM "${table}"
-         WHERE "${column.name}" LIKE '%' || char(8212) || '%'`,
+    const textColumns = columns.filter((column) => /char|clob|text/i.test(column.type))
+    for (const column of textColumns) {
+      columnsScanned++
+      const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+        `SELECT "${key.name}" AS id, "${column.name}" AS value FROM "${table}"
+         WHERE "${column.name}" LIKE '%${EM_DASH}%'
+            OR "${column.name}" LIKE '%${EN_DASH}%'
+            OR "${column.name}" LIKE '%${ELLIPSIS}%'`,
       )
-      if (rows.length === 0) continue
 
       for (const row of rows) {
-        const next = cleanText(row.value)
+        const next = clean(row.value)
         if (next === row.value) continue
-        await prisma.$executeRawUnsafe(`UPDATE "${table}" SET "${column.name}" = ? WHERE "id" = ?`, next, row.id)
-        if (samples.length < 8) samples.push(`${row.value}  ->  ${next}`)
-        total++
+        await prisma.$executeRawUnsafe(
+          `UPDATE "${table}" SET "${column.name}" = ? WHERE "${key.name}" = ?`,
+          next,
+          row.id,
+        )
+        rowsChanged++
       }
-      console.log(`${table}.${column.name}: ${rows.length}`)
+      if (rows.length > 0) touched.push(`${table}.${column.name} (${rows.length})`)
     }
   }
 
-  if (total > 0 && company) {
-    await recordAudit({
-      companyId: company.id,
-      entity: 'Company',
-      entityId: company.id,
-      entityLabel: company.name,
-      action: 'UPDATE',
-      field: 'Stored text',
-      summary: `Rewrote ${total} stored values to remove em dashes`,
-    })
-  }
-
-  console.log(`\ntotal rewritten: ${total}`)
-  for (const sample of samples) console.log('  ' + sample)
+  console.log(`Scanned ${columnsScanned} text columns across ${tables.length} tables.`)
+  console.log(`Rewrote ${rowsChanged} values.`)
+  for (const entry of touched) console.log('  ' + entry)
 }
 
-main()
+main().then(() => process.exit(0))

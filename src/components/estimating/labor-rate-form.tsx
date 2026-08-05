@@ -7,7 +7,7 @@ function Submit() {
   const { pending } = useFormStatus()
   return (
     <button type="submit" className="btn btn-primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Save rate'}
+      {pending ? 'Saving...' : 'Save rate'}
     </button>
   )
 }
