@@ -70,7 +70,7 @@ export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean):
       columns: [
         { header: 'Line item', key: 'code', width: 14 },
         { header: 'Description', key: 'description', width: 34 },
-        { header: 'Category', key: 'category', width: 18 },
+        { header: 'Cost type', key: 'category', width: 18 },
         { header: 'Trade', key: 'trade', width: 22 },
         { header: 'Original budget', key: 'originalBudget', format: 'money', total: true },
         { header: 'Revisions', key: 'budgetRevisions', format: 'money', total: true },

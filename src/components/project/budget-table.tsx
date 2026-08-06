@@ -110,8 +110,8 @@ export function BudgetTable({
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Search budget lines"
         />
-        <select className="field w-auto py-1.5 text-xs" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Filter by category">
-          <option value="">All categories</option>
+        <select className="field w-auto py-1.5 text-xs" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Filter by cost type">
+          <option value="">All cost types</option>
           {categories.map((c) => (
             <option key={c} value={c}>
               {CATEGORY_LABELS[c]}
@@ -140,7 +140,7 @@ export function BudgetTable({
               <tr>
                 {header('code', 'Code', false)}
                 <th>Description</th>
-                <th>Category</th>
+                <th>Cost type</th>
                 <th>Trade</th>
                 <th className="num">Original</th>
                 <th className="num">Revisions</th>

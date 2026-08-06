@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, type ReactNode } from 'react'
 import { ROLE_LABELS } from '@/lib/permissions'
+import { THEME_COOKIE, type Theme } from '@/lib/theme'
 import type { Role } from '@/generated/prisma/client'
 
 interface ProjectOption {
@@ -21,6 +22,7 @@ interface Props {
   projects: ProjectOption[]
   signOut: () => Promise<void>
   capabilities: { companyFinancials: boolean; estimates: boolean; pipeline: boolean; admin: boolean }
+  theme: Theme
   children: ReactNode
 }
 
@@ -41,20 +43,17 @@ function NavIcon({ path }: { path: string }) {
   )
 }
 
-function ThemeToggle() {
-  // The inline script in the document head has already applied the stored theme
-  // by the time this hydrates, so read it during initialisation rather than
-  // setting state from an effect and re-rendering.
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof document === 'undefined'
-      ? 'light'
-      : ((document.documentElement.getAttribute('data-theme') as 'light' | 'dark') ?? 'light'),
-  )
+function ThemeToggle({ initial }: { initial: Theme }) {
+  // The server already rendered the palette from the cookie, so the toggle
+  // starts from the same value rather than reading the DOM and re-rendering.
+  const [theme, setTheme] = useState<Theme>(initial)
 
   const toggle = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
     document.documentElement.setAttribute('data-theme', next)
-    localStorage.setItem('cx-theme', next)
+    // A cookie, so the next page is server-rendered in the chosen palette. A
+    // year is long enough that the choice feels permanent.
+    document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`
     setTheme(next)
   }
 
@@ -103,7 +102,7 @@ function ProjectSelector({ projects }: { projects: ProjectOption[] }) {
   )
 }
 
-export function AppShell({ user, company, projects, signOut, capabilities, children }: Props) {
+export function AppShell({ user, company, projects, signOut, capabilities, theme, children }: Props) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -213,7 +212,7 @@ export function AppShell({ user, company, projects, signOut, capabilities, child
             <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-subtle)' }}>
               Data date · Mar 31, 2026
             </span>
-            <ThemeToggle />
+            <ThemeToggle initial={theme} />
           </div>
         </header>
 

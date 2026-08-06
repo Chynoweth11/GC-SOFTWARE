@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
+import { cookies } from 'next/headers'
+import { parseTheme, THEME_COOKIE } from '@/lib/theme'
 import './globals.css'
 
 const inter = Inter({ variable: '--font-sans', subsets: ['latin'], display: 'swap' })
@@ -14,17 +16,28 @@ export const metadata: Metadata = {
     'Financial operating system for general contractors: estimating, bidding, budgets, job cost, forecasting and company-wide financial control.',
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  /*
+    The chosen theme is rendered onto <html> here, on the server.
+
+    It used to be applied by an inline script in the head. That script is
+    present in the markup but React never executes it, so the palette was
+    applied on the click and lost on the next page load. Reading a cookie on
+    the server also means the first paint is already correct, with nothing to
+    run before the page is usable.
+
+    No cookie means the visitor has never chosen, and the stylesheet follows
+    their operating system.
+  */
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value)
+
   return (
-    <html lang="en" className={`${inter.variable} ${mono.variable} h-full`} suppressHydrationWarning>
-      <head>
-        {/* Applies the stored theme before paint so the app never flashes the wrong palette. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('cx-theme');if(!t)t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
-          }}
-        />
-      </head>
+    <html
+      lang="en"
+      className={`${inter.variable} ${mono.variable} h-full`}
+      data-theme={theme}
+      suppressHydrationWarning
+    >
       {/*
         Extensions such as Grammarly and password managers add their own
         attributes to <body> before React hydrates, which React then reports as

@@ -65,6 +65,39 @@
   color-scheme: light;
 }
 
+/*
+  The dark palette applies two ways.
+
+  A visitor who has chosen gets [data-theme='dark'], rendered on the server so
+  the first paint is already right. A visitor who has not chosen carries no
+  attribute and follows their operating system through this query.
+*/
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+  --surface: #0d1016;
+  --surface-raised: #171b23;
+  --surface-sunken: #0a0c11;
+  --surface-inset: #1f242f;
+  --border: #262c38;
+  --border-strong: #3a4252;
+  --text: #eceef1;
+  --text-muted: #8b95a5;
+  --text-subtle: #667186;
+  --accent: #5d8cfb;
+  --accent-soft: #16203a;
+  --favorable: #34c98a;
+  --favorable-soft: #0e2a1f;
+  --caution: #f2b433;
+  --caution-soft: #2c2110;
+  --adverse: #f76b6b;
+  --adverse-soft: #2d1616;
+  --series-neutral: #667186;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-raised: 0 8px 24px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+  }
+}
+
 :root[data-theme='dark'] {
   --surface: #0d1016;
   --surface-raised: #171b23;
