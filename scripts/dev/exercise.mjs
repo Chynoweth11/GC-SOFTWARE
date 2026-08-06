@@ -244,6 +244,137 @@ async function main() {
   }
   ok('history filters by record type, action and person')
 
+  // ── Prevailing wage rates ────────────────────────────────────────────────
+  // The one place in the app where the arithmetic on screen is checked against
+  // arithmetic done by hand here, because a wrong wage rate is a wage claim.
+  console.log('\nWage rates')
+
+  await page.goto(`${BASE}/admin/payroll`, { waitUntil: 'networkidle' })
+  const stateCount = await page.locator('text=/of 51 have an unemployment rate/').count()
+  if (stateCount > 0) ok('all 51 jurisdictions are set up')
+  else bad('jurisdictions', 'the payroll settings page does not show 51 jurisdictions')
+
+  await page.fill('input[aria-label="Find a state"]', 'Washington')
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Washington/ }).first().click()
+  await page.waitForTimeout(400)
+
+  await page.fill('input[name="sutaPct"]', '2')
+  await page.fill('input[name="sutaRateYear"]', '2026')
+  await Promise.all([
+    page.waitForTimeout(1500),
+    page.getByRole('button', { name: 'Save Washington' }).click(),
+  ])
+
+  // The panel stays open across the save, so it is not reopened here.
+  await page.fill('input[aria-label="Where the rate came from"]', 'Taken from the 2026 rate notice, checked by the exercise run')
+  await Promise.all([
+    page.waitForTimeout(1500),
+    page.getByRole('button', { name: 'Record the check' }).click(),
+  ])
+  const payrollText = await page.locator('body').innerText()
+  if (/1 of 51 have an unemployment rate entered, 1 checked/.test(payrollText)) {
+    ok('a state unemployment rate can be entered and the check recorded')
+  } else {
+    bad('jurisdiction rate', 'the rate or the verification did not stick')
+  }
+
+  await page.goto(`${BASE}/projects/${projectId}/wage-rates`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Open a wage sheet|Add a wage sheet/ }).first().click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="name"]', 'Exercise sheet')
+  await page.selectOption('select[name="jurisdictionId"]', { label: 'Washington' })
+  await page.waitForTimeout(300)
+  await page.selectOption('select[name="countyId"]', { label: 'Benton' })
+  await page.fill('input[name="rateScheduleDate"]', '2026-03-03')
+  await page.fill('input[name="determinationRef"]', 'Exercise determination')
+  await Promise.all([page.waitForTimeout(1800), page.getByRole('button', { name: 'Open the sheet' }).click()])
+
+  const unverified = await page.locator('text=/Nobody has checked this sheet/').count()
+  if (unverified > 0) ok('a new sheet says plainly that nobody has checked it')
+  else bad('wage sheet verification', 'a brand new sheet did not warn that it is unverified')
+
+  await page.getByRole('button', { name: 'Add a trade' }).first().click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="trade"]', 'Exercise carpenter')
+  await page.fill('input[name="hourlyWage"]', '40')
+  await page.fill('input[name="hourlyBenefits"]', '20')
+  await page.fill('input[name="trainingPerHour"]', '0.50')
+  await page.fill('input[name="workersCompPerHour"]', '1.30')
+  await page.fill('input[name="overtimeMultiplier"]', '1.5')
+  await Promise.all([page.waitForTimeout(1800), page.getByRole('button', { name: 'Add the trade' }).click()])
+
+  /*
+    Worked by hand from the form, with FUTA at 0.6, FICA at 7.65 and the
+    Washington rate just entered at 2.0 percent, all charged on the wage alone:
+
+      subtotal 40 + 20                              = 60.00
+      FUTA 40 x 0.006                               =  0.24
+      FICA 40 x 0.0765                              =  3.06
+      SUTA 40 x 0.02                                =  0.80
+      training                                      =  0.50
+      workers compensation                          =  1.30
+      loaded hourly rate                            = 65.90
+
+    Overtime pays the premium on the wage only, so the fringe and the two
+    dollar items stay where they are and the burdens recompute on 60:
+
+      60 + 20 + 0.36 + 4.59 + 1.20 + 0.50 + 1.30    = 87.95
+  */
+  const sheetText = await page.locator('body').innerText()
+  const expectations = [
+    ['$60.00', 'subtotal'],
+    ['$0.24', 'FUTA on the wage'],
+    ['$3.06', 'FICA on the wage'],
+    ['$0.80', 'SUTA on the wage'],
+    ['$65.90', 'loaded hourly rate'],
+    ['$87.95', 'loaded overtime rate'],
+  ]
+  const missing = expectations.filter(([value]) => !sheetText.includes(value))
+  if (missing.length === 0) {
+    ok('every figure on the wage sheet matches the arithmetic done by hand')
+  } else {
+    bad('wage sheet arithmetic', `missing ${missing.map(([value, what]) => `${value} (${what})`).join(', ')}`)
+  }
+
+  // The fringe must attract no percentage burden. If it did, FICA on a 60
+  // subtotal would be 4.59 rather than the 3.06 above, so its appearance in the
+  // straight time row would give the mistake away.
+  if (!/\$4\.59[\s\S]{0,80}\$65\.90/.test(sheetText)) {
+    ok('no percentage burden was charged on the fringe benefit')
+  } else {
+    bad('wage sheet burdens', 'a burden appears to have been charged on wage plus fringe')
+  }
+
+  await page.getByRole('button', { name: 'Verify', exact: true }).first().click()
+  await page.waitForTimeout(300)
+  await page.fill('textarea[aria-label="Verification note"]', 'Checked against the exercise determination dated 3 March 2026')
+  await Promise.all([page.waitForTimeout(1800), page.getByRole('button', { name: 'Record the check' }).click()])
+  const verifiedText = await page.locator('body').innerText()
+  if (/Verified/.test(verifiedText) && !/Nobody has checked this sheet/.test(verifiedText)) {
+    ok('the sheet can be verified and says who checked it')
+  } else {
+    bad('wage sheet verification', 'the sheet did not record the check')
+  }
+
+  const wageExport = await page.request.get(`${BASE}/api/export/project/${projectId}`)
+  const wagePdf = await page.request.get(`${BASE}/api/pdf/project/${projectId}`)
+  if (wageExport.status() === 200 && wagePdf.status() === 200) {
+    ok('the project workbook and PDF still build with a wage sheet on the job')
+  } else {
+    bad('wage export', `workbook ${wageExport.status()}, pdf ${wagePdf.status()}`)
+  }
+
+  // Put the project back the way it was found.
+  await page.goto(`${BASE}/projects/${projectId}/wage-rates`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Delete sheet' }).click()
+  await page.waitForTimeout(1800)
+  const afterDelete = await page.locator('body').innerText()
+  if (/No wage sheet on this project/.test(afterDelete)) ok('a wage sheet can be deleted')
+  else bad('wage sheet delete', 'the sheet was still there afterwards')
+
   // ── Reports and exports ──────────────────────────────────────────────────
   console.log('\nExports')
   await page.goto(`${BASE}/reports`, { waitUntil: 'networkidle' })

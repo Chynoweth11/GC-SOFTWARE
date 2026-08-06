@@ -14,6 +14,7 @@ export type Capability =
   | 'view:cash_position'
   | 'view:estimates'
   | 'view:pipeline'
+  | 'view:wage_rates'
   // write scopes
   | 'edit:project_setup'
   | 'edit:budget'
@@ -26,6 +27,7 @@ export type Capability =
   | 'lock:forecast'
   | 'edit:estimates'
   | 'edit:pipeline'
+  | 'edit:wage_rates'
   | 'award:bid'
   | 'edit:company_settings'
   | 'manage:users'
@@ -44,6 +46,7 @@ const ALL: Capability[] = [
   'view:cash_position',
   'view:estimates',
   'view:pipeline',
+  'view:wage_rates',
   'edit:project_setup',
   'edit:budget',
   'edit:costs',
@@ -55,6 +58,7 @@ const ALL: Capability[] = [
   'lock:forecast',
   'edit:estimates',
   'edit:pipeline',
+  'edit:wage_rates',
   'award:bid',
   'edit:company_settings',
   'manage:users',
@@ -77,6 +81,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:cash_position',
     'view:estimates',
     'view:pipeline',
+    'view:wage_rates',
     'award:bid',
     'view:audit',
   ],
@@ -85,6 +90,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:project_financials',
     'view:margins',
     'view:estimates',
+    'view:wage_rates',
     'edit:project_setup',
     'edit:budget',
     'edit:costs',
@@ -94,12 +100,14 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'edit:sub_billing',
     'edit:forecast',
     'lock:forecast',
+    'edit:wage_rates',
     'import:data',
     'manage:clients',
   ],
 
   PROJECT_ENGINEER: [
     'view:project_financials',
+    'view:wage_rates',
     'edit:costs',
     'edit:commitments',
     'edit:change_orders',
@@ -113,8 +121,10 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:markups',
     'view:estimates',
     'view:pipeline',
+    'view:wage_rates',
     'edit:estimates',
     'edit:pipeline',
+    'edit:wage_rates',
     'import:data',
     'manage:clients',
   ],
@@ -123,9 +133,11 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:company_financials',
     'view:project_financials',
     'view:cash_position',
+    'view:wage_rates',
     'edit:costs',
     'edit:owner_billing',
     'edit:sub_billing',
+    'edit:wage_rates',
     'import:data',
     'manage:clients',
     'view:audit',
@@ -139,6 +151,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:cash_position',
     'view:estimates',
     'view:pipeline',
+    'view:wage_rates',
     'edit:forecast',
     'lock:forecast',
     'import:data',

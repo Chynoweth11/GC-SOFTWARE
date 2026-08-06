@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { randomBytes, scryptSync } from 'node:crypto'
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 import { PrismaClient, type CostCategory, type Prisma } from '../src/generated/prisma/client'
+import { COUNTIES, JURISDICTIONS } from '../src/lib/reference/jurisdictions'
 
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? 'file:./prisma/dev.db' })
 const prisma = new PrismaClient({ adapter })
@@ -265,6 +266,7 @@ async function main() {
     'commitmentChange', 'commitmentLine', 'commitment', 'budgetRevision', 'budgetLine',
     'bidPackageQuote', 'bidPackage', 'estimateClarification', 'estimateAlternate',
     'generalConditionItem', 'estimateItem', 'estimateSection', 'laborRate',
+    'wageRateLine', 'wageRateSheet', 'payrollCounty', 'payrollJurisdiction',
     'project', 'estimate', 'bid', 'vendor', 'vendorRegion', 'vendorState', 'client', 'costCode', 'trade', 'csiDivision',
     'arAgingBucket', 'companyMonthly', 'user', 'company',
   ] as const
@@ -420,6 +422,46 @@ async function main() {
     for (const [regionIndex, regionName] of regionNames.entries()) {
       await prisma.vendorRegion.create({
         data: { companyId: company.id, stateId: state.id, name: regionName, sortOrder: regionIndex },
+      })
+    }
+  }
+
+  // ── Payroll jurisdictions ───────────────────────────────────────────────
+  // All fifty states and the District of Columbia, so a prevailing wage sheet
+  // can be built for work anywhere without waiting on someone to add the state
+  // first. What is seeded is only what is true of the state itself: the name,
+  // the code, how workers compensation is bought there, and who publishes the
+  // determinations.
+  //
+  // No tax rate is seeded. The state unemployment rate is assigned per employer
+  // per year, so every jurisdiction starts with no rate and unverified, and the
+  // wage sheet says so on its face until somebody enters it from their own
+  // annual notice. That is what the source form asks for in as many words.
+  //
+  // Counties come with Washington and Colorado complete, because that is where
+  // this company builds and prevailing wage is determined county by county.
+  // Everywhere else starts empty and counties are added as work reaches them.
+  for (const [index, jurisdiction] of JURISDICTIONS.entries()) {
+    const record = await prisma.payrollJurisdiction.create({
+      data: {
+        companyId: company.id,
+        code: jurisdiction.code,
+        name: jurisdiction.name,
+        sutaPct: null,
+        sutaWageBase: null,
+        sutaRateYear: null,
+        workersCompBasis: jurisdiction.perHourWorkersComp ? 'PER_HOUR' : 'PER_100_PAYROLL',
+        stateFund: jurisdiction.stateFund ?? false,
+        wageAuthority: jurisdiction.wageAuthority ?? null,
+        notes: jurisdiction.notes ?? null,
+        sortOrder: index,
+      },
+    })
+
+    const counties = COUNTIES[jurisdiction.code] ?? []
+    for (const [countyIndex, name] of counties.entries()) {
+      await prisma.payrollCounty.create({
+        data: { jurisdictionId: record.id, name, sortOrder: countyIndex },
       })
     }
   }

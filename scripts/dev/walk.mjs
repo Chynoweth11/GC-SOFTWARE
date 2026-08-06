@@ -80,6 +80,7 @@ async function main() {
     '/admin/cost-types',
     '/admin/trades',
     '/admin/vendors',
+    '/admin/payroll',
     '/admin/import',
     '/admin/restore',
     '/admin/audit',
@@ -100,6 +101,7 @@ async function main() {
           `/projects/${project}/cashflow`,
           `/projects/${project}/buyout`,
           `/projects/${project}/quantities`,
+          `/projects/${project}/wage-rates`,
           `/projects/${project}/settings`,
         ]
       : []),

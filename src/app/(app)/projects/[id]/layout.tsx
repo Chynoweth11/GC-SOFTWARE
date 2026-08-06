@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
+import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { date, moneyShort, percent } from '@/lib/format'
 import { ExportMenu, PageHeader, Pill, StatusPill } from '@/components/ui'
@@ -63,7 +64,7 @@ export default async function ProjectLayout({
         }
       />
 
-      <ProjectTabs projectId={project.id} alertCount={criticalCount} />
+      <ProjectTabs projectId={project.id} alertCount={criticalCount} canViewWageRates={can(user.role, 'view:wage_rates')} />
 
       {children}
     </>

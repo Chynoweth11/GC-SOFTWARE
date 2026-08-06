@@ -3,7 +3,15 @@
 import { usePathname } from 'next/navigation'
 import { Tabs } from '@/components/ui'
 
-export function ProjectTabs({ projectId, alertCount }: { projectId: string; alertCount: number }) {
+export function ProjectTabs({
+  projectId,
+  alertCount,
+  canViewWageRates,
+}: {
+  projectId: string
+  alertCount: number
+  canViewWageRates: boolean
+}) {
   const pathname = usePathname()
   const base = `/projects/${projectId}`
 
@@ -21,6 +29,7 @@ export function ProjectTabs({ projectId, alertCount }: { projectId: string; aler
     { href: `${base}/cashflow`, label: 'Cash flow' },
     { href: `${base}/buyout`, label: 'Buyout' },
     { href: `${base}/quantities`, label: 'Quantities' },
+    ...(canViewWageRates ? [{ href: `${base}/wage-rates`, label: 'Wage rates' }] : []),
     { href: `${base}/settings`, label: 'Settings' },
   ]
 

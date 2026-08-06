@@ -28,6 +28,12 @@ model Company {
   defaultRetentionPct    Float    @default(0.05)
   defaultLaborBurdenPct  Float    @default(0.34)
   defaultOverheadPct     Float    @default(0.06)
+  /// Federal unemployment, employer share, on the wage. The net 0.6 percent a
+  /// state in good standing pays after the credit against the 6.0 percent rate.
+  /// Federal, so it lives here once rather than on every state.
+  futaPct                Float    @default(0.006)
+  /// Social security and Medicare, employer share: 6.2 plus 1.45 percent.
+  ficaPct                Float    @default(0.0765)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -46,6 +52,7 @@ model Company {
   savedViews     SavedView[]
   vendorStates   VendorState[]
   vendorRegions  VendorRegion[]
+  payrollJurisdictions PayrollJurisdiction[]
 }
 
 enum Role {
@@ -78,6 +85,10 @@ model User {
   auditLogs       AuditLog[]
   savedViews      SavedView[]
   preferences     UserPreference[]
+
+  verifiedJurisdictions PayrollJurisdiction[] @relation("PayrollJurisdictionVerifier")
+  verifiedCounties      PayrollCounty[]       @relation("PayrollCountyVerifier")
+  verifiedWageSheets    WageRateSheet[]       @relation("WageRateSheetVerifier")
 
   @@index([companyId])
 }
@@ -768,6 +779,7 @@ model Project {
   quantityItems  QuantityItem[]
   snapshots      ProjectSnapshot[]
   bidPackages    BidPackage[]
+  wageRateSheets WageRateSheet[]
 
   @@unique([companyId, number])
   @@index([companyId, status])
@@ -1339,4 +1351,179 @@ model ArAgingBucket {
 
   @@unique([companyId, asOf, bucket])
   @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Prevailing wage and certified payroll
+// ─────────────────────────────────────────────────────────────
+
+/// How a state charges workers compensation, which changes what goes in the
+/// per-hour box on the wage sheet.
+enum WorkersCompBasis {
+  /// Premium quoted per hour worked, which the wage sheet takes directly.
+  PER_HOUR
+  /// Premium quoted per 100 dollars of payroll, the ordinary case. Divide by
+  /// 100 and multiply by the hourly wage to get the per-hour figure.
+  PER_100_PAYROLL
+}
+
+/// A state, or the District of Columbia, as far as payroll is concerned.
+///
+/// Holds only what genuinely varies by state. The federal rates are on the
+/// company, because they do not vary by state and must not be stored twice.
+///
+/// The state unemployment rate is deliberately left empty until somebody fills
+/// it in from the annual notice, because it is set per employer per year and no
+/// list can be right for every company. `verifiedAt` records that somebody
+/// checked it, and against what.
+model PayrollJurisdiction {
+  id        String  @id @default(cuid())
+  companyId String
+  /// Two-letter postal code, for example WA.
+  code      String
+  name      String
+
+  /// Employer's state unemployment rate as a fraction. Null until verified.
+  sutaPct       Float?
+  /// Wages per employee per year the state unemployment rate applies to.
+  /// Recorded for reference; the wage sheet charges every hour, see notes.
+  sutaWageBase  Float?
+  /// The year the rate above was issued for.
+  sutaRateYear  Int?
+
+  workersCompBasis WorkersCompBasis @default(PER_100_PAYROLL)
+  /// True where workers compensation is bought from a state monopoly fund
+  /// rather than on the private market.
+  stateFund        Boolean          @default(false)
+
+  /// Who publishes the prevailing wage determinations used here.
+  wageAuthority    String?
+  notes            String?
+
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedNote String?
+
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  verifiedBy User?                     @relation("PayrollJurisdictionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  counties   PayrollCounty[]
+  sheets     WageRateSheet[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+/// A county inside a state.
+///
+/// Prevailing wage is determined county by county, both federally and in the
+/// states that publish their own schedules, so the county is what identifies
+/// which schedule a sheet was built from.
+model PayrollCounty {
+  id             String @id @default(cuid())
+  jurisdictionId String
+  name           String
+  /// Census FIPS code, where it is known, for matching published schedules.
+  fips           String?
+
+  /// Anything local: a city ordinance above the state rate, a separate
+  /// determination area, a heavy and highway split.
+  notes String?
+
+  verifiedAt   DateTime?
+  verifiedById String?
+
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jurisdiction PayrollJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+  verifiedBy   User?               @relation("PayrollCountyVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  sheets       WageRateSheet[]
+
+  @@unique([jurisdictionId, name])
+  @@index([jurisdictionId])
+}
+
+/// One certified payroll wage rate sheet for a project.
+///
+/// A project can carry more than one: work in two counties, or a schedule that
+/// changed part way through, means two sheets rather than edited history.
+model WageRateSheet {
+  id             String  @id @default(cuid())
+  projectId      String
+  name           String
+  jurisdictionId String
+  countyId       String?
+
+  /// The date of the determination or agreement the rates were taken from.
+  rateScheduleDate DateTime?
+  /// How to find that schedule again: a general decision number, an L&I
+  /// effective date, a union agreement name.
+  determinationRef String?
+
+  /// State unemployment rate for this sheet, where it differs from the rate on
+  /// the jurisdiction. Null means use the jurisdiction, which is the usual case.
+  sutaPctOverride Float?
+
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedNote String?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jurisdiction PayrollJurisdiction  @relation(fields: [jurisdictionId], references: [id], onDelete: Restrict)
+  county       PayrollCounty?       @relation(fields: [countyId], references: [id], onDelete: SetNull)
+  verifiedBy   User?                @relation("WageRateSheetVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  lines        WageRateLine[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+/// One trade on a wage sheet. The seven boxes of the form, and nothing derived:
+/// every subtotal, burden and total is computed from these on the way out.
+model WageRateLine {
+  id      String @id @default(cuid())
+  sheetId String
+  /// Trade and position as the schedule names it, for example "Carpenter,
+  /// journey level".
+  trade   String
+  /// The schedule's own classification code, where it has one.
+  classification String?
+
+  /// Item 1, the cash wage per hour.
+  hourlyWage     Float @default(0)
+  /// Item 2, the bona fide fringe benefit per hour.
+  hourlyBenefits Float @default(0)
+  /// Item 6, training and education per hour.
+  trainingPerHour     Float @default(0)
+  /// Item 7, workers compensation per hour.
+  workersCompPerHour  Float @default(0)
+  /// 1.5 for time and a half, 2 for double time.
+  overtimeMultiplier  Float @default(1.5)
+
+  /// The published determination, for checking this row against it. Optional,
+  /// because a sheet built from a union agreement has no separate published
+  /// figure to check against.
+  publishedBaseWage Float?
+  publishedFringe   Float?
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sheet WageRateSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+
+  @@unique([sheetId, trade])
+  @@index([sheetId])
 }

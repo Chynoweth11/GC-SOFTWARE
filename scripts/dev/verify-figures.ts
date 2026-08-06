@@ -11,6 +11,8 @@
  */
 import { getProjectBundle } from '../../src/lib/queries/project'
 import { getCompanyDashboard } from '../../src/lib/queries/company'
+import { getProjectWageSheets } from '../../src/lib/queries/wage-rates'
+import { COUNTIES, JURISDICTIONS } from '../../src/lib/reference/jurisdictions'
 import { prisma } from '../../src/lib/db'
 
 const CENT = 0.005
@@ -139,6 +141,60 @@ async function main() {
       0.5,
     )
 
+  }
+
+  // ── Prevailing wage sheets ────────────────────────────────────────────
+  // The identities that must hold on any sheet whatever the rates on it, and
+  // the one that must never hold: a percentage burden charged on the fringe.
+  console.log('\nChecking wage sheets')
+  let wageRows = 0
+  for (const record of projects) {
+    for (const sheet of await getProjectWageSheets(record.id, company.id)) {
+      const tag = `${record.number} ${sheet.name}`
+      for (const row of sheet.summary.rows) {
+        wageRows++
+        check(`${tag} ${row.trade}: subtotal = wage + benefit`, row.subtotal, row.hourlyWage + row.hourlyBenefits)
+        check(
+          `${tag} ${row.trade}: total = subtotal + every burden`,
+          row.total,
+          row.subtotal + row.futa + row.fica + row.suta + row.training + row.workersComp,
+        )
+        check(`${tag} ${row.trade}: FUTA is charged on the wage alone`, row.futa, row.hourlyWage * sheet.rates.futaPct)
+        check(`${tag} ${row.trade}: FICA is charged on the wage alone`, row.fica, row.hourlyWage * sheet.rates.ficaPct)
+        check(`${tag} ${row.trade}: SUTA is charged on the wage alone`, row.suta, row.hourlyWage * sheet.rates.sutaPct)
+        assert(
+          `${tag} ${row.trade}: overtime does not pay a premium on the fringe`,
+          Math.abs(row.overtime.hourlyBenefits - row.hourlyBenefits) < CENT,
+        )
+      }
+      check(
+        `${tag}: the sheet total equals the sum of its trades`,
+        sheet.summary.totals.total,
+        sheet.summary.rows.reduce((total, row) => total + row.total, 0),
+      )
+    }
+  }
+  console.log(`  ${wageRows} wage rates checked`)
+
+  // ── Payroll reference data ────────────────────────────────────────────
+  // Guards the promise the software makes about this data: every state is
+  // present, the two county lists are complete, and no tax rate is shipped.
+  console.log('\nChecking payroll reference data')
+  const jurisdictions = await prisma.payrollJurisdiction.findMany({
+    where: { companyId: company.id },
+    include: { counties: true },
+  })
+  check('every state and DC is set up', jurisdictions.length, JURISDICTIONS.length, 0)
+  for (const [code, expected] of Object.entries(COUNTIES)) {
+    const seeded = jurisdictions.find((jurisdiction) => jurisdiction.code === code)
+    assert(`${code} is set up`, Boolean(seeded))
+    if (seeded) check(`${code} carries its full county list`, seeded.counties.length, expected.length, 0)
+  }
+  for (const jurisdiction of jurisdictions) {
+    assert(
+      `${jurisdiction.code}: an unverified unemployment rate is never presented as checked`,
+      jurisdiction.sutaPct !== null || jurisdiction.verifiedAt === null,
+    )
   }
 
   // ── Company roll-up against the projects it is built from ─────────────

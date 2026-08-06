@@ -1,6 +1,7 @@
 import 'server-only'
 import type { ProjectBundle } from '@/lib/queries/project'
 import type { SheetSpec } from '@/lib/excel'
+import type { WageSheetView } from '@/lib/queries/wage-rates'
 import { titleize } from '@/lib/format'
 
 /**
@@ -8,7 +9,11 @@ import { titleize } from '@/lib/format'
  * as one set of sheets. The Excel workbook and the PDF both render from this,
  * so the two exports always carry the same figures.
  */
-export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean): { sheets: SheetSpec[]; asOf: string } {
+export function buildProjectSheets(
+  bundle: ProjectBundle,
+  showMargins: boolean,
+  wageSheets: readonly WageSheetView[] = [],
+): { sheets: SheetSpec[]; asOf: string } {
   const { project, financials: f, changeOrders, changeOrderRecords, commitments, cashFlow, quantities, bidPackages } = bundle
   const asOf = (project.dataDate ?? new Date()).toISOString().slice(0, 10)
 
@@ -257,6 +262,64 @@ export function buildProjectSheets(bundle: ProjectBundle, showMargins: boolean):
           },
         ]
       : []),
+
+    /*
+      One sheet per wage sheet, so a county's rates are never mixed with
+      another county's. Every figure past the entered boxes is computed by the
+      payroll engine here rather than read from the database, which is what
+      keeps the workbook, the PDF and the screen in agreement.
+    */
+    ...wageSheets.map((wage) => ({
+      name: `Wages ${wage.jurisdiction.code}${wage.county ? ` ${wage.county.name}` : ''}`.slice(0, 31),
+      totalsRow: true,
+      notes: [
+        wage.name,
+        `${wage.jurisdiction.name}${wage.county ? `, ${wage.county.name} County` : ''}` +
+          (wage.rateScheduleDate ? `, schedule dated ${wage.rateScheduleDate.toISOString().slice(0, 10)}` : ', no schedule date'),
+        wage.verifiedAt
+          ? `Verified ${wage.verifiedAt.toISOString().slice(0, 10)}${wage.verifiedByName ? ` by ${wage.verifiedByName}` : ''}`
+          : 'Not verified against the published schedule',
+        `Federal unemployment ${(wage.rates.futaPct * 100).toFixed(3)} percent, social security and Medicare ${(wage.rates.ficaPct * 100).toFixed(3)} percent, state unemployment ${
+          wage.rates.sutaSource === 'not set' ? 'not set' : `${(wage.rates.sutaPct * 100).toFixed(3)} percent from the ${wage.rates.sutaSource}`
+        }`,
+        'Percentage burdens are charged on the wage only. A fringe benefit is not wages.',
+        ...wage.summary.issues,
+      ],
+      columns: [
+        { header: 'Trade', key: 'trade', width: 34 },
+        { header: 'Classification', key: 'classification', width: 18 },
+        { header: '1 Hourly wage', key: 'hourlyWage', format: 'money2' as const, total: true },
+        { header: '2 Hourly benefit', key: 'hourlyBenefits', format: 'money2' as const, total: true },
+        { header: 'Subtotal', key: 'subtotal', format: 'money2' as const, total: true },
+        { header: '3 FUTA', key: 'futa', format: 'money2' as const, total: true },
+        { header: '4 FICA', key: 'fica', format: 'money2' as const, total: true },
+        { header: '5 SUTA', key: 'suta', format: 'money2' as const, total: true },
+        { header: '6 Training', key: 'training', format: 'money2' as const, total: true },
+        { header: '7 Workers comp', key: 'workersComp', format: 'money2' as const, total: true },
+        { header: 'Total burden', key: 'totalBurden', format: 'money2' as const, total: true },
+        { header: 'Loaded hourly rate', key: 'total', format: 'money2' as const, total: true },
+        { header: 'Burden of wage', key: 'burdenPctOfWage', format: 'percent' as const },
+        { header: 'Overtime multiplier', key: 'overtimeMultiplier', format: 'number' as const },
+        { header: 'Loaded overtime rate', key: 'overtimeTotal', format: 'money2' as const },
+      ],
+      rows: wage.summary.rows.map((row, index) => ({
+        trade: row.trade,
+        classification: wage.lines[index]?.classification ?? '',
+        hourlyWage: row.hourlyWage,
+        hourlyBenefits: row.hourlyBenefits,
+        subtotal: row.subtotal,
+        futa: row.futa,
+        fica: row.fica,
+        suta: row.suta,
+        training: row.training,
+        workersComp: row.workersComp,
+        totalBurden: row.totalBurden,
+        total: row.total,
+        burdenPctOfWage: row.burdenPctOfWage,
+        overtimeMultiplier: row.overtimeMultiplier,
+        overtimeTotal: row.overtime.total,
+      })),
+    })),
   ]
 
 

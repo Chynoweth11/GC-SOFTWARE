@@ -80,6 +80,30 @@ describe('roles and capabilities', () => {
     expect(can('READ_ONLY', 'view:pipeline')).toBe(false)
   })
 
+  it('keeps wage rates off the read-only account and behind an edit capability', () => {
+    // A wage sheet carries what the company pays each trade, so it is not part
+    // of the general project view a read-only account gets.
+    expect(can('READ_ONLY', 'view:wage_rates')).toBe(false)
+    expect(can('READ_ONLY', 'edit:wage_rates')).toBe(false)
+
+    // The people who build, price or certify payroll can edit one.
+    for (const role of ['OWNER', 'ADMIN', 'PROJECT_MANAGER', 'ESTIMATOR', 'ACCOUNTING'] as const) {
+      expect(can(role, 'edit:wage_rates')).toBe(true)
+      expect(can(role, 'view:wage_rates')).toBe(true)
+    }
+
+    // Everyone who may edit one may read one. The reverse does not follow.
+    for (const role of ROLES) {
+      if (can(role, 'edit:wage_rates')) expect(can(role, 'view:wage_rates')).toBe(true)
+    }
+
+    // An executive and a project engineer read the rates without setting them.
+    for (const role of ['EXECUTIVE', 'PROJECT_ENGINEER', 'FINANCE'] as const) {
+      expect(can(role, 'view:wage_rates')).toBe(true)
+      expect(can(role, 'edit:wage_rates')).toBe(false)
+    }
+  })
+
   it('lets an estimator price work without opening the books', () => {
     expect(can('ESTIMATOR', 'view:estimates')).toBe(true)
     expect(can('ESTIMATOR', 'view:markups')).toBe(true)

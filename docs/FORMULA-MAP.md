@@ -15,7 +15,7 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 109 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 141 tests asserting these formulas
 reproduce the workbooks' own cached values.
 
 ---
@@ -350,7 +350,71 @@ Database: `Bid`
 
 ---
 
-## 13. Output, permissions and portability
+## 13. Prevailing wage rates: COP Wage Rates
+
+Engine: [`src/lib/finance/payroll.ts`](../src/lib/finance/payroll.ts) · Tests: `payroll.test.ts`
+Database: `PayrollJurisdiction`, `PayrollCounty`, `WageRateSheet`, `WageRateLine`, and the two federal rates on `Company`
+Appears: project Wage rates tab, Settings ▸ Payroll and prevailing wage, project Excel export, project PDF
+
+The certified payroll build-up: the wage and fringe the schedule requires, then
+each payroll burden stacked on top, then the fully loaded hourly cost.
+
+| Step | Sheet formula | Software field | How it is derived now |
+|---|---|---|---|
+| 1 Hourly wage | entered | `WageRateLine.hourlyWage` | Entered from the determination |
+| 2 Hourly benefits | entered | `WageRateLine.hourlyBenefits` | Entered; a bona fide fringe paid in cash or into a plan |
+| Subtotal | `=1+2` | `WageRateDerived.subtotal` | `hourlyWage + hourlyBenefits` |
+| 3 FUTA | `=1*rate` | `WageRateDerived.futa` | `hourlyWage × Company.futaPct`, **on the wage only** |
+| 4 FICA | `=1*rate` | `WageRateDerived.fica` | `hourlyWage × Company.ficaPct`, on the wage only |
+| 5 SUTA | `=1*rate` | `WageRateDerived.suta` | `hourlyWage ×` the sheet override, else `PayrollJurisdiction.sutaPct` |
+| 6 Training and education | entered | `WageRateLine.trainingPerHour` | Dollars per hour worked, entered |
+| 7 Workers compensation | entered | `WageRateLine.workersCompPerHour` | Dollars per hour worked. `workersCompPerHour()` converts a rate quoted per 100 of payroll |
+| Total | `=subtotal+3+4+5+6+7` | `WageRateDerived.total` | The fully loaded hourly cost |
+| Overtime | `=1*multiplier` then burdens | `WageRateDerived.overtime` | The premium applies to the **wage only**; the fringe and the two dollar items are per hour worked and do not take it, and the percentage burdens recompute on the higher wage |
+
+**The one thing that must not move.** The percentage burdens are charged on the
+wage, never on the subtotal. A fringe benefit paid into a plan is not wages, so
+it attracts no FUTA, FICA or SUTA. Charging them on wage plus fringe inflates
+every rate on the page, and it is the most common way one of these sheets comes
+out wrong. `payroll.test.ts` asserts the distinction directly: doubling the
+fringe must leave all three percentage burdens exactly where they were.
+
+**Where each rate lives, once.** FUTA and FICA are federal and identical in
+every state, so they are held on `Company`. The state unemployment rate is held
+on `PayrollJurisdiction`, and a sheet stores a rate only when this job genuinely
+carries a different one (`sutaPctOverride`, normally null). Correcting a rate in
+Settings therefore corrects every sheet built on it.
+
+**Nothing is shipped that cannot be true.** All fifty states and the District of
+Columbia are seeded, with the facts that belong to the state: its code and name,
+whether workers compensation is bought from a state monopoly fund, whether that
+fund quotes premium per hour worked rather than per 100 of payroll (Washington),
+and the agency that publishes determinations where that is well established. No
+unemployment rate is seeded at all, because that rate is issued to each employer
+every year. Every jurisdiction starts unverified and every wage sheet says so on
+its face until somebody enters the rate from their own annual notice and records
+the check, which is what the source form asks for in as many words.
+
+**Counties.** Prevailing wage is determined county by county, so a sheet names
+one. Washington's thirty-nine and Colorado's sixty-four ship complete. Other
+states ship with none, and counties are added in Settings as work reaches them.
+
+**One simplification, deliberate and inherited.** Unemployment is only owed on
+the first few thousand dollars a worker earns in a year, so a crew on the
+payroll since January stops attracting it before the job ends. The form charges
+it on every hour anyway. That overstates the rate slightly, always in the safe
+direction, and it is what the owner is shown on the certified form, so it is
+reproduced rather than corrected. `PayrollJurisdiction.sutaWageBase` records the
+base so the size of the difference can be worked out when it matters.
+
+**Checking a row against the determination.** `checkAgainstDetermination()` holds
+two conditions: wage plus fringe must meet the published total, and the cash wage
+alone must not fall below the published base. The two may be traded off against
+each other, but a rich fringe cannot prop up a cash wage below the base rate.
+
+---
+
+## 14. Output, permissions and portability
 
 Nothing in this section computes a figure. It documents where the figures go and
 who may see them.
