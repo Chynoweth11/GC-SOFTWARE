@@ -53,6 +53,8 @@ model Company {
   vendorStates   VendorState[]
   vendorRegions  VendorRegion[]
   payrollJurisdictions PayrollJurisdiction[]
+  laborClassifications LaborClassification[]
+  overheadCosts        OverheadCost[]
 }
 
 enum Role {
@@ -89,6 +91,8 @@ model User {
   verifiedJurisdictions PayrollJurisdiction[] @relation("PayrollJurisdictionVerifier")
   verifiedCounties      PayrollCounty[]       @relation("PayrollCountyVerifier")
   verifiedWageSheets    WageRateSheet[]       @relation("WageRateSheetVerifier")
+  complianceOwned       ComplianceRequirement[] @relation("ComplianceOwner")
+  complianceSubmitted   ComplianceSubmission[]  @relation("ComplianceSubmitter")
 
   @@index([companyId])
 }
@@ -228,6 +232,7 @@ model Trade {
   changeOrders ChangeOrder[]
   bidPackages  BidPackage[]
   vendors      Vendor[]
+  laborClassifications LaborClassification[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -255,6 +260,7 @@ model CostCode {
   sovLines        SovLine[]
   quantityItems   QuantityItem[]
   subInvoices     SubInvoice[]
+  laborAssignments ProjectLaborAssignment[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -500,14 +506,28 @@ model Estimate {
   @@index([companyId, status])
 }
 
+/**
+ * A labor class priced on one estimate.
+ *
+ * Normally a pointer at the company's classification library, so a rate entered
+ * once prices every estimate that uses it and a pay rise does not have to be
+ * chased through open bids. `rate` is then null and the loaded rate is derived.
+ *
+ * A rate may still be typed in directly, for a class the library does not carry
+ * or a number agreed for this bid alone. Exactly one of the two is ever set,
+ * and the estimate says which it is reading.
+ */
 model LaborRate {
-  id         String @id @default(cuid())
-  estimateId String
-  className  String
-  rate       Float
-  sortOrder  Int    @default(0)
+  id               String @id @default(cuid())
+  estimateId       String
+  className        String
+  /// A rate entered for this estimate alone. Null when a classification is linked.
+  rate             Float?
+  classificationId String?
+  sortOrder        Int    @default(0)
 
-  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  estimate       Estimate             @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  classification LaborClassification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
 
   @@unique([estimateId, className])
 }
@@ -780,6 +800,8 @@ model Project {
   snapshots      ProjectSnapshot[]
   bidPackages    BidPackage[]
   wageRateSheets WageRateSheet[]
+  laborAssignments ProjectLaborAssignment[]
+  complianceRequirements ComplianceRequirement[]
 
   @@unique([companyId, number])
   @@index([companyId, status])
@@ -1413,6 +1435,7 @@ model PayrollJurisdiction {
   verifiedBy User?                     @relation("PayrollJurisdictionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
   counties   PayrollCounty[]
   sheets     WageRateSheet[]
+  classifications LaborClassification[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1526,4 +1549,286 @@ model WageRateLine {
 
   @@unique([sheetId, trade])
   @@index([sheetId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Labor cost, project team and overhead
+// ─────────────────────────────────────────────────────────────
+
+enum PayBasis {
+  /// Paid by the hour. Amounts on the classification are per hour.
+  HOURLY
+  /// Paid a salary. Amounts on the classification are per year.
+  SALARY
+}
+
+enum LaborKind {
+  /// Craft labor, priced into takeoff lines and charged to a work code.
+  FIELD
+  /// Project team and office: managers, superintendents, engineers,
+  /// estimators, administration. Charged to general conditions or carried
+  /// as overhead when not on a job.
+  STAFF
+}
+
+enum AssignmentBasis {
+  /// A number of hours at the loaded hourly cost.
+  HOURS
+  /// A share of somebody's time across a date range.
+  ALLOCATION
+}
+
+/**
+ * What one classification of person costs the company, fully loaded.
+ *
+ * The single place a wage or a salary is entered. Estimates price takeoff
+ * labor through it, projects assign people to jobs through it, and the
+ * overhead recovery rate counts the staff who are not on a job through it, so
+ * a pay rise is entered once and every one of those moves.
+ *
+ * Amounts are per hour when paid hourly and per year when salaried, which is
+ * how each is actually quoted. `annualHours` is how a salary is spread onto an
+ * hour, and it is deliberately not fixed at 2080: a superintendent who works
+ * 2400 hours costs less an hour than the same salary spread over 2080, and
+ * pricing at the wrong one is how general conditions quietly go light.
+ */
+model LaborClassification {
+  id        String @id @default(cuid())
+  companyId String
+  /// The company's own code for this classification, where it has one.
+  code      String?
+  name      String
+  kind      LaborKind @default(FIELD)
+  payBasis  PayBasis  @default(HOURLY)
+
+  /// Per hour when paid hourly, per year when salaried.
+  baseAmount     Float @default(0)
+  /// Fringe benefits. Per hour when paid hourly, per year when salaried.
+  benefitsAmount Float @default(0)
+  /// Hours a year a salary is spread over. Ignored when paid hourly.
+  annualHours    Float @default(2080)
+
+  /// Training and education, dollars per hour worked.
+  trainingPerHour Float @default(0)
+  /// Workers compensation for this classification's risk class, quoted the way
+  /// the jurisdiction quotes it: per hour worked, or per 100 dollars of payroll.
+  workersCompRate Float @default(0)
+
+  /// Whose state unemployment rate applies. Null uses no state rate, and the
+  /// classification says so rather than pricing labor light in silence.
+  jurisdictionId String?
+
+  /// Where this person's cost lands in a budget.
+  costCategory CostCategory @default(LABOR)
+  tradeId      String?
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jurisdiction PayrollJurisdiction? @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
+  trade        Trade?               @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  assignments  ProjectLaborAssignment[]
+  estimateRates LaborRate[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+/**
+ * A person or a classification charged to a project.
+ *
+ * Two ways to say it, because two things are being said. Craft labor and short
+ * stints are a number of hours. A salaried manager is a share of somebody's
+ * time across a range of dates, which is how project teams are actually
+ * staffed: half a project manager from March to November, a superintendent
+ * full time for the duration, an estimator for the three weeks of the bid.
+ *
+ * The cost is never stored. It is derived from the classification's loaded
+ * rate every time it is read, so a pay rise reprices every job that person is
+ * on rather than leaving a set of stale numbers behind.
+ */
+model ProjectLaborAssignment {
+  id               String @id @default(cuid())
+  projectId        String
+  classificationId String
+  /// The person, when this is a named person rather than a generic role.
+  label            String?
+  /// Where the cost lands. Null falls back to the classification's cost type.
+  costCodeId       String?
+
+  basis AssignmentBasis @default(ALLOCATION)
+
+  /// Hours basis.
+  budgetedHours Float @default(0)
+
+  /// Allocation basis: the share of their time, and over what dates.
+  allocationPct Float     @default(1)
+  startDate     DateTime?
+  endDate       DateTime?
+
+  /// A rate negotiated for this job specifically. Null is the ordinary case
+  /// and the classification's own loaded rate is used.
+  loadedRateOverride Float?
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  classification LaborClassification @relation(fields: [classificationId], references: [id], onDelete: Restrict)
+  costCode       CostCode?           @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([classificationId])
+}
+
+enum OverheadCategory {
+  OFFICE
+  VEHICLES
+  SOFTWARE
+  INSURANCE
+  EQUIPMENT
+  PROFESSIONAL
+  MARKETING
+  TRAINING
+  OTHER
+}
+
+enum OverheadPeriod {
+  MONTHLY
+  ANNUAL
+  ONE_TIME
+}
+
+/**
+ * A cost of being in business that no single job pays for directly.
+ *
+ * Rent, trucks, software, insurance, professional fees. Held so the overhead
+ * percentage carried in a bid can be worked out from what the company actually
+ * spends rather than guessed, and so an estimator pricing a trailer or a
+ * software seat into general conditions can see what the real one costs.
+ *
+ * Salaried staff are deliberately not entered here. They are already on the
+ * classification list, and the overhead summary counts the share of them that
+ * no project is paying for. Entering a salary in both places would be the same
+ * money twice.
+ */
+model OverheadCost {
+  id        String           @id @default(cuid())
+  companyId String
+  name      String
+  category  OverheadCategory @default(OTHER)
+  amount    Float            @default(0)
+  period    OverheadPeriod   @default(MONTHLY)
+  /// When a one-time cost fell, or when an annual item renews.
+  incurredOn DateTime?
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Labor compliance
+// ─────────────────────────────────────────────────────────────
+
+enum ComplianceKind {
+  CERTIFIED_PAYROLL
+  PREVAILING_WAGE_POSTING
+  FRINGE_BENEFIT_STATEMENT
+  APPRENTICESHIP_UTILIZATION
+  EEO_REPORT
+  WAGE_DETERMINATION_UPDATE
+  INTENT_OR_AFFIDAVIT
+  OSHA_LOG
+  INSURANCE_CERTIFICATE
+  LICENSE_OR_REGISTRATION
+  OTHER
+}
+
+enum ComplianceFrequency {
+  WEEKLY
+  BIWEEKLY
+  SEMIMONTHLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_TIME
+}
+
+/**
+ * Something this job has to file, and how often.
+ *
+ * Certified payroll every week, an apprenticeship utilisation report every
+ * month, a wage determination checked each quarter. The point is the deadline:
+ * a missed certified payroll can stop a payment application, and nobody
+ * remembers a weekly filing on a job they did not open this week.
+ *
+ * The next due date is never stored. It is derived from the frequency, the
+ * first due date and what has actually been filed, so it cannot go stale and
+ * a late filing does not silently reset the schedule.
+ */
+model ComplianceRequirement {
+  id        String              @id @default(cuid())
+  projectId String
+  kind      ComplianceKind      @default(CERTIFIED_PAYROLL)
+  title     String
+  /// Who it goes to.
+  agency    String?
+  frequency ComplianceFrequency @default(WEEKLY)
+  /// The first deadline. Every later one is counted forward from it.
+  firstDueDate DateTime
+  /// The last deadline, where the obligation ends before the job does.
+  endsOn       DateTime?
+  /// How many days ahead of a deadline to start warning.
+  leadDays     Int @default(7)
+
+  responsibleUserId String?
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  responsible User?                  @relation("ComplianceOwner", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  submissions ComplianceSubmission[]
+
+  @@unique([projectId, title])
+  @@index([projectId])
+}
+
+/// One filing actually made, against the deadline it was made for.
+model ComplianceSubmission {
+  id            String @id @default(cuid())
+  requirementId String
+  /// The deadline this filing answers.
+  dueDate       DateTime
+  /// The period the filing covers, where that differs from the deadline.
+  periodEnd     DateTime?
+  submittedAt   DateTime
+  submittedById String?
+  /// Confirmation number, file name, whatever proves it went.
+  reference     String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  requirement ComplianceRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  submittedBy User?                 @relation("ComplianceSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+
+  @@unique([requirementId, dueDate])
+  @@index([requirementId])
 }

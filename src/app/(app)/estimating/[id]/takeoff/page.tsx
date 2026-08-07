@@ -14,7 +14,7 @@ export default async function TakeoffPage({ params }: { params: Promise<{ id: st
   const bundle = await getEstimateBundle(id, user.companyId)
   if (!bundle) notFound()
 
-  const { estimate, summary } = bundle
+  const { estimate, summary, laborRates } = bundle
   const canEdit = can(user.role, 'edit:estimates') && !estimate.lockedAt
 
   const divisions = await prisma.csiDivision.findMany({
@@ -51,7 +51,7 @@ export default async function TakeoffPage({ params }: { params: Promise<{ id: st
           items={summary.items}
           sections={estimate.sections.map((s) => ({ id: s.id, label: s.name }))}
           divisions={divisions.map((d) => ({ id: d.id, code: d.code, label: `${d.code} ${d.name}` }))}
-          laborClasses={estimate.laborRates.map((r) => ({ className: r.className, rate: r.rate }))}
+          laborClasses={laborRates.map((r) => ({ className: r.className, rate: r.rate }))}
           canEdit={canEdit}
           save={saveTakeoffItem}
           remove={deleteTakeoffItem}

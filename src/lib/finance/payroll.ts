@@ -103,8 +103,14 @@ export interface OvertimeDerived {
   total: number
 }
 
-/** Percentage burdens apply to the wage only, never to the fringe benefit. */
-function burdensOnWage(wage: number, rates: PayrollBurdenRates) {
+/**
+ * Percentage burdens apply to the wage only, never to the fringe benefit.
+ *
+ * Exported because the labor cost engine builds salaried staff rates the same
+ * way, and the two must not drift: a superintendent's burden and a carpenter's
+ * burden come out of this one function.
+ */
+export function burdenOnWage(wage: number, rates: PayrollBurdenRates) {
   return {
     futa: wage * num(rates.futaPct),
     fica: wage * num(rates.ficaPct),
@@ -119,7 +125,7 @@ export function deriveWageRate(input: WageRateInput, rates: PayrollBurdenRates):
   const workersComp = num(input.workersCompPerHour)
 
   const subtotal = hourlyWage + hourlyBenefits
-  const { futa, fica, suta } = burdensOnWage(hourlyWage, rates)
+  const { futa, fica, suta } = burdenOnWage(hourlyWage, rates)
   const totalBurden = futa + fica + suta + training + workersComp
   const total = subtotal + totalBurden
 
@@ -129,7 +135,7 @@ export function deriveWageRate(input: WageRateInput, rates: PayrollBurdenRates):
   const multiplier = raw >= 1 ? raw : 1.5
 
   const overtimeWage = hourlyWage * multiplier
-  const overtimeBurdens = burdensOnWage(overtimeWage, rates)
+  const overtimeBurdens = burdenOnWage(overtimeWage, rates)
   const overtimeSubtotal = overtimeWage + hourlyBenefits
   const overtimeBurden = overtimeBurdens.futa + overtimeBurdens.fica + overtimeBurdens.suta + training + workersComp
 

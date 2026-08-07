@@ -279,7 +279,7 @@ async function main() {
     bad('jurisdiction rate', 'the rate or the verification did not stick')
   }
 
-  await page.goto(`${BASE}/projects/${projectId}/wage-rates`, { waitUntil: 'networkidle' })
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: /Open a wage sheet|Add a wage sheet/ }).first().click()
   await page.waitForTimeout(300)
   await page.fill('input[name="name"]', 'Exercise sheet')
@@ -366,7 +366,7 @@ async function main() {
   }
 
   // Put the project back the way it was found.
-  await page.goto(`${BASE}/projects/${projectId}/wage-rates`, { waitUntil: 'networkidle' })
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
   await page.waitForTimeout(300)
   await page.getByRole('button', { name: 'Delete sheet' }).click()
@@ -374,6 +374,157 @@ async function main() {
   const afterDelete = await page.locator('body').innerText()
   if (/No wage sheet on this project/.test(afterDelete)) ok('a wage sheet can be deleted')
   else bad('wage sheet delete', 'the sheet was still there afterwards')
+
+  // ── Labor library, project team and compliance ───────────────────────────
+  // The costing spine: a salary entered once, reduced to a loaded hour, then
+  // charged to a job as a share of somebody's time across a range of dates.
+  console.log('\nLabor and compliance')
+
+  await page.goto(`${BASE}/admin/labor`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Add a classification' }).nth(1).click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="name"]', 'Exercise PM')
+  await page.selectOption('select[name="payBasis"]', 'SALARY')
+  await page.fill('input[name="baseAmount"]', '124800')
+  await page.fill('input[name="benefitsAmount"]', '20800')
+  await page.fill('input[name="annualHours"]', '2080')
+  await page.fill('input[name="trainingPerHour"]', '0')
+  await page.fill('input[name="workersCompRate"]', '0.5')
+  const waOption = await page
+    .locator('select[name="jurisdictionId"] option')
+    .filter({ hasText: 'Washington' })
+    .first()
+    .getAttribute('value')
+  await page.selectOption('select[name="jurisdictionId"]', waOption)
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add it' }).click()])
+
+  /*
+    Worked by hand. A 124,800 salary over 2080 hours is a 60 an hour wage, and
+    20,800 of benefits is 10 an hour. The burdens run on the wage alone, with
+    Washington's rate at the 2.0 percent entered above:
+
+      wage + fringe                        70.00
+      FUTA  60 x 0.006                       0.36
+      FICA  60 x 0.0765                      4.59
+      SUTA  60 x 0.02                        1.20
+      workers comp                           0.50
+      loaded hourly cost                   76.65
+
+    Workers compensation goes in at 0.50 rather than 0.30 because Washington
+    sells the cover through Labor and Industries, which quotes the premium per
+    hour worked rather than per 100 dollars of payroll. Multiplying it by the
+    wage there would be badly wrong, and this line is what proves the engine
+    reads the basis off the state.
+  */
+  const libraryText = await page.locator('body').innerText()
+  if (libraryText.includes('$76.65')) {
+    ok('a salary is reduced to a loaded hour that matches the arithmetic done by hand')
+  } else {
+    bad('classification rate', 'the loaded hourly cost of 76.65 did not appear')
+  }
+
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Assign somebody/ }).first().click()
+  await page.waitForTimeout(300)
+  await page.selectOption('select[name="classificationId"]', { label: 'Exercise PM' })
+  await page.waitForTimeout(300)
+  await page.selectOption('select[name="basis"]', 'ALLOCATION')
+  await page.fill('input[name="label"]', 'Exercise person')
+  await page.fill('input[name="allocationPct"]', '50')
+  await page.fill('input[name="startDate"]', '2026-03-02')
+  await page.fill('input[name="endDate"]', '2026-11-27')
+  const codeOptions = await page.locator('select[name="costCodeId"] option').count()
+  if (codeOptions > 1) await page.selectOption('select[name="costCodeId"]', { index: 1 })
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add to the job' }).click()])
+
+  /*
+    2 March to 27 November inclusive is 271 days, which is 38.7 weeks. A salaried
+    week is the annual hours over 52, so 40 hours, and half of that across 38.7
+    weeks is 774 hours at the 76.65 rate above.
+  */
+  const assignmentText = await page.locator('body').innerText()
+  const assignmentChecks = ['Exercise person', '774', '$76.65']
+  const missingAssignment = assignmentChecks.filter((value) => !assignmentText.includes(value))
+  if (missingAssignment.length === 0) {
+    ok('a salaried person can be charged to a job as a share of their time over a date range')
+  } else {
+    bad('project team assignment', `missing ${missingAssignment.join(', ')}`)
+  }
+
+  // A requirement whose first deadline is three weeks back, so the schedule has
+  // fallen behind and the page has to say so rather than pointing at next week.
+  const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10)
+
+  await page.getByRole('button', { name: 'Add a requirement' }).first().click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="title"]', 'Exercise certified payroll')
+  await page.selectOption('select[name="frequency"]', 'WEEKLY')
+  await page.fill('input[name="firstDueDate"]', threeWeeksAgo)
+  await page.fill('input[name="agency"]', 'Exercise agency')
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add the requirement' }).click()])
+
+  const complianceText = await page.locator('body').innerText()
+  if (/Overdue/.test(complianceText) && /deadlines have gone unanswered|Overdue by 21 days/.test(complianceText)) {
+    ok('a requirement behind schedule reports the oldest unanswered deadline, not the next one')
+  } else {
+    bad('compliance status', 'the overdue schedule did not report as expected')
+  }
+
+  await page.getByRole('button', { name: 'Record a filing' }).first().click()
+  await page.waitForTimeout(300)
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Record it' }).click()])
+  const afterFiling = await page.locator('body').innerText()
+  if (/1 filed/.test(afterFiling)) ok('a filing can be recorded against the deadline it answers')
+  else bad('compliance filing', 'the filing did not register')
+
+  const ics = await page.request.get(`${BASE}/api/calendar/compliance.ics`)
+  const icsBody = await ics.text()
+  if (ics.status() === 200 && icsBody.startsWith('BEGIN:VCALENDAR') && icsBody.includes('Exercise certified payroll')) {
+    ok('the compliance calendar feed carries the outstanding deadlines with alarms')
+  } else {
+    bad('calendar feed', `status ${ics.status()}, ${icsBody.slice(0, 80)}`)
+  }
+  if (icsBody.includes('BEGIN:VALARM')) ok('each deadline carries reminders ahead of the due date')
+  else bad('calendar alarms', 'no alarms in the feed')
+
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+  const dashboardText = await page.locator('body').innerText()
+  // Section titles render through text-transform, so innerText comes back
+  // upper case. Match without regard to case rather than to the styling.
+  if (/labor compliance deadlines/i.test(dashboardText) && /Exercise certified payroll/.test(dashboardText)) {
+    ok('outstanding filings surface on the company dashboard across every job')
+  } else {
+    bad('dashboard compliance panel', 'the panel did not appear with the outstanding filing')
+  }
+
+  // Put everything back the way it was found.
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: '1 filed' }).first().click()
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Withdraw', exact: true }).first().click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Withdraw the filing' }).click()
+  await page.waitForTimeout(2000)
+
+  await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Delete requirement' }).click()
+  await page.waitForTimeout(2000)
+
+  await page.getByRole('button', { name: 'Remove', exact: true }).first().click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Remove from the job' }).click()
+  await page.waitForTimeout(2000)
+
+  await page.goto(`${BASE}/admin/labor`, { waitUntil: 'networkidle' })
+  const rows = page.locator('tr', { hasText: 'Exercise PM' })
+  await rows.first().getByRole('button', { name: 'Delete', exact: true }).click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Delete classification' }).click()
+  await page.waitForTimeout(2000)
+  const cleaned = await page.locator('body').innerText()
+  if (!cleaned.includes('Exercise PM')) ok('a classification with nothing depending on it can be deleted')
+  else bad('classification delete', 'the classification was still there afterwards')
 
   // ── Reports and exports ──────────────────────────────────────────────────
   console.log('\nExports')

@@ -13,14 +13,18 @@ const factors: EstimateFactors = {
   laborBurdenPct: 0.34,
   salesTaxPct: 0.086,
   smallToolsPct: 0.03,
-  laborRates: new Map([
-    ['Foreman', 68],
-    ['Carpenter', 52],
-    ['Laborer', 38],
-    ['Operator', 62],
-    ['Finisher', 55],
-    ['PM/Super', 75],
-  ]),
+  // Bare wages typed onto the estimate, which is what the workbook held, so
+  // the flat labor burden percentage applies on top of each of them.
+  laborRates: new Map(
+    ([
+      ['Foreman', 68],
+      ['Carpenter', 52],
+      ['Laborer', 38],
+      ['Operator', 62],
+      ['Finisher', 55],
+      ['PM/Super', 75],
+    ] as const).map(([className, rate]) => [className, { rate, burdened: false }]),
+  ),
 }
 
 const item = (over: Partial<EstimateItemInput> = {}): EstimateItemInput => ({
@@ -97,6 +101,75 @@ describe('line pricing: Takeoff L,P,R,T,V,W', () => {
     const derived = deriveEstimateItem(item({ measure: 'EA', count: 4, subUnitCost: 250 }), factors)
     expect(derived.subCost).toBe(1_000)
     expect(derived.unitCost).toBe(250)
+  })
+})
+
+/**
+ * The one rule that keeps the classification library from breaking every bid it
+ * touches. A library rate arrives with its own burden already in it.
+ */
+describe('line pricing: burden is charged once and only once', () => {
+  const line = {
+    id: 'x',
+    sectionId: null,
+    divisionCode: '06',
+    description: 'Blocking',
+    measure: 'LF' as const,
+    count: 100,
+    length: 1,
+    width: 0,
+    depth: 0,
+    netQtyOverride: null,
+    uom: 'LF',
+    wastePct: 0,
+    laborClass: 'Carpenter',
+    laborHrsPerUnit: 0.1,
+    laborRateOverride: null,
+    materialUnitCost: 0,
+    equipmentUnitCost: 0,
+    subUnitCost: 0,
+  }
+
+  it('adds the flat burden to a bare rate typed onto the estimate', () => {
+    const derived = deriveEstimateItem(line, {
+      laborBurdenPct: 0.34,
+      salesTaxPct: 0,
+      smallToolsPct: 0,
+      laborRates: new Map([['Carpenter', { rate: 52, burdened: false }]]),
+    })
+    expect(derived.laborRateBurdened).toBe(false)
+    expect(derived.laborCost).toBeCloseTo(10 * 52 * 1.34, 8)
+  })
+
+  it('leaves a rate from the classification library alone, because it already carries its own', () => {
+    const derived = deriveEstimateItem(line, {
+      laborBurdenPct: 0.34,
+      salesTaxPct: 0,
+      smallToolsPct: 0,
+      laborRates: new Map([['Carpenter', { rate: 65.9, burdened: true, source: 'Classification library' }]]),
+    })
+    expect(derived.laborRateBurdened).toBe(true)
+    expect(derived.laborCost).toBeCloseTo(10 * 65.9, 8)
+    // The mistake this guards against: 65.90 x 1.34 is 88.31 an hour for a
+    // carpenter whose real loaded cost is 65.90, a third too much on every
+    // labor line in the bid.
+    expect(derived.laborCost).not.toBeCloseTo(10 * 65.9 * 1.34, 2)
+    expect(derived.laborRateSource).toBe('Classification library')
+  })
+
+  it('treats a rate typed onto the line as bare, whatever the class carries', () => {
+    const derived = deriveEstimateItem(
+      { ...line, laborRateOverride: 60 },
+      {
+        laborBurdenPct: 0.34,
+        salesTaxPct: 0,
+        smallToolsPct: 0,
+        laborRates: new Map([['Carpenter', { rate: 65.9, burdened: true }]]),
+      },
+    )
+    expect(derived.laborRateBurdened).toBe(false)
+    expect(derived.laborCost).toBeCloseTo(10 * 60 * 1.34, 8)
+    expect(derived.laborRateSource).toBe('Rate entered on this line')
   })
 })
 

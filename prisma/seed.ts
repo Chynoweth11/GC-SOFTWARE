@@ -265,7 +265,8 @@ async function main() {
     'sovLine', 'subInvoice', 'costTransaction', 'changeOrderLine', 'changeOrder',
     'commitmentChange', 'commitmentLine', 'commitment', 'budgetRevision', 'budgetLine',
     'bidPackageQuote', 'bidPackage', 'estimateClarification', 'estimateAlternate',
-    'generalConditionItem', 'estimateItem', 'estimateSection', 'laborRate',
+    'generalConditionItem', 'estimateItem', 'estimateSection', 'laborRate', 'laborClassification',
+    'complianceSubmission', 'complianceRequirement', 'projectLaborAssignment', 'overheadCost',
     'wageRateLine', 'wageRateSheet', 'payrollCounty', 'payrollJurisdiction',
     'project', 'estimate', 'bid', 'vendor', 'vendorRegion', 'vendorState', 'client', 'costCode', 'trade', 'csiDivision',
     'arAgingBucket', 'companyMonthly', 'user', 'company',
@@ -570,17 +571,58 @@ async function main() {
     },
   })
 
+  /*
+    The estimate's own labor rates, exactly as the workbook carried them: bare
+    wages, with the estimate's flat labor burden added on top of each. They stay
+    unlinked so the seeded estimate still totals to the workbook's own figures.
+
+    The same wages are seeded into the classification library below. Linking a
+    class to the library is a deliberate act, because it swaps a flat burden
+    percentage for a real one and moves the number.
+  */
+  const WORKBOOK_LABOR_RATES: [string, number][] = [
+    ['Foreman', 68], ['Carpenter', 52], ['Laborer', 38],
+    ['Operator', 62], ['Finisher', 55], ['PM/Super', 75],
+  ]
+
   await prisma.laborRate.createMany({
-    data: [
-      ['Foreman', 68], ['Carpenter', 52], ['Laborer', 38],
-      ['Operator', 62], ['Finisher', 55], ['PM/Super', 75],
-    ].map(([className, rate], i) => ({
+    data: WORKBOOK_LABOR_RATES.map(([className, rate], i) => ({
       estimateId: estimate.id,
-      className: className as string,
-      rate: rate as number,
+      className,
+      rate,
       sortOrder: i,
     })),
   })
+
+  /*
+    The classification library, started from the wages the takeoff already
+    prices at, so the list is real on the first day rather than empty.
+
+    Fringe, training and workers compensation are left at zero, and each
+    classification says so on its face, because those are specific to this firm
+    and its risk classes and no list shipped with software can know them. The
+    salaried side of the list is left empty for the same reason: a salary is not
+    something to guess at.
+  */
+  for (const [index, [className, wage]] of WORKBOOK_LABOR_RATES.entries()) {
+    await prisma.laborClassification.create({
+      data: {
+        companyId: company.id,
+        name: className,
+        kind: className === 'PM/Super' ? 'STAFF' : 'FIELD',
+        payBasis: 'HOURLY',
+        baseAmount: wage,
+        benefitsAmount: 0,
+        annualHours: 2080,
+        trainingPerHour: 0,
+        workersCompRate: 0,
+        costCategory: className === 'PM/Super' ? 'GENERAL_CONDITIONS' : 'LABOR',
+        notes:
+          'Wage taken from the takeoff workbook. Add the fringe, the workers compensation rate and the state before pricing from it.',
+        sortOrder: index,
+      },
+    })
+  }
 
   // Takeoff rows carry a leading section banner (division blank on the banner row).
   const SECTION_NAMES = [

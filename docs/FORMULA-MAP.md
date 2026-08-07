@@ -15,8 +15,9 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 141 tests asserting these formulas
-reproduce the workbooks' own cached values.
+Verification: `src/lib/finance/*.test.ts`, 197 tests asserting these formulas
+reproduce the workbooks' own cached values, and that the engines added since
+hold the identities the workbooks never checked.
 
 ---
 
@@ -414,7 +415,113 @@ each other, but a rich fringe cannot prop up a cash wage below the base rate.
 
 ---
 
-## 14. Output, permissions and portability
+## 14. Labor cost, project teams and overhead
+
+Engine: [`src/lib/finance/labor.ts`](../src/lib/finance/labor.ts) · Tests: `labor.test.ts`
+Database: `LaborClassification`, `ProjectLaborAssignment`, `OverheadCost`
+Appears: project Labor and wages tab, Settings ▸ Labor rates and overhead, estimate labor rates, project Excel export and PDF
+
+Not in the workbooks. The takeoff sheet carried a flat table of six labor rates
+and a single labor burden percentage; general conditions carried a
+superintendent and a project manager as weekly line items. Neither could answer
+what a person costs the company, which job is paying for them, or what overhead
+percentage the company is actually carrying.
+
+**What a classification costs an hour.**
+
+| Step | Software field | How it is derived |
+|---|---|---|
+| Hourly wage | `LaborClassDerived.hourlyWage` | Entered directly when paid hourly; `annualSalary ÷ annualHours` when salaried |
+| Hourly fringe | `hourlyBenefits` | Same, from the annual cost of benefits |
+| FUTA, FICA, SUTA | `futa`, `fica`, `suta` | `hourlyWage ×` each rate, **on the wage alone**, through `burdenOnWage()` in `payroll.ts` |
+| Training | `training` | Dollars per hour worked |
+| Workers compensation | `workersComp` | `workersCompPerHour()`: the published rate as it stands where the state quotes per hour, else `rate ÷ 100 × wage` |
+| Loaded hourly cost | `loadedHourlyCost` | Everything above |
+| Weekly, monthly, annual | `loadedWeeklyCost`, `loadedMonthlyCost`, `loadedAnnualCost` | All derived from the hourly figure, so the four cannot disagree |
+
+**`annualHours` is not 2080 by decree.** A superintendent on a salary who works
+2400 hours costs less an hour than the same salary spread over 2080. Pricing
+general conditions at the wrong one is a quiet way for a bid to come out light,
+so the divisor is entered per classification.
+
+**What a person costs a job** (`deriveAssignment`).
+
+| Basis | Formula |
+|---|---|
+| `HOURS` | `budgetedHours × loadedHourlyCost` |
+| `ALLOCATION` | `weeks × (annualHours ÷ 52) × allocationPct × loadedHourlyCost`, where `weeks = (days between the dates, inclusive of both) ÷ 7` |
+
+Allocation is the one that matters for a project team. Half a project manager
+from March to November is not a number of hours anybody has worked out; it is a
+share of a person across a stretch of the calendar. Both end dates count,
+because both are worked.
+
+Nothing costed is stored. A pay rise entered on a classification reprices every
+estimate, every project team assignment and the overhead rate, because none of
+them holds a copy.
+
+**Overhead, and the rate bids should carry** (`summarizeOverhead`).
+
+| Figure | How it is derived |
+|---|---|
+| Annual listed overhead | Σ `annualizeOverhead(cost)`: monthly × 12, annual and one-time as they stand |
+| Salaried time no job is paying for | `unassignedStaffCost()`: Σ over staff classifications of `(1 − share on jobs today) × loadedAnnualCost`, floored at zero |
+| Annual overhead | The two added |
+| Annual revenue | Recorded monthly billings over the months that have them, **scaled to a year** |
+| Derived recovery rate | `annualOverhead ÷ annualRevenue` |
+| Rate gap | Derived rate less `Company.defaultOverheadPct`, stated in money a year |
+
+Salaries are deliberately not entered on the overhead list. They are already on
+the classification list, and counting them twice would be the same money twice.
+The share of each salaried person that today's allocations do not cover is what
+the overhead figure carries.
+
+**The one rule that keeps the library from breaking every bid it touches.** A
+rate an estimate takes from the classification library already carries its own
+burden, worked out from the real taxes and workers compensation for that class.
+The estimate's flat `laborBurdenPct` is therefore **not** applied on top of it
+(`LaborRateEntry.burdened`). A rate typed onto the estimate, or onto a single
+takeoff line, is a bare wage and still takes the flat burden, exactly as the
+workbook did. `estimate.test.ts` asserts both paths and the difference between
+them.
+
+---
+
+## 15. Labor compliance and deadlines
+
+Engine: [`src/lib/finance/compliance.ts`](../src/lib/finance/compliance.ts) · Tests: `compliance.test.ts`
+Database: `ComplianceRequirement`, `ComplianceSubmission`
+Appears: project Labor and wages tab, project alerts, company dashboard, `/api/calendar/compliance.ics`, project export
+
+Not in the workbooks. A job on public work owes a stream of filings, each of
+them small and each of them able to stop a payment application when it is late.
+
+| Figure | How it is derived |
+|---|---|
+| The schedule | `deadlinesThrough()`: counted forward from `firstDueDate` at the stated frequency, bounded by `endsOn` and by a hard step limit |
+| Next due | The **earliest deadline nothing has been filed against**, not the last filing plus one period |
+| Missed | Every past deadline with no submission recorded against it |
+| Status | `OVERDUE`, `DUE_TODAY`, `DUE_SOON` inside `leadDays`, `CURRENT`, or `CLOSED` |
+| On-time rate | `(deadlines that have fallen − missed) ÷ deadlines that have fallen` |
+
+**Nothing about the schedule is stored, and that is the point.** A filing made
+late does not shift what comes after it. A gap in the middle stays visible as a
+gap rather than being papered over by the most recent filing, which is exactly
+what a stored "last submitted" date would have done. If three weekly payrolls
+were missed in June, the next thing due is the first of those three.
+
+Deadlines reach people three ways: as ordinary project alerts on the summary
+page, as a portfolio panel on the company dashboard, and as an iCalendar feed
+at `/api/calendar/compliance.ics` that Outlook, Google Calendar and Apple
+Calendar subscribe to directly. The feed carries two alarms per deadline, at the
+requirement's own lead time and on the morning it is due, and drops a deadline
+as soon as a filing is recorded against it. A calendar subscription was chosen
+over email because it needs no mail transport and no address list to keep
+correct, and it puts the deadline where the person already looks.
+
+---
+
+## 16. Output, permissions and portability
 
 Nothing in this section computes a figure. It documents where the figures go and
 who may see them.

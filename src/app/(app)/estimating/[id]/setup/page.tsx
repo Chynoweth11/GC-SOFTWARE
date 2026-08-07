@@ -14,7 +14,7 @@ export default async function EstimateSetupPage({ params }: { params: Promise<{ 
   const bundle = await getEstimateBundle(id, user.companyId)
   if (!bundle) notFound()
 
-  const { estimate, summary } = bundle
+  const { estimate, summary, laborRates } = bundle
   const canEdit = can(user.role, 'edit:estimates') && !estimate.lockedAt
   const showRates = can(user.role, 'view:labor_rates')
 
@@ -73,7 +73,7 @@ export default async function EstimateSetupPage({ params }: { params: Promise<{ 
 
       {showRates && (
         <Section title="Labor rates" description="Bare hourly rates; the takeoff burdens them at the rate above">
-          {estimate.laborRates.length === 0 ? (
+          {laborRates.length === 0 ? (
             <EmptyState title="No labor rates set" description="Add the classes this estimate prices labour against." />
           ) : (
             <div className="card-flush mb-3">
@@ -82,20 +82,40 @@ export default async function EstimateSetupPage({ params }: { params: Promise<{ 
                   <thead>
                     <tr>
                       <th>Labor class</th>
-                      <th className="num">Bare rate</th>
-                      <th className="num">Burdened rate</th>
+                      <th>Rate from</th>
+                      <th className="num">Rate</th>
+                      <th className="num">Rate used</th>
                       <th className="num">Hours used in this estimate</th>
                       <th className="num">Labor cost</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {estimate.laborRates.map((r) => {
+                    {laborRates.map((r) => {
                       const used = summary.items.filter((i) => i.laborClass === r.className)
                       return (
                         <tr key={r.id}>
                           <td className="font-medium">{r.className}</td>
+                          <td className="wrap text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {r.classificationName ? (
+                              <>
+                                {r.classificationName}
+                                <span className="ml-1" style={{ color: 'var(--text-subtle)' }}>
+                                  loaded rate, burden already in it
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                Entered here
+                                <span className="ml-1" style={{ color: 'var(--text-subtle)' }}>
+                                  bare wage, burdened at {percent(estimate.laborBurdenPct, 1)}
+                                </span>
+                              </>
+                            )}
+                          </td>
                           <td className="num">{money(r.rate, { cents: true })}</td>
-                          <td className="num calculated">{money(r.rate * (1 + estimate.laborBurdenPct), { cents: true })}</td>
+                          <td className="num calculated">
+                            {money(r.burdened ? r.rate : r.rate * (1 + estimate.laborBurdenPct), { cents: true })}
+                          </td>
                           <td className="num">{used.reduce((a, i) => a + i.laborHours, 0).toFixed(1)}</td>
                           <td className="num">{money(used.reduce((a, i) => a + i.laborCost, 0))}</td>
                         </tr>
@@ -104,7 +124,7 @@ export default async function EstimateSetupPage({ params }: { params: Promise<{ 
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan={3}>Total</td>
+                      <td colSpan={4}>Total</td>
                       <td className="num">{summary.laborHours.toFixed(1)}</td>
                       <td className="num">{money(summary.costMix.labor)}</td>
                     </tr>
@@ -114,7 +134,7 @@ export default async function EstimateSetupPage({ params }: { params: Promise<{ 
             </div>
           )}
 
-          {canEdit && <LaborRateForm estimateId={estimate.id} action={saveLaborRate} existing={estimate.laborRates.map((r) => r.className)} />}
+          {canEdit && <LaborRateForm estimateId={estimate.id} action={saveLaborRate} existing={laborRates.map((r) => r.className)} />}
         </Section>
       )}
     </div>

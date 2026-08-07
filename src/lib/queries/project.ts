@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import {
   buildCashFlow,
   buildCashFlowScenarios,
+  buildComplianceAlerts,
   buildProjectAlerts,
   computeProjectFinancials,
   defaultCurve,
@@ -26,6 +27,7 @@ import {
 import type { BillingInput, SovLineInput } from '@/lib/finance/billing'
 import type { ChangeOrderDerived } from '@/lib/finance/changeOrders'
 import type { LeveledPackage } from '@/lib/finance/leveling'
+import { getProjectCompliance } from './labor'
 
 export interface ProjectBundle {
   project: NonNullable<Awaited<ReturnType<typeof loadProjectRecord>>>
@@ -429,8 +431,16 @@ export const getProjectBundle = cache(
     const lockedPeriods = forecastPeriods.filter((p) => p.status === 'LOCKED')
     const lastForecastPeriodEnd = lockedPeriods[0]?.periodEnd ?? null
 
-    const alerts = sortAlerts(
-      buildProjectAlerts({
+    /*
+      Compliance deadlines join the same alert list as everything else rather
+      than sitting in a corner of their own. A certified payroll three weeks
+      late is as likely to stop a payment as a budget overrun is, and the person
+      who needs to see it is looking at the project summary.
+    */
+    const compliance = await getProjectCompliance(project.id, companyId)
+
+    const alerts = sortAlerts([
+      ...buildProjectAlerts({
         projectId: project.id,
         projectNumber: project.number,
         projectName: project.name,
@@ -441,7 +451,12 @@ export const getProjectBundle = cache(
         previousEacByCostCode,
         targetMarginPct: project.targetMarginPct,
       }),
-    )
+      ...buildComplianceAlerts(compliance.rows, {
+        projectId: project.id,
+        projectNumber: project.number,
+        projectName: project.name,
+      }),
+    ])
 
     return {
       project,

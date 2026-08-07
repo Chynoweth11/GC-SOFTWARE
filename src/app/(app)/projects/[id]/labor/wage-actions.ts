@@ -243,7 +243,7 @@ export async function saveWageSheet(formData: FormData): Promise<{ error?: strin
     })
   }
 
-  revalidatePath(`/projects/${projectId}/wage-rates`)
+  revalidatePath(`/projects/${projectId}/labor`)
   return {}
 }
 
@@ -267,7 +267,7 @@ export async function deleteWageSheet(formData: FormData): Promise<{ error?: str
     summary: `Wage sheet "${sheet.name}" deleted from ${sheet.project.number}`,
   })
 
-  revalidatePath(`/projects/${sheet.projectId}/wage-rates`)
+  revalidatePath(`/projects/${sheet.projectId}/labor`)
   return {}
 }
 
@@ -353,7 +353,7 @@ export async function saveWageLine(formData: FormData): Promise<{ error?: string
     })
   }
 
-  revalidatePath(`/projects/${sheet.projectId}/wage-rates`)
+  revalidatePath(`/projects/${sheet.projectId}/labor`)
   return {}
 }
 
@@ -380,7 +380,7 @@ export async function deleteWageLine(formData: FormData): Promise<{ error?: stri
     summary: `${line.trade} removed from wage sheet "${line.sheet.name}"`,
   })
 
-  revalidatePath(`/projects/${line.sheet.projectId}/wage-rates`)
+  revalidatePath(`/projects/${line.sheet.projectId}/labor`)
   return {}
 }
 
@@ -427,6 +427,6 @@ export async function verifyWageSheet(formData: FormData): Promise<{ error?: str
     summary: clearing ? 'Verification withdrawn from the wage sheet' : `Wage sheet verified: ${note}`,
   })
 
-  revalidatePath(`/projects/${sheet.projectId}/wage-rates`)
+  revalidatePath(`/projects/${sheet.projectId}/labor`)
   return {}
 }

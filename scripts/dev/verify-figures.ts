@@ -12,6 +12,8 @@
 import { getProjectBundle } from '../../src/lib/queries/project'
 import { getCompanyDashboard } from '../../src/lib/queries/company'
 import { getProjectWageSheets } from '../../src/lib/queries/wage-rates'
+import { getOverheadSummary, getProjectCompliance, getProjectLabor } from '../../src/lib/queries/labor'
+import { annualizeOverhead } from '../../src/lib/finance'
 import { COUNTIES, JURISDICTIONS } from '../../src/lib/reference/jurisdictions'
 import { prisma } from '../../src/lib/db'
 
@@ -175,6 +177,84 @@ async function main() {
     }
   }
   console.log(`  ${wageRows} wage rates checked`)
+
+  // ── Labor, project teams and compliance ───────────────────────────────
+  console.log('\nChecking labor and compliance')
+  let assignmentCount = 0
+  for (const record of projects) {
+    const labor = await getProjectLabor(record.id, company.id)
+    const tag = record.number
+
+    for (const row of labor.rows) {
+      assignmentCount++
+      check(`${tag} ${row.displayName}: cost = hours x the loaded rate`, row.cost, row.hours * row.loadedHourlyCost)
+      assert(`${tag} ${row.displayName}: hours are never negative`, row.hours >= 0)
+      if (row.basis === 'ALLOCATION') {
+        assert(`${tag} ${row.displayName}: an allocation spans real weeks`, row.weeks >= 0)
+      }
+    }
+
+    check(
+      `${tag}: the labor total equals the sum of its assignments`,
+      labor.totals.cost,
+      labor.rows.reduce((total, row) => total + row.cost, 0),
+    )
+    check(
+      `${tag}: field and team together are the whole labor cost`,
+      labor.byKind.reduce((total, group) => total + group.cost, 0),
+      labor.totals.cost,
+    )
+    check(
+      `${tag}: the cost type split equals the whole labor cost`,
+      labor.byCostCategory.reduce((total, group) => total + group.cost, 0),
+      labor.totals.cost,
+    )
+
+    const compliance = await getProjectCompliance(record.id, company.id)
+    for (const row of compliance.rows) {
+      assert(
+        `${tag} ${row.requirement.title}: nothing is both answered and missed`,
+        row.missedDueDates.length <= row.deadlinesToDate,
+      )
+      assert(
+        `${tag} ${row.requirement.title}: an overdue filing has a deadline behind it`,
+        row.status !== 'OVERDUE' || (row.daysUntilDue !== null && row.daysUntilDue < 0),
+      )
+      assert(
+        `${tag} ${row.requirement.title}: a current filing has a deadline ahead of it`,
+        row.status !== 'CURRENT' || (row.daysUntilDue !== null && row.daysUntilDue > 0),
+      )
+    }
+  }
+  console.log(`  ${assignmentCount} labor assignments checked`)
+
+  // ── Overhead recovery ─────────────────────────────────────────────────
+  console.log('\nChecking overhead')
+  const overhead = await getOverheadSummary(company.id)
+  check(
+    'listed overhead equals the sum of the annualized items',
+    overhead.annualNonPayroll,
+    overhead.rows.reduce((total, row) => total + annualizeOverhead(row), 0),
+  )
+  check(
+    'annual overhead is the listed costs plus the staff no job is paying for',
+    overhead.annualOverhead,
+    overhead.annualNonPayroll + overhead.annualUnassignedStaff,
+  )
+  check('the monthly figure is the annual one over twelve', overhead.monthlyOverhead * 12, overhead.annualOverhead)
+  if (overhead.derivedRate !== null) {
+    check(
+      'the recovery rate is overhead over revenue',
+      overhead.derivedRate * overhead.annualRevenue,
+      overhead.annualOverhead,
+      1,
+    )
+    check('the rate gap is the derived rate less the one in bids', overhead.rateGap ?? 0, overhead.derivedRate - overhead.rateOnFile)
+  }
+  assert(
+    'the staff assigned figure never exceeds what the staff cost',
+    overhead.staff.annualAssigned <= overhead.staff.annualStaffCost + CENT,
+  )
 
   // ── Payroll reference data ────────────────────────────────────────────
   // Guards the promise the software makes about this data: every state is

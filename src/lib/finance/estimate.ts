@@ -102,17 +102,40 @@ export interface EstimateItemInput {
   notes?: string | null
 }
 
+/**
+ * One labor class as the estimate prices it.
+ *
+ * `burdened` is the whole reason this is an object rather than a number. A rate
+ * typed onto the estimate is a bare wage, and the estimate's flat burden
+ * percentage goes on top of it, which is what the workbook did. A rate that
+ * came from the company's classification library already carries its own
+ * burden, worked out from the actual unemployment, social security, training
+ * and workers compensation rates for that classification. Applying the flat
+ * percentage to that as well would charge the burden twice and price the job
+ * out of reach.
+ */
+export interface LaborRateEntry {
+  rate: number
+  /** True when the rate already carries its own payroll burden. */
+  burdened: boolean
+  /** Where it came from, so a takeoff line can say which rate it used. */
+  source?: string
+}
+
 export interface EstimateFactors {
   laborBurdenPct: number
   salesTaxPct: number
   smallToolsPct: number
-  laborRates: ReadonlyMap<string, number>
+  laborRates: ReadonlyMap<string, LaborRateEntry>
 }
 
 export interface EstimateItemDerived extends EstimateItemInput {
   netQty: number
   grossQty: number
   laborRate: number
+  /** True when `laborRate` already carried its burden, so none was added. */
+  laborRateBurdened: boolean
+  laborRateSource: string | null
   laborHours: number
   laborCost: number
   materialCost: number
@@ -129,7 +152,9 @@ export interface EstimateItemDerived extends EstimateItemInput {
  * Workbook source: Takeoff ▸ L,O,P,R,T,V,W,X.
  *   L  Gross Qty        = Net Qty × (1 + Waste %)
  *   O  Rate             = INDEX/MATCH of Labor Class against the rate table
- *   P  Labor (burdened) = Gross Qty × hrs/unit × rate × (1 + Labor Burden %)
+ *   P  Labor (burdened) = Gross Qty × hrs/unit × rate × (1 + Labor Burden %),
+ *                        except where the rate came from the classification
+ *                        library and already carries its own burden, see below
  *   R  Material (taxed) = Gross Qty × $/unit × (1 + Sales Tax %)
  *   T  Equipment        = Gross Qty × $/unit
  *   V  Subcontract      = Gross Qty × $/unit
@@ -143,13 +168,20 @@ export function deriveEstimateItem(
   const netQty = item.netQtyOverride != null ? num(item.netQtyOverride) : deriveNetQuantity(item)
   const grossQty = netQty * (1 + num(item.wastePct))
 
-  const laborRate =
-    item.laborRateOverride != null
-      ? num(item.laborRateOverride)
-      : num(item.laborClass ? factors.laborRates.get(item.laborClass) : 0)
+  const entry = item.laborClass ? factors.laborRates.get(item.laborClass) : undefined
+  const overridden = item.laborRateOverride != null
+
+  const laborRate = overridden ? num(item.laborRateOverride) : num(entry?.rate)
 
   const laborHours = grossQty * num(item.laborHrsPerUnit)
-  const laborCost = laborHours * laborRate * (1 + num(factors.laborBurdenPct))
+
+  // A rate typed onto this line is a bare wage, like a rate typed onto the
+  // class list, so the estimate's flat burden applies. A rate that came from
+  // the classification library already carries its own, worked out from the
+  // real taxes and workers compensation for that class, and adding the flat
+  // percentage on top of it would charge the burden twice.
+  const laborRateBurdened = !overridden && (entry?.burdened ?? false)
+  const laborCost = laborHours * laborRate * (laborRateBurdened ? 1 : 1 + num(factors.laborBurdenPct))
   const materialCost = grossQty * num(item.materialUnitCost) * (1 + num(factors.salesTaxPct))
   const equipmentCost = grossQty * num(item.equipmentUnitCost)
   const subCost = grossQty * num(item.subUnitCost)
@@ -175,6 +207,8 @@ export function deriveEstimateItem(
     netQty,
     grossQty,
     laborRate,
+    laborRateBurdened,
+    laborRateSource: overridden ? 'Rate entered on this line' : (entry?.source ?? null),
     laborHours,
     laborCost,
     materialCost,

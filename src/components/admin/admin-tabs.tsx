@@ -34,7 +34,8 @@ export function AdminTabs({
               { href: '/admin/cost-types', label: 'Cost types' },
               { href: '/admin/trades', label: 'Trades and divisions' },
               { href: '/admin/vendors', label: 'Vendors' },
-              { href: '/admin/payroll', label: 'Payroll and prevailing wage' },
+              { href: '/admin/labor', label: 'Labor rates and overhead' },
+              { href: '/admin/payroll', label: 'States and prevailing wage' },
             ]
           : []),
         ...(canImport ? [{ href: '/admin/import', label: 'Import' }] : []),

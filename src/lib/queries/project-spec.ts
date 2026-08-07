@@ -2,6 +2,8 @@ import 'server-only'
 import type { ProjectBundle } from '@/lib/queries/project'
 import type { SheetSpec } from '@/lib/excel'
 import type { WageSheetView } from '@/lib/queries/wage-rates'
+import type { ProjectComplianceView, ProjectLaborView } from '@/lib/queries/labor'
+import { FREQUENCY_LABELS } from '@/lib/finance'
 import { titleize } from '@/lib/format'
 
 /**
@@ -13,6 +15,7 @@ export function buildProjectSheets(
   bundle: ProjectBundle,
   showMargins: boolean,
   wageSheets: readonly WageSheetView[] = [],
+  labor?: { assignments: ProjectLaborView; compliance: ProjectComplianceView },
 ): { sheets: SheetSpec[]; asOf: string } {
   const { project, financials: f, changeOrders, changeOrderRecords, commitments, cashFlow, quantities, bidPackages } = bundle
   const asOf = (project.dataDate ?? new Date()).toISOString().slice(0, 10)
@@ -258,6 +261,88 @@ export function buildProjectSheets(
               buyoutSavings: p.buyoutSavings,
               receivedCount: p.receivedCount,
               flags: p.flags.join('; '),
+            })),
+          },
+        ]
+      : []),
+
+    /*
+      Who is charged to the job and what they cost it. Every figure is worked
+      out here from the classification's loaded rate rather than read from a
+      stored total, which is what keeps this sheet, the screen and the PDF in
+      agreement.
+    */
+    ...(labor && labor.assignments.rows.length > 0
+      ? [
+          {
+            name: 'Labor and team',
+            totalsRow: true,
+            notes: [
+              'Rates are fully loaded: wage or salary, fringe, then unemployment, social security and Medicare on the wage alone, then training and workers compensation as dollars an hour.',
+              ...labor.assignments.issues,
+            ],
+            columns: [
+              { header: 'Who', key: 'who', width: 30 },
+              { header: 'Classification', key: 'className', width: 26 },
+              { header: 'Kind', key: 'kind', width: 14 },
+              { header: 'Charged to', key: 'costCode', width: 30 },
+              { header: 'Measured as', key: 'basis', width: 38 },
+              { header: 'Loaded hourly rate', key: 'rate', format: 'money2' as const },
+              { header: 'Hours', key: 'hours', format: 'number' as const, total: true },
+              { header: 'Cost to this job', key: 'cost', format: 'money' as const, total: true },
+            ],
+            rows: labor.assignments.rows.map((row) => ({
+              who: row.displayName,
+              className: row.className,
+              kind: row.kind === 'FIELD' ? 'Field labor' : 'Project team',
+              costCode: row.costCodeLabel ?? 'Not set',
+              basis: row.workingOut,
+              rate: row.loadedHourlyCost,
+              hours: row.hours,
+              cost: row.cost,
+            })),
+          },
+        ]
+      : []),
+
+    /*
+      What the job has to file and where each requirement stands. The next due
+      date is counted forward from the first deadline every time this is built,
+      so an export can never carry a schedule that has drifted.
+    */
+    ...(labor && labor.compliance.rows.length > 0
+      ? [
+          {
+            name: 'Compliance',
+            notes: [
+              labor.compliance.headline,
+              labor.compliance.onTimeRate === null
+                ? 'No deadlines have fallen yet.'
+                : `${Math.round(labor.compliance.onTimeRate * 100)} percent of deadlines answered.`,
+            ],
+            columns: [
+              { header: 'Requirement', key: 'title', width: 34 },
+              { header: 'Filed with', key: 'agency', width: 26 },
+              { header: 'How often', key: 'frequency', width: 18 },
+              { header: 'Responsible', key: 'responsible', width: 20 },
+              { header: 'Next due', key: 'nextDue', format: 'date' as const },
+              { header: 'Status', key: 'status', width: 16 },
+              { header: 'Where it stands', key: 'summary', width: 52 },
+              { header: 'Deadlines to date', key: 'deadlines', format: 'number' as const },
+              { header: 'Answered', key: 'answered', format: 'number' as const },
+              { header: 'Last filed', key: 'lastFiled', format: 'date' as const },
+            ],
+            rows: labor.compliance.rows.map((row) => ({
+              title: row.requirement.title,
+              agency: row.requirement.agency ?? '',
+              frequency: FREQUENCY_LABELS[row.requirement.frequency] ?? row.requirement.frequency,
+              responsible: row.requirement.responsibleName ?? 'Nobody named',
+              nextDue: row.nextDueDate,
+              status: row.status.toLowerCase().replace(/_/g, ' '),
+              summary: row.summary,
+              deadlines: row.deadlinesToDate,
+              answered: row.deadlinesToDate - row.missedDueDates.length,
+              lastFiled: row.lastSubmittedAt,
             })),
           },
         ]

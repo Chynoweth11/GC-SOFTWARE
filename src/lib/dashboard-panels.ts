@@ -21,6 +21,7 @@ export const DASHBOARD_PANELS: PanelDefinition[] = [
   { id: 'revenue', label: 'Revenue and profit forecast', description: 'Monthly revenue, cost and gross profit' },
   { id: 'billing', label: 'Billing position', description: 'Over- and underbilling with the cash breakdown' },
   { id: 'alerts', label: 'Attention required', description: 'Live alerts across every project' },
+  { id: 'compliance', label: 'Labor compliance deadlines', description: 'Filings overdue or coming due across every job' },
   { id: 'projects', label: 'Projects', description: 'The portfolio table' },
   { id: 'pipeline', label: 'Bid pipeline', description: 'Open opportunities, weighted value and win rate' },
 ]

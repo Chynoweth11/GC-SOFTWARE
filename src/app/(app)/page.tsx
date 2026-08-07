@@ -24,6 +24,8 @@ import { listSavedViews } from '@/lib/queries/views'
 import { saveView, deleteView, saveDashboardLayout } from './views-actions'
 import { CustomizeDashboard } from '@/components/dashboard/customize'
 import { DASHBOARD_PANELS, resolveLayout } from '@/lib/dashboard-panels'
+import { getCompanyCompliance } from '@/lib/queries/labor'
+import { ComplianceDeadlines } from '@/components/dashboard/compliance-deadlines'
 import { getPreference } from '@/lib/queries/views'
 import { AlertList } from '@/components/dashboard/alert-list'
 
@@ -37,10 +39,13 @@ export default async function DashboardPage({
   const user = await requireUser()
   const params = await searchParams
   const filter = parseProjectFilter(params)
-  const [data, savedViews, storedLayout] = await Promise.all([
+  const [data, savedViews, storedLayout, compliance] = await Promise.all([
     getCompanyDashboard(user.companyId, filter),
     listSavedViews('dashboard', user),
     getPreference(user.id, 'dashboard.layout'),
+    can(user.role, 'view:wage_rates')
+      ? getCompanyCompliance(user.companyId)
+      : Promise.resolve({ rows: [], overdue: 0, dueSoon: 0, projectCount: 0 }),
   ])
   const { totals, projects, pipeline, cashFlow, revenueForecast, alerts } = data
   const asOfIso = (cashFlow.at(-1)?.periodEnd ?? new Date()).toISOString()
@@ -58,6 +63,9 @@ export default async function DashboardPage({
     if (panel.id === 'revenue') return showCompany
     if (panel.id === 'pipeline') return can(user.role, 'view:pipeline')
     if (panel.id === 'alerts') return data.alerts.length > 0
+    // Only shown once there is something to say. A panel that always reads
+    // "nothing due" trains people to stop looking at it.
+    if (panel.id === 'compliance') return can(user.role, 'view:wage_rates') && compliance.rows.length > 0
     return true
   })
   const layout = resolveLayout(storedLayout, permittedPanels.map((p) => p.id))
@@ -236,6 +244,31 @@ export default async function DashboardPage({
     alerts: (
       <Section title="Attention required" description="Recomputed from live data every time this page loads">
         <AlertList alerts={alerts} />
+      </Section>
+    ),
+    compliance: (
+      <Section
+        title="Labor compliance deadlines"
+        description="Every filing owed across the portfolio, worst first, counted forward from each requirement's first deadline"
+      >
+        <ComplianceDeadlines
+          overdue={compliance.overdue}
+          dueSoon={compliance.dueSoon}
+          calendarHref="/api/calendar/compliance.ics"
+          rows={compliance.rows.map((entry) => ({
+            key: `${entry.projectId}:${entry.row.requirement.id}`,
+            projectId: entry.projectId,
+            projectNumber: entry.projectNumber,
+            projectName: entry.projectName,
+            title: entry.row.requirement.title,
+            agency: entry.row.requirement.agency,
+            status: entry.row.status,
+            summary: entry.row.summary,
+            nextDueDate: entry.row.nextDueDate ? entry.row.nextDueDate.toISOString() : null,
+            daysUntilDue: entry.row.daysUntilDue,
+            responsibleName: entry.row.requirement.responsibleName,
+          }))}
+        />
       </Section>
     ),
     projects: (
@@ -449,6 +482,7 @@ const PANEL_SPANS: Record<string, number> = {
     revenue: 2,
     billing: 1,
     alerts: 3,
+    compliance: 3,
     projects: 3,
     pipeline: 3,
 }

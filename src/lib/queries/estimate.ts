@@ -1,14 +1,22 @@
 import 'server-only'
 import { cache } from 'react'
 import { prisma } from '@/lib/db'
-import { levelAll, levelingSummary, summarizeEstimate, type EstimateItemInput, type MeasureType } from '@/lib/finance'
+import {
+  levelAll,
+  levelingSummary,
+  summarizeEstimate,
+  type EstimateItemInput,
+  type LaborRateEntry,
+  type MeasureType,
+} from '@/lib/finance'
+import { getLaborClassifications } from './labor'
 
 export const getEstimateBundle = cache(async (estimateId: string, companyId: string) => {
   const estimate = await prisma.estimate.findFirst({
     where: { id: estimateId, companyId },
     include: {
       bid: { include: { client: true } },
-      laborRates: { orderBy: { sortOrder: 'asc' } },
+      laborRates: { include: { classification: { select: { id: true, name: true } } }, orderBy: { sortOrder: 'asc' } },
       sections: { orderBy: { sortOrder: 'asc' } },
       items: { include: { division: true, section: true }, orderBy: { sortOrder: 'asc' } },
       gcItems: { orderBy: { sortOrder: 'asc' } },
@@ -19,6 +27,32 @@ export const getEstimateBundle = cache(async (estimateId: string, companyId: str
     },
   })
   if (!estimate) return null
+
+  /*
+    Where each labor rate comes from.
+
+    A class linked to the company's classification library reads that library's
+    loaded rate live, so a pay rise reprices every open bid rather than leaving
+    a set of stale numbers behind. That rate already carries its own burden,
+    worked out from the real taxes and workers compensation for the class, so
+    the estimate's flat burden percentage must not be applied on top of it.
+
+    A class with a rate typed onto the estimate keeps behaving exactly as the
+    workbook did: a bare wage, with the flat burden added.
+  */
+  const library = new Map(
+    (await getLaborClassifications(companyId)).map((entry) => [entry.id, entry]),
+  )
+
+  const laborRates = new Map<string, LaborRateEntry>(
+    estimate.laborRates.map((row) => {
+      const linked = row.classificationId ? library.get(row.classificationId) : undefined
+      if (linked) {
+        return [row.className, { rate: linked.loadedHourlyCost, burdened: true, source: `Library: ${linked.name}` }]
+      }
+      return [row.className, { rate: row.rate ?? 0, burdened: false, source: 'Entered on this estimate' }]
+    }),
+  )
 
   const packages = levelAll(
     estimate.bidPackages.map((p) => ({
@@ -88,7 +122,7 @@ export const getEstimateBundle = cache(async (estimateId: string, companyId: str
       laborBurdenPct: estimate.laborBurdenPct,
       salesTaxPct: estimate.salesTaxPct,
       smallToolsPct: estimate.smallToolsPct,
-      laborRates: new Map(estimate.laborRates.map((r) => [r.className, r.rate])),
+      laborRates,
     },
     durationWeeks: estimate.durationWeeks,
     buildingAreaSf: estimate.buildingAreaSf,
@@ -112,6 +146,20 @@ export const getEstimateBundle = cache(async (estimateId: string, companyId: str
     estimate,
     summary,
     packages,
+    /** Each class with the rate actually used and where it came from. */
+    laborRates: estimate.laborRates.map((row) => {
+      const entry = laborRates.get(row.className)
+      return {
+        id: row.id,
+        className: row.className,
+        classificationId: row.classificationId,
+        classificationName: row.classification?.name ?? null,
+        enteredRate: row.rate,
+        rate: entry?.rate ?? 0,
+        burdened: entry?.burdened ?? false,
+        source: entry?.source ?? null,
+      }
+    }),
     levelingSummary: levelingSummary(packages),
   }
 })
