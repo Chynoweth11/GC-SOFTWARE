@@ -4,7 +4,8 @@ import type { SheetSpec } from '@/lib/excel'
 import type { WageSheetView } from '@/lib/queries/wage-rates'
 import type { ProjectComplianceView, ProjectLaborView } from '@/lib/queries/labor'
 import { FREQUENCY_LABELS } from '@/lib/finance'
-import { titleize } from '@/lib/format'
+import { money, titleize } from '@/lib/format'
+import { changeOrderSummary, DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS } from '@/lib/finance'
 
 /**
  * The definition of a full project export: every tab of the project workspace
@@ -17,7 +18,7 @@ export function buildProjectSheets(
   wageSheets: readonly WageSheetView[] = [],
   labor?: { assignments: ProjectLaborView; compliance: ProjectComplianceView },
 ): { sheets: SheetSpec[]; asOf: string } {
-  const { project, financials: f, changeOrders, changeOrderRecords, commitments, cashFlow, quantities, bidPackages } = bundle
+  const { project, financials: f, changeOrders, commitments, cashFlow, quantities, bidPackages } = bundle
   const asOf = (project.dataDate ?? new Date()).toISOString().slice(0, 10)
 
   const summaryRows: { metric: string; value: number | string }[] = [
@@ -155,31 +156,106 @@ export function buildProjectSheets(
     {
       name: 'Change orders',
       totalsRow: true,
+      /*
+        The four totals stated on the sheet itself, because a column of amounts
+        with no separation between approved and pending is exactly the thing
+        somebody pastes into a board pack and reads as contract value.
+      */
+      notes: [
+        `Entered ${money(changeOrderSummary(changeOrders).enteredValue)} across ${changeOrders.length} documents.`,
+        `Approved and signed ${money(changeOrderSummary(changeOrders).approvedRevenue)}, which is the only part in the contract value.`,
+        `Pending approval ${money(changeOrderSummary(changeOrders).pendingRevenue)}.`,
+        `Rejected or cancelled ${money(changeOrderSummary(changeOrders).rejectedValue)}.`,
+      ],
       columns: [
         { header: 'Number', key: 'number', width: 14 },
         { header: 'Description', key: 'description', width: 40 },
+        { header: 'Kind', key: 'kind', width: 20 },
         { header: 'Type', key: 'type', width: 20 },
-        { header: 'Status', key: 'status', width: 14 },
-        { header: 'Owner amount', key: 'ownerAmount', format: 'money', total: true },
+        { header: 'Status', key: 'status', width: 20 },
+        { header: 'Approved and signed', key: 'approved', width: 20 },
+        { header: 'Signatures', key: 'signatures', width: 14 },
+        { header: 'Amount', key: 'ownerAmount', format: 'money', total: true },
+        { header: 'In the contract value', key: 'countedAmount', format: 'money', total: true },
         { header: 'Cost amount', key: 'costAmount', format: 'money', total: true },
         ...(showMargins ? ([{ header: 'Margin', key: 'margin', format: 'money', total: true }] as const) : []),
-        { header: 'Days pending', key: 'daysPending', format: 'number' },
+        { header: 'Days open', key: 'daysPending', format: 'number' },
         { header: 'Initiated', key: 'dateInitiated', format: 'date' },
-        { header: 'Approved', key: 'dateApproved', format: 'date' },
+        { header: 'Approved on', key: 'approvedAt', format: 'date' },
+        { header: 'Approved by', key: 'approvedBy', width: 22 },
       ],
       rows: changeOrders.map((co) => ({
         number: co.number,
-        description: changeOrderRecords.find((r) => r.id === co.id)?.description ?? '',
+        description: co.description,
+        kind: DOCUMENT_KIND_LABELS[co.documentKind] ?? co.documentKind,
         type: titleize(co.type),
-        status: titleize(co.status),
+        status: DOCUMENT_STATUS_LABELS[co.status] ?? co.status,
+        approved: co.isOfficial ? 'Yes' : 'No',
+        signatures: co.signatureCount === 0 ? 'None' : `${co.signedCount} of ${co.signatureCount}`,
         ownerAmount: co.ownerAmount,
+        // Zero for anything unapproved, so a total of this column is a figure
+        // that can be trusted on its own.
+        countedAmount: co.isOfficial ? co.ownerAmount : 0,
         costAmount: co.costAmount,
         margin: co.margin,
         daysPending: co.daysPending,
         dateInitiated: co.dateInitiated,
-        dateApproved: co.dateApproved,
+        approvedAt: co.approvedAt,
+        approvedBy: co.approvedByName ?? '',
       })),
     },
+
+    /*
+      One sheet with every priced line on every document, so the breakdown
+      behind a summarised amount travels with the export rather than only
+      existing on screen.
+    */
+    ...(changeOrders.some((co) => co.lines.length > 0)
+      ? [
+          {
+            name: 'Change order lines',
+            totalsRow: true,
+            columns: [
+              { header: 'Document', key: 'document', width: 14 },
+              { header: 'Approved', key: 'approved', width: 12 },
+              { header: 'Scope', key: 'scope', width: 40 },
+              { header: 'Cost code', key: 'costCode', width: 28 },
+              { header: 'Cost type', key: 'category', width: 18 },
+              { header: 'Measure', key: 'measure', width: 12 },
+              { header: 'Quantity', key: 'quantity', format: 'number' as const },
+              { header: 'Unit', key: 'uom', width: 10 },
+              { header: 'Labor hours', key: 'laborHours', format: 'number' as const, total: true },
+              { header: 'Labor rate', key: 'laborRate', format: 'money2' as const },
+              { header: 'Labor', key: 'labor', format: 'money' as const, total: true },
+              { header: 'Material', key: 'material', format: 'money' as const, total: true },
+              { header: 'Equipment', key: 'equipment', format: 'money' as const, total: true },
+              { header: 'Subcontract', key: 'sub', format: 'money' as const, total: true },
+              { header: 'Other', key: 'other', format: 'money' as const, total: true },
+              { header: 'Line total', key: 'total', format: 'money' as const, total: true },
+            ],
+            rows: changeOrders.flatMap((co) =>
+              co.lines.map((line) => ({
+                document: co.number,
+                approved: co.isOfficial ? 'Yes' : 'No',
+                scope: line.description,
+                costCode: line.costCodeLabel ?? '',
+                category: titleize(line.category),
+                measure: line.measure,
+                quantity: line.grossQty,
+                uom: line.uom ?? '',
+                laborHours: line.laborHours,
+                laborRate: line.laborRate,
+                labor: line.laborCost,
+                material: line.materialCost,
+                equipment: line.equipmentCost,
+                sub: line.subCost,
+                other: line.otherCost,
+                total: line.totalCost,
+              })),
+            ),
+          },
+        ]
+      : []),
     {
       name: 'Cash flow',
       totalsRow: true,

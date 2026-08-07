@@ -8,7 +8,7 @@ import {
   buildProjectAlerts,
   computeProjectFinancials,
   defaultCurve,
-  deriveChangeOrder,
+  deriveDocument,
   deriveCommitment,
   deriveQuantityProgress,
   endOfMonth,
@@ -28,6 +28,88 @@ import type { BillingInput, SovLineInput } from '@/lib/finance/billing'
 import type { ChangeOrderDerived } from '@/lib/finance/changeOrders'
 import type { LeveledPackage } from '@/lib/finance/leveling'
 import { getProjectCompliance } from './labor'
+
+/**
+ * Turns a stored document into a priced one.
+ *
+ * Rates come from the labor classes named on the lines, priced against nothing
+ * by default: a change order names its own rate on the line, which is how these
+ * are actually written up. A line that names a class with no rate behind it is
+ * flagged by the pricing checks rather than silently costing nothing.
+ */
+function documentFromRecord(
+  record: Awaited<ReturnType<typeof loadChangeOrders>>[number],
+  dataDate: Date,
+) {
+  return deriveDocument(
+    {
+      id: record.id,
+      number: record.number,
+      documentKind: record.documentKind,
+      type: record.type,
+      status: record.status,
+      description: record.description,
+      priceFromLines: record.priceFromLines,
+      enteredOwnerAmount: record.enteredOwnerAmount,
+      enteredCostAmount: record.enteredCostAmount,
+      markups: {
+        laborBurdenPct: record.laborBurdenPct,
+        salesTaxPct: record.salesTaxPct,
+        smallToolsPct: record.smallToolsPct,
+        contingencyPct: record.contingencyPct,
+        overheadPct: record.overheadPct,
+        profitPct: record.profitPct,
+        glInsurancePct: record.glInsurancePct,
+        bondPct: record.bondPct,
+        exciseTaxPct: record.exciseTaxPct,
+        roundToNearest: record.roundToNearest,
+      },
+      probabilityPct: record.probabilityPct,
+      scheduleImpactDays: record.scheduleImpactDays,
+      dateInitiated: record.dateInitiated,
+      dateApproved: record.dateApproved,
+      sentForSignatureAt: record.sentForSignatureAt,
+      fullySignedAt: record.fullySignedAt,
+      approvedAt: record.approvedAt,
+      approvedByName: record.approvedBy?.name ?? null,
+      approvalCertification: record.approvalCertification,
+      postsToBudget: record.postsToBudget,
+      signatures: record.signatures.map((signature) => ({
+        party: signature.party,
+        status: signature.status,
+        signedAt: signature.signedAt,
+      })),
+      attachmentCount: record.attachments.length,
+      signedDocumentCount: record.attachments.filter((a) => a.kind === 'SIGNED_DOCUMENT').length,
+    },
+    record.lines.map((line) => ({
+      id: line.id,
+      costCodeId: line.costCodeId,
+      costCodeLabel: `${line.costCode.code} ${line.costCode.description}`,
+      category: line.category,
+      divisionCode: line.divisionCode,
+      description: line.description ?? line.costCode.description,
+      measure: line.measure,
+      count: line.count,
+      length: line.length,
+      width: line.width,
+      depth: line.depth,
+      netQtyOverride: line.netQtyOverride,
+      uom: line.uom,
+      wastePct: line.wastePct,
+      laborClass: line.laborClass,
+      laborHrsPerUnit: line.laborHrsPerUnit,
+      laborRateOverride: line.laborRateOverride,
+      materialUnitCost: line.materialUnitCost,
+      equipmentUnitCost: line.equipmentUnitCost,
+      subUnitCost: line.subUnitCost,
+      otherUnitCost: line.otherUnitCost,
+      notes: line.notes,
+    })),
+    new Map(),
+    dataDate,
+  )
+}
 
 export interface ProjectBundle {
   project: NonNullable<Awaited<ReturnType<typeof loadProjectRecord>>>
@@ -62,7 +144,13 @@ function loadProjectRecord(projectId: string, companyId: string) {
 function loadChangeOrders(projectId: string) {
   return prisma.changeOrder.findMany({
     where: { projectId },
-    include: { trade: true, lines: { include: { costCode: true } } },
+    include: {
+      trade: true,
+      approvedBy: { select: { name: true } },
+      signatures: { orderBy: { sortOrder: 'asc' } },
+      attachments: { select: { id: true, kind: true } },
+      lines: { include: { costCode: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+    },
     orderBy: { number: 'asc' },
   })
 }
@@ -200,24 +288,14 @@ export const getProjectBundle = cache(
       }
     })
 
-    // ── Change orders and commitments ─────────────────────────────────────
-    const changeOrders = changeOrderRecords.map((co) =>
-      deriveChangeOrder(
-        {
-          id: co.id,
-          number: co.number,
-          status: co.status,
-          type: co.type,
-          ownerAmount: co.ownerAmount,
-          costAmount: co.costAmount,
-          probabilityPct: co.probabilityPct,
-          dateInitiated: co.dateInitiated,
-          dateApproved: co.dateApproved,
-          scheduleImpactDays: co.scheduleImpactDays,
-        },
-        dataDate,
-      ),
-    )
+    /*
+      Contract documents, priced the same way a takeoff is priced.
+
+      A document reaches the contract position, the budget and every report
+      through `isOfficial`, which is true only when somebody certified the
+      approval. Nothing here reads the status to decide whether money moves.
+    */
+    const changeOrders = changeOrderRecords.map((co) => documentFromRecord(co, dataDate))
 
     const budgetByCode = new Map(
       budgetLines.map((l) => [l.costCodeId, l.originalBudget + (revisionByLine.get(l.id) ?? 0)]),

@@ -68,6 +68,29 @@ async function main() {
     })
   })()
 
+  /*
+    A contract document to walk the breakdown page of. Looked for across every
+    project rather than only the first, because a job with no change orders on
+    it is perfectly normal and would otherwise leave that page unwalked.
+  */
+  let documentProject = null
+  let documentId = null
+  for (const candidate of [...new Set(projectIds)]) {
+    await page.goto(`${BASE}/projects/${candidate}/changes`, { waitUntil: 'networkidle' })
+    const found = await page.evaluate(() => {
+      const link = [...document.querySelectorAll('a[href*="/changes/"]')].find((a) => {
+        const parts = (a.getAttribute('href') ?? '').split('/')
+        return parts.length === 5 && parts[4].length > 10
+      })
+      return link?.getAttribute('href')?.split('/')[4] ?? null
+    })
+    if (found) {
+      documentProject = candidate
+      documentId = found
+      break
+    }
+  }
+
   const routes = [
     '/',
     '/projects',
@@ -103,6 +126,7 @@ async function main() {
           `/projects/${project}/buyout`,
           `/projects/${project}/quantities`,
           `/projects/${project}/labor`,
+          ...(documentId ? [`/projects/${documentProject}/changes/${documentId}`] : []),
           `/projects/${project}/settings`,
         ]
       : []),

@@ -81,7 +81,12 @@ export async function exportProject(projectId: string, companyId: string): Promi
       }),
       prisma.changeOrder.findMany({
         where: { projectId },
-        include: { trade: true, lines: { include: { costCode: true } } },
+        include: {
+          trade: true,
+          signatures: { orderBy: { sortOrder: 'asc' } },
+          attachments: { orderBy: { createdAt: 'asc' } },
+          lines: { include: { costCode: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+        },
         orderBy: { number: 'asc' },
       }),
       prisma.sovLine.findMany({ where: { projectId }, include: { costCode: true }, orderBy: { sortOrder: 'asc' } }),
@@ -258,12 +263,23 @@ export async function exportProject(projectId: string, companyId: string): Promi
       origin: co.origin,
       type: co.type,
       status: co.status,
+      documentKind: co.documentKind,
       tradeName: co.trade?.name ?? null,
-      ownerAmount: co.ownerAmount,
-      costAmount: co.costAmount,
-      submittedAmount: co.submittedAmount,
-      approvedAmount: co.approvedAmount,
-      rejectedAmount: co.rejectedAmount,
+      counterparty: co.counterparty,
+      reference: co.reference,
+      priceFromLines: co.priceFromLines,
+      enteredOwnerAmount: co.enteredOwnerAmount,
+      enteredCostAmount: co.enteredCostAmount,
+      laborBurdenPct: co.laborBurdenPct,
+      salesTaxPct: co.salesTaxPct,
+      smallToolsPct: co.smallToolsPct,
+      contingencyPct: co.contingencyPct,
+      overheadPct: co.overheadPct,
+      profitPct: co.profitPct,
+      glInsurancePct: co.glInsurancePct,
+      bondPct: co.bondPct,
+      exciseTaxPct: co.exciseTaxPct,
+      roundToNearest: co.roundToNearest,
       probabilityPct: co.probabilityPct,
       scheduleImpactDays: co.scheduleImpactDays,
       postsToBudget: co.postsToBudget,
@@ -271,15 +287,53 @@ export async function exportProject(projectId: string, companyId: string): Promi
       dateSubmitted: iso(co.dateSubmitted),
       dateApproved: iso(co.dateApproved),
       anticipatedApproval: iso(co.anticipatedApproval),
+      sentForSignatureAt: iso(co.sentForSignatureAt),
+      fullySignedAt: iso(co.fullySignedAt),
+      // The approval travels with the document, because a backup that restored
+      // an approved change order as unapproved would silently drop it out of
+      // the contract value.
+      approvedAt: iso(co.approvedAt),
+      approvalCertification: co.approvalCertification,
+      unapprovedReason: co.unapprovedReason,
       notes: co.notes,
+      signatures: co.signatures.map((signature) => ({
+        party: signature.party,
+        role: signature.role,
+        email: signature.email,
+        status: signature.status,
+        signedAt: iso(signature.signedAt),
+        note: signature.note,
+        sortOrder: signature.sortOrder,
+      })),
+      attachments: co.attachments.map((attachment) => ({
+        kind: attachment.kind,
+        fileName: attachment.fileName,
+        location: attachment.location,
+        note: attachment.note,
+      })),
       lines: co.lines.map((line) => ({
         costCode: line.costCode.code,
         category: line.category,
         description: line.description,
-        quantity: line.quantity,
-        unitCost: line.unitCost,
-        amount: line.amount,
-        markupPct: line.markupPct,
+        scope: line.scope,
+        divisionCode: line.divisionCode,
+        measure: line.measure,
+        count: line.count,
+        length: line.length,
+        width: line.width,
+        depth: line.depth,
+        netQtyOverride: line.netQtyOverride,
+        uom: line.uom,
+        wastePct: line.wastePct,
+        laborClass: line.laborClass,
+        laborHrsPerUnit: line.laborHrsPerUnit,
+        laborRateOverride: line.laborRateOverride,
+        materialUnitCost: line.materialUnitCost,
+        equipmentUnitCost: line.equipmentUnitCost,
+        subUnitCost: line.subUnitCost,
+        otherUnitCost: line.otherUnitCost,
+        notes: line.notes,
+        sortOrder: line.sortOrder,
       })),
     })),
     sovLines: sovLines.map((s) => ({
@@ -414,7 +468,11 @@ const COMMITMENT_CHANGE_STATUSES = ['PENDING', 'SUBMITTED', 'APPROVED', 'REJECTE
 const COST_TX_TYPES = ['ACTUAL', 'ACCRUAL', 'COMMITTED_ADJUSTMENT'] as const
 const COST_TX_SOURCES = ['MANUAL', 'IMPORT', 'SUB_INVOICE', 'PAYROLL', 'PURCHASE_ORDER', 'JOURNAL'] as const
 const CO_TYPES = ['OWNER_REQUEST', 'DESIGN_CHANGE', 'FIELD_CONDITION', 'ALLOWANCE_RECONCILE', 'ASI_DRIVEN', 'BACKCHARGE', 'TIME_ONLY', 'INTERNAL_BUDGET'] as const
-const CO_STATUSES = ['DRAFT', 'PRICING', 'PENDING', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'VOID', 'EXECUTED'] as const
+const CO_STATUSES = ['DRAFT', 'INTERNAL_REVIEW', 'READY_TO_SEND', 'SENT_FOR_SIGNATURE', 'PARTIALLY_SIGNED', 'FULLY_SIGNED', 'APPROVED', 'REJECTED', 'CANCELLED', 'VOIDED', 'SUPERSEDED'] as const
+const DOCUMENT_KINDS = ['CHANGE_ORDER', 'CONTRACT', 'CONTRACT_AMENDMENT', 'ADDENDUM', 'OWNER_CHANGE', 'SUBCONTRACT_CHANGE', 'OTHER'] as const
+const SIGNATURE_STATUSES = ['AWAITING', 'SIGNED', 'DECLINED'] as const
+const ATTACHMENT_KINDS = ['SIGNED_DOCUMENT', 'UNSIGNED_DOCUMENT', 'PRICING_BACKUP', 'SUBCONTRACTOR_QUOTE', 'CORRESPONDENCE', 'OTHER'] as const
+const MEASURE_TYPES = ['EA', 'LF', 'SF', 'SY', 'CY', 'CF', 'TON', 'LB', 'HR', 'DAY', 'LS', 'ALLOWANCE'] as const
 const BILLING_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'PAID', 'REJECTED'] as const
 const FORECAST_STATUSES = ['OPEN', 'LOCKED'] as const
 const RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH'] as const
@@ -615,12 +673,23 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
         origin: asStr(co.origin) || null,
         type: asEnum(co.type, CO_TYPES, 'OWNER_REQUEST'),
         status: asEnum(co.status, CO_STATUSES, 'DRAFT'),
+        documentKind: asEnum(co.documentKind, DOCUMENT_KINDS, 'CHANGE_ORDER'),
         tradeId: await tradeId(co.tradeName),
-        ownerAmount: asNum(co.ownerAmount),
-        costAmount: asNum(co.costAmount),
-        submittedAmount: asNum(co.submittedAmount),
-        approvedAmount: asNum(co.approvedAmount),
-        rejectedAmount: asNum(co.rejectedAmount),
+        counterparty: asStr(co.counterparty) || null,
+        reference: asStr(co.reference) || null,
+        priceFromLines: co.priceFromLines !== false,
+        enteredOwnerAmount: asNum(co.enteredOwnerAmount),
+        enteredCostAmount: asNum(co.enteredCostAmount),
+        laborBurdenPct: asNum(co.laborBurdenPct),
+        salesTaxPct: asNum(co.salesTaxPct),
+        smallToolsPct: asNum(co.smallToolsPct),
+        contingencyPct: asNum(co.contingencyPct),
+        overheadPct: asNum(co.overheadPct),
+        profitPct: asNum(co.profitPct),
+        glInsurancePct: asNum(co.glInsurancePct),
+        bondPct: asNum(co.bondPct),
+        exciseTaxPct: asNum(co.exciseTaxPct),
+        roundToNearest: asNum(co.roundToNearest),
         probabilityPct: asNum(co.probabilityPct),
         scheduleImpactDays: asNum(co.scheduleImpactDays),
         postsToBudget: co.postsToBudget !== false,
@@ -628,9 +697,41 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
         dateSubmitted: asDate(co.dateSubmitted),
         dateApproved: asDate(co.dateApproved),
         anticipatedApproval: asDate(co.anticipatedApproval),
+        sentForSignatureAt: asDate(co.sentForSignatureAt),
+        fullySignedAt: asDate(co.fullySignedAt),
+        approvedAt: asDate(co.approvedAt),
+        approvalCertification: asStr(co.approvalCertification) || null,
+        unapprovedReason: asStr(co.unapprovedReason) || null,
         notes: asStr(co.notes) || null,
       },
     })
+
+    for (const signature of rows(co.signatures)) {
+      await prisma.documentSignature.create({
+        data: {
+          changeOrderId: record.id,
+          party: asStr(signature.party) || 'Party',
+          role: asStr(signature.role) || null,
+          email: asStr(signature.email) || null,
+          status: asEnum(signature.status, SIGNATURE_STATUSES, 'AWAITING'),
+          signedAt: asDate(signature.signedAt),
+          note: asStr(signature.note) || null,
+          sortOrder: asNum(signature.sortOrder),
+        },
+      })
+    }
+
+    for (const attachment of rows(co.attachments)) {
+      await prisma.documentAttachment.create({
+        data: {
+          changeOrderId: record.id,
+          kind: asEnum(attachment.kind, ATTACHMENT_KINDS, 'OTHER'),
+          fileName: asStr(attachment.fileName) || 'Attachment',
+          location: asStr(attachment.location) || null,
+          note: asStr(attachment.note) || null,
+        },
+      })
+    }
     changeOrderIdByNumber.set(asStr(co.number), record.id)
     bump('changeOrders')
 
@@ -643,10 +744,25 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
           costCodeId: id,
           category: asEnum(line.category, COST_CATEGORIES, 'OTHER'),
           description: asStr(line.description) || null,
-          quantity: asNum(line.quantity),
-          unitCost: asNum(line.unitCost),
-          amount: asNum(line.amount),
-          markupPct: asNum(line.markupPct),
+          scope: asStr(line.scope) || null,
+          divisionCode: asStr(line.divisionCode) || null,
+          measure: asEnum(line.measure, MEASURE_TYPES, 'LS'),
+          count: asNum(line.count),
+          length: asNum(line.length),
+          width: asNum(line.width),
+          depth: asNum(line.depth),
+          netQtyOverride: line.netQtyOverride == null ? null : asNum(line.netQtyOverride),
+          uom: asStr(line.uom) || null,
+          wastePct: asNum(line.wastePct),
+          laborClass: asStr(line.laborClass) || null,
+          laborHrsPerUnit: asNum(line.laborHrsPerUnit),
+          laborRateOverride: line.laborRateOverride == null ? null : asNum(line.laborRateOverride),
+          materialUnitCost: asNum(line.materialUnitCost),
+          equipmentUnitCost: asNum(line.equipmentUnitCost),
+          subUnitCost: asNum(line.subUnitCost),
+          otherUnitCost: asNum(line.otherUnitCost),
+          notes: asStr(line.notes) || null,
+          sortOrder: asNum(line.sortOrder),
         },
       })
     }

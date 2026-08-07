@@ -52,6 +52,28 @@ const s = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.
 const d = (v: unknown): Date | null => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(`${v}T00:00:00.000Z`) : null)
 const D = (iso: string) => new Date(`${iso}T00:00:00.000Z`)
 
+/**
+ * Puts a lump sum into the cost bucket its cost type belongs to.
+ *
+ * A change order line prices like a takeoff line, which means the money has to
+ * be in the right bucket for the cost mix to be true. A labor lump sum becomes
+ * one hour at that rate, which is the same money said in the fields that exist.
+ */
+function unitCostForCategory(category: CostCategory, amount: number) {
+  switch (category) {
+    case 'LABOR':
+      return { laborHrsPerUnit: 1, laborRateOverride: amount }
+    case 'MATERIAL':
+      return { materialUnitCost: amount }
+    case 'EQUIPMENT':
+      return { equipmentUnitCost: amount }
+    case 'SUBCONTRACT':
+      return { subUnitCost: amount }
+    default:
+      return { otherUnitCost: amount }
+  }
+}
+
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex')
   return `scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}`
@@ -191,16 +213,28 @@ const PROJECT_STATUS_MAP: Record<string, string> = {
   'On Hold': 'ON_HOLD',
 }
 
+/**
+ * The workbook's change order statuses, mapped onto the document journey.
+ *
+ * The workbook mixed up where a document was in review with whether it had been
+ * approved. Here they are separate: the status says where it is, and a separate
+ * approval decides whether its money counts. Approved and executed rows are
+ * seeded with an approval so the seeded contract values still match the
+ * workbook's own figures.
+ */
 const CO_STATUS_MAP: Record<string, string> = {
-  Pending: 'PENDING',
-  Submitted: 'SUBMITTED',
+  Draft: 'DRAFT',
+  Pricing: 'INTERNAL_REVIEW',
+  Pending: 'READY_TO_SEND',
+  Submitted: 'SENT_FOR_SIGNATURE',
   Approved: 'APPROVED',
   Rejected: 'REJECTED',
-  Void: 'VOID',
-  Draft: 'DRAFT',
-  Pricing: 'PRICING',
-  Executed: 'EXECUTED',
+  Void: 'VOIDED',
+  Executed: 'APPROVED',
 }
+
+/** The workbook statuses that mean the document was signed and approved. */
+const CO_APPROVED_IN_WORKBOOK = new Set(['Approved', 'Executed'])
 
 const CO_TYPE_MAP: Record<string, string> = {
   'Owner Request': 'OWNER_REQUEST',
@@ -1071,32 +1105,55 @@ async function seedDetailedProject(
     })
   }
 
-  // Change orders
+  /*
+    Change orders.
+
+    The workbook carried a lump-sum owner amount and a lump-sum cost amount per
+    change order, so each is seeded as a lump sum rather than priced from lines:
+    `priceFromLines` is false and the two entered figures are read exactly as
+    the workbook stated them. Pricing one from its lines is something a person
+    opts into afterwards, and doing it changes the number, which is why it is
+    not done on their behalf here.
+
+    The approval is what makes an amount count. Rows the workbook called
+    approved or executed are seeded with an approval dated to the workbook's own
+    approval date, so the seeded contract position reproduces the workbook.
+    Everything else is entered and pending, contributing nothing.
+  */
   for (const row of raw.changeOrders) {
+    const workbookStatus = String(row['Status'])
+    const wasApproved = CO_APPROVED_IN_WORKBOOK.has(workbookStatus)
+    const approvedOn = wasApproved ? (d(row['Date Approved']) ?? D('2026-03-31')) : null
+
     const co = await prisma.changeOrder.create({
       data: {
         projectId,
         number: String(row['CO / PCO #']),
+        documentKind: 'CHANGE_ORDER',
         type: (CO_TYPE_MAP[String(row['Type'])] ?? 'OWNER_REQUEST') as never,
         description: String(row['Description']),
         origin: s(row['Origin (RFI/ASI/Field)']),
         tradeId: tradeByName.get(String(row['Trade / Scope']))?.id,
-        status: (CO_STATUS_MAP[String(row['Status'])] ?? 'PENDING') as never,
+        status: (CO_STATUS_MAP[workbookStatus] ?? 'READY_TO_SEND') as never,
         dateInitiated: d(row['Date Initiated']),
         dateSubmitted: d(row['Date Submitted']),
         dateApproved: d(row['Date Approved']),
-        ownerAmount: n(row['Owner CO Amount ($)']),
-        costAmount: n(row['Cost Amount ($)']),
-        submittedAmount: n(row['Owner CO Amount ($)']),
-        approvedAmount: String(row['Status']) === 'Approved' ? n(row['Owner CO Amount ($)']) : 0,
-        rejectedAmount: String(row['Status']) === 'Rejected' ? n(row['Owner CO Amount ($)']) : 0,
-        probabilityPct: String(row['Status']) === 'Approved' ? 1 : 0.5,
+        fullySignedAt: approvedOn,
+        approvedAt: approvedOn,
+        approvalCertification: wasApproved
+          ? 'Carried across from the source workbook, which recorded this change order as approved and executed.'
+          : null,
+        priceFromLines: false,
+        enteredOwnerAmount: n(row['Owner CO Amount ($)']),
+        enteredCostAmount: n(row['Cost Amount ($)']),
+        probabilityPct: wasApproved ? 1 : 0.5,
         scheduleImpactDays: n(row['Schedule Impact (days)']),
         notes: s(row['Notes']),
       },
     })
 
-    // Cost breakdown so the change order can be drilled into.
+    // The cost breakdown, which is what the approved amount posts to the budget
+    // against. One line per change order is all the workbook carried.
     const tradeName = String(row['Trade / Scope'])
     const budgetRow = raw.financials.find((f) => String(f['Trade / Scope']) === tradeName)
     const costCode = budgetRow ? codeByCode.get(String(budgetRow['Cost Code'])) : undefined
@@ -1107,10 +1164,19 @@ async function seedDetailedProject(
           costCodeId: costCode.id,
           category: costCode.category,
           description: String(row['Description']),
-          quantity: 1,
-          unitCost: n(row['Cost Amount ($)']),
-          amount: n(row['Cost Amount ($)']),
+          measure: 'LS',
+          count: 1,
+          ...unitCostForCategory(costCode.category, n(row['Cost Amount ($)'])),
         },
+      })
+    }
+
+    if (wasApproved) {
+      await prisma.documentSignature.createMany({
+        data: [
+          { changeOrderId: co.id, party: 'Owner', role: 'Owner', status: 'SIGNED', signedAt: approvedOn, sortOrder: 0 },
+          { changeOrderId: co.id, party: 'ConstructX', role: 'Contractor', status: 'SIGNED', signedAt: approvedOn, sortOrder: 1 },
+        ],
       })
     }
   }

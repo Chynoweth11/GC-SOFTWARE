@@ -21,6 +21,8 @@ export type Capability =
   | 'edit:costs'
   | 'edit:commitments'
   | 'edit:change_orders'
+  | 'approve:contract_documents'
+  | 'unapprove:contract_documents'
   | 'edit:owner_billing'
   | 'edit:sub_billing'
   | 'edit:forecast'
@@ -52,6 +54,8 @@ const ALL: Capability[] = [
   'edit:costs',
   'edit:commitments',
   'edit:change_orders',
+  'approve:contract_documents',
+  'unapprove:contract_documents',
   'edit:owner_billing',
   'edit:sub_billing',
   'edit:forecast',
@@ -83,6 +87,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'view:pipeline',
     'view:wage_rates',
     'award:bid',
+    'approve:contract_documents',
     'view:audit',
   ],
 
@@ -96,6 +101,7 @@ const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'edit:costs',
     'edit:commitments',
     'edit:change_orders',
+    'approve:contract_documents',
     'edit:owner_billing',
     'edit:sub_billing',
     'edit:forecast',

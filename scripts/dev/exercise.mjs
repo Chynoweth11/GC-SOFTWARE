@@ -526,6 +526,246 @@ async function main() {
   if (!cleaned.includes('Exercise PM')) ok('a classification with nothing depending on it can be deleted')
   else bad('classification delete', 'the classification was still there afterwards')
 
+  // ── Contract documents and the approval gate ─────────────────────────────
+  // The rule the whole feature exists for, driven end to end: an entered
+  // document changes nothing until somebody certifies that it is signed.
+  console.log('\nChange orders and approval')
+
+  // Read the contract value before anything is raised, so the effect of the
+  // approval can be measured rather than assumed.
+  // Read off the change orders tab, which states the position in full dollars
+  // rather than the shortened form the project header uses.
+  const contractBefore = async () => {
+    await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+    const text = await page.locator('body').innerText()
+    const match = text.match(/makes\s+\$([\d,]+)\s+of current contract/i)
+    return match ? Number(match[1].replace(/,/g, '')) : null
+  }
+  const beforeValue = await contractBefore()
+
+  await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+
+  // Clear anything a previous run left behind, so this section is repeatable.
+  const leftover = page.locator('tr', { hasText: 'CO-EX1' }).first()
+  if ((await leftover.count()) > 0) {
+    await leftover.locator('a').first().click()
+    await page.waitForTimeout(1200)
+    const withdraw = page.locator('input[type="checkbox"][aria-label^="Withdraw"]')
+    if ((await withdraw.count()) > 0) {
+      await withdraw.first().click()
+      await page.waitForTimeout(400)
+      await page.fill('[role="dialog"] textarea', 'Clearing a previous exercise run.')
+      await page.getByRole('button', { name: 'Yes, withdraw it' }).click()
+      await page.waitForTimeout(2500)
+    }
+    await page.getByRole('button', { name: 'Delete this document' }).click()
+    await page.waitForTimeout(400)
+    await page.getByRole('button', { name: 'Delete the document' }).click()
+    await page.waitForTimeout(2500)
+    await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+  }
+
+  await page.getByRole('button', { name: /Raise a change order/ }).click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="number"]', 'CO-EX1')
+  await page.fill('input[name="description"]', 'Exercise change order')
+  await page.selectOption('select[name="status"]', 'DRAFT')
+  // Priced from its lines, which is the default, so the amount follows the
+  // takeoff and the markup chain rather than being typed in.
+  await page.fill('input[name="profitPct"]', '10')
+  await page.fill('input[name="overheadPct"]', '6')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Raise it' }).click()])
+
+  // The form sends the user straight into the breakdown.
+  await page.waitForURL(/\/changes\/[^/]+$/, { timeout: 20000 })
+  const documentUrl = page.url()
+
+  await page.getByRole('button', { name: /Add the first line|Add a line/ }).first().click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="description"]', 'Exercise scope')
+  await page.selectOption('select[name="measure"]', 'LS')
+  await page.fill('input[name="count"]', '1')
+  await page.fill('input[name="otherUnitCost"]', '100000')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Add the line' }).click()])
+
+  /*
+    Worked by hand from the markup chain, in the order the bid summary uses:
+
+      direct cost                          100,000.00
+      overhead      100,000 x 6 percent       6,000.00
+      profit        106,000 x 10 percent     10,600.00
+      total                                 116,600.00
+  */
+  const pricedText = await page.locator('body').innerText()
+  if (pricedText.includes('$116,600')) {
+    ok('a change order priced from its lines runs the markup chain in the bid summary order')
+  } else {
+    bad('change order pricing', 'the built-up amount of 116,600 did not appear')
+  }
+  if (/Not in any figure yet/.test(pricedText)) {
+    ok('a document that is not approved says plainly that it counts for nothing')
+  } else {
+    bad('approval state', 'a draft document did not say it counts for nothing')
+  }
+
+  const afterEntry = await contractBefore()
+  if (beforeValue !== null && afterEntry === beforeValue) {
+    ok('entering a change order leaves the contract value untouched')
+  } else {
+    bad('contract value', `it moved from ${beforeValue} to ${afterEntry} on entry alone`)
+  }
+
+  // Approval is refused while the document is a draft, whatever anybody ticks.
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const draftCheckbox = page.locator('input[type="checkbox"][aria-label^="Approve"]').first()
+  if (await draftCheckbox.isDisabled()) {
+    ok('the approval checkbox is refused on a draft')
+  } else {
+    bad('approval gate', 'a draft could be approved')
+  }
+
+  // Add two signing parties, sign one, and check the gate still holds.
+  await page.getByRole('button', { name: 'Add a signing party' }).click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="party"]', 'Owner')
+  await page.fill('input[name="role"]', 'Owner')
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add the party' }).click()])
+
+  await page.getByRole('button', { name: 'Add a signing party' }).click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="party"]', 'ConstructX')
+  await page.fill('input[name="role"]', 'Contractor')
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add the party' }).click()])
+
+  await page.getByRole('button', { name: 'Edit this document' }).click()
+  await page.waitForTimeout(400)
+  await page.selectOption('select[name="status"]', 'FULLY_SIGNED')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save document' }).click()])
+
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const unsignedText = await page.locator('body').innerText()
+  if (/2 parties have not signed/.test(unsignedText)) {
+    ok('approval is refused while a required party has not signed')
+  } else {
+    bad('signature gate', 'the outstanding signatures did not block approval')
+  }
+
+  // Sign both parties.
+  for (const party of ['Owner', 'ConstructX']) {
+    const row = page.locator('tr', { hasText: party }).first()
+    await row.getByRole('button', { name: 'Edit' }).click()
+    await page.waitForTimeout(400)
+    await page.selectOption('select[name="status"]', 'SIGNED')
+    await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Save party' }).click()])
+  }
+
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const signedText = await page.locator('body').innerText()
+  if (/2 of 2/.test(signedText) && !/parties have not signed/.test(signedText)) {
+    ok('the document follows its signatures to fully signed')
+  } else {
+    bad('signature tracking', 'the document did not reach fully signed')
+  }
+
+  // The certification dialog: cancel first, and check nothing happened.
+  // The box is controlled by the saved state, so clicking opens the dialog and
+  // leaves the box exactly as it was. That is the point of it.
+  await page.locator('input[type="checkbox"][aria-label^="Approve"]').first().click()
+  await page.waitForTimeout(400)
+  const dialogText = await page.locator('[role="dialog"]').innerText()
+  if (/I certify, to the best of my knowledge/.test(dialogText) && /\$116,600/.test(dialogText)) {
+    ok('ticking the approval box asks for a certification and states the amount')
+  } else {
+    bad('certification dialog', 'the dialog did not state the certification and the amount')
+  }
+  await page.getByRole('button', { name: 'No, cancel' }).click()
+  await page.waitForTimeout(800)
+  const afterCancel = await page.locator('body').innerText()
+  if (/Not in any figure yet/.test(afterCancel)) {
+    ok('answering no leaves the document unapproved')
+  } else {
+    bad('certification dialog', 'cancelling the dialog approved the document anyway')
+  }
+
+  // Now approve it for real.
+  await page.locator('input[type="checkbox"][aria-label^="Approve"]').first().click()
+  await page.waitForTimeout(400)
+  await page.locator('[role="dialog"] input[type="checkbox"]').check()
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Yes, approve it' }).click()])
+
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const approvedText = await page.locator('body').innerText()
+  if (/In the contract value/.test(approvedText) && /is in this project/.test(approvedText)) {
+    ok('certifying the approval puts the amount into the contract value')
+  } else {
+    bad('approval', 'the document did not report as approved')
+  }
+
+  const afterApproval = await contractBefore()
+  if (beforeValue !== null && afterApproval !== null && afterApproval - beforeValue === 116_600) {
+    ok('the contract value rose by exactly the approved amount')
+  } else {
+    bad('contract value', `expected a rise of 116,600, saw ${beforeValue} to ${afterApproval}`)
+  }
+
+  // An approved document's pricing is locked.
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const lockedText = await page.locator('body').innerText()
+  if (/pricing is locked/.test(lockedText)) {
+    ok('an approved document has its pricing locked')
+  } else {
+    bad('approval lock', 'the pricing was not locked after approval')
+  }
+
+  // Withdrawing needs a reason and a second confirmation.
+  await page.locator('input[type="checkbox"][aria-label^="Withdraw"]').first().click()
+  await page.waitForTimeout(400)
+  const withdrawDialog = await page.locator('[role="dialog"]').innerText()
+  if (/takes \$116,600 back out of the contract value/.test(withdrawDialog)) {
+    ok('withdrawing an approval says exactly what it will take back out')
+  } else {
+    bad('withdraw dialog', 'the withdrawal dialog did not state the effect')
+  }
+  await page.fill('[role="dialog"] textarea', 'Exercise run, putting the project back as it was found.')
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Yes, withdraw it' }).click()])
+
+  const afterWithdraw = await contractBefore()
+  if (afterWithdraw === beforeValue) {
+    ok('withdrawing the approval takes the amount back out of the contract value')
+  } else {
+    bad('withdraw', `the contract value did not return, ${beforeValue} against ${afterWithdraw}`)
+  }
+
+  // The history carries the whole story, and cannot be edited.
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const documentHistory = await page.locator('body').innerText()
+  const historyWants = ['Create', 'Approve', 'Unlock']
+  const missingHistory = historyWants.filter((word) => !documentHistory.includes(word))
+  if (missingHistory.length === 0 && /I certify, to the best of my knowledge/.test(documentHistory)) {
+    ok('the history records the raising, the approval with its certification, and the withdrawal')
+  } else {
+    bad('document history', `missing ${missingHistory.join(', ') || 'the certification text'}`)
+  }
+
+  // Put the project back the way it was found. The document is unapproved by
+  // now, so deleting it is allowed; an approved one would have been refused.
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Remove', exact: true }).first().click()
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Remove the line' }).click()
+  await page.waitForTimeout(2000)
+
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Delete this document' }).click()
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Delete the document' }).click()
+  await page.waitForTimeout(2500)
+
+  await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+  const tidied = await page.locator('body').innerText()
+  if (!tidied.includes('CO-EX1')) ok('an unapproved document can be deleted, and the project is back as it was')
+  else bad('cleanup', 'the exercise change order was still on the project')
+
   // ── Reports and exports ──────────────────────────────────────────────────
   console.log('\nExports')
   await page.goto(`${BASE}/reports`, { waitUntil: 'networkidle' })

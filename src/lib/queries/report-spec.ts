@@ -3,6 +3,7 @@ import { can, type Capability } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { getCompanyDashboard, parseProjectFilter, type CompanyDashboardData } from '@/lib/queries/company'
 import { listEstimates } from '@/lib/queries/estimate'
+import { getProjectDocuments } from '@/lib/queries/documents'
 import { buildWipSchedule, followUpState, rollupByDimension } from '@/lib/finance'
 import type { SheetSpec } from '@/lib/excel'
 import type { Role } from '@/generated/prisma'
@@ -366,11 +367,25 @@ export async function buildReportSpec(
     }
 
     case 'change-orders': {
-      const orders = await prisma.changeOrder.findMany({
-        where: { project: { companyId: user.companyId } },
-        include: { project: true, trade: true },
-        orderBy: [{ project: { number: 'asc' } }, { number: 'asc' }],
+      /*
+        Priced through the same engine as the project page, which is what keeps
+        the export honest about approval: the amount is stated for every
+        document, and a column says plainly which ones are actually in the
+        contract value.
+      */
+      const projectIds = await prisma.project.findMany({
+        where: { companyId: user.companyId },
+        select: { id: true, number: true },
+        orderBy: { number: 'asc' },
       })
+      const orders = (
+        await Promise.all(
+          projectIds.map(async (project) => {
+            const { documents } = await getProjectDocuments(project.id, user.companyId)
+            return documents
+          }),
+        )
+      ).flat()
       return done([
         {
           name: 'Change orders',
@@ -382,7 +397,8 @@ export async function buildReportSpec(
             { header: 'Description', key: 'description', width: 40 },
             { header: 'Type', key: 'type', width: 20 },
             { header: 'Trade', key: 'trade', width: 22 },
-            { header: 'Status', key: 'status', width: 14 },
+            { header: 'Status', key: 'status', width: 18 },
+            { header: 'Approved and signed', key: 'approved', width: 20 },
             { header: 'Owner amount', key: 'ownerAmount', format: 'money', total: true },
             { header: 'Cost amount', key: 'costAmount', format: 'money', total: true },
             ...(showMargins ? ([{ header: 'Margin', key: 'margin', format: 'money', total: true }] as const) : []),
@@ -391,16 +407,17 @@ export async function buildReportSpec(
             { header: 'Approved', key: 'dateApproved', format: 'date' },
             { header: 'Schedule days', key: 'scheduleDays', format: 'number' },
           ],
-          rows: orders.map((co) => ({
-            job: co.project.number,
+          rows: orders.map((co: (typeof orders)[number]) => ({
+            job: co.projectNumber,
             number: co.number,
             description: co.description,
             type: titleize(co.type),
-            trade: co.trade?.name ?? '',
+            trade: co.tradeName ?? '',
             status: titleize(co.status),
             ownerAmount: co.ownerAmount,
             costAmount: co.costAmount,
-            margin: co.ownerAmount - co.costAmount,
+            approved: co.isOfficial ? 'Yes' : 'No',
+            margin: co.margin,
             probability: co.probabilityPct,
             dateInitiated: co.dateInitiated,
             dateApproved: co.dateApproved,

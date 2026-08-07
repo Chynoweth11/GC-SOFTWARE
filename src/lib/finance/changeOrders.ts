@@ -1,94 +1,70 @@
 import { num, safeDiv, sumBy } from './core'
+import {
+  contractChangeDocuments,
+  documentTotals,
+  originalContractValue,
+  type DocumentDerived,
+} from './documents'
 import type { ContractPosition } from './types'
 
-export interface ChangeOrderInput {
-  id: string
-  number: string
-  status: string
-  type: string
-  ownerAmount: number
-  costAmount: number
-  probabilityPct: number
-  dateInitiated: Date | null
-  dateApproved: Date | null
-  scheduleImpactDays: number
-}
-
-export const APPROVED_STATUSES = new Set(['APPROVED', 'EXECUTED'])
-export const PENDING_STATUSES = new Set(['PENDING', 'SUBMITTED', 'UNDER_REVIEW', 'PRICING'])
-export const DEAD_STATUSES = new Set(['REJECTED', 'VOID'])
-
-export interface ChangeOrderDerived extends ChangeOrderInput {
-  margin: number
-  marginPct: number
-  daysPending: number
-  isApproved: boolean
-  isPending: boolean
-  weightedOwnerAmount: number
-  weightedCostAmount: number
-}
-
 /**
- * Change Orders ▸ J,K,N.
- *   J  Margin      = Owner CO Amount − Cost Amount
- *   K  Margin %    = Margin ÷ Owner Amount
- *   N  Days Pending= approved ? (approved − initiated) : (data date − initiated)
+ * The contract position, built from documents that have actually been approved.
+ *
+ * This file used to decide what counted by looking at a status string. It no
+ * longer does. A document reaches these figures only when it carries a
+ * certified approval, which is `DocumentDerived.isOfficial`, and every function
+ * here reads that and nothing else.
+ *
+ * The difference matters on a real job. A change order can be priced, sent,
+ * signed by the owner and still be sitting on somebody's desk unverified. Under
+ * the old rule, marking it approved in a dropdown moved a million dollars into
+ * the contract value. Under this one, somebody has to certify it, and their
+ * name and the moment are on the record.
  */
-export function deriveChangeOrder(co: ChangeOrderInput, dataDate: Date): ChangeOrderDerived {
-  const margin = num(co.ownerAmount) - num(co.costAmount)
-  const isApproved = APPROVED_STATUSES.has(co.status)
-  const isPending = PENDING_STATUSES.has(co.status)
 
-  let daysPending = 0
-  if (co.dateInitiated) {
-    const end = isApproved ? co.dateApproved : dataDate
-    if (end) daysPending = Math.round((end.getTime() - co.dateInitiated.getTime()) / 86_400_000)
-  }
-
-  return {
-    ...co,
-    margin,
-    marginPct: safeDiv(margin, num(co.ownerAmount)),
-    daysPending,
-    isApproved,
-    isPending,
-    weightedOwnerAmount: num(co.ownerAmount) * num(co.probabilityPct),
-    weightedCostAmount: num(co.costAmount) * num(co.probabilityPct),
-  }
-}
+/** Kept as the name the rest of the system already uses for a priced document. */
+export type ChangeOrderDerived = DocumentDerived
 
 /**
- * Contract position: Setup ▸ C24:C28.
- *   Current Contract   = Original + Approved COs
- *   Potential Contract = Current + Pending COs
+ * Contract position: Setup ▸ C24:C28, with approval as the gate.
+ *
+ *   Current Contract   = Original + Approved changes
+ *   Potential Contract = Current + Pending changes
+ *
+ * The original contract is the sum of approved contract documents where the
+ * project has any, and the figure entered at setup where it does not.
  *
  * `pendingInclusionPct` controls how much pending exposure enters the forecast
- * contract: 0 excludes it entirely (the conservative default the workbook used),
- * 1 includes it in full, and any value between blends toward the weighted amount.
+ * contract: 0 excludes it entirely, which is the conservative default and what
+ * the workbook did, 1 includes it in full, and anything between blends toward
+ * the probability-weighted amount. It never touches the current contract.
  */
 export function computeContractPosition(
-  originalContract: number,
-  changeOrders: readonly ChangeOrderDerived[],
+  enteredOriginalContract: number,
+  documents: readonly DocumentDerived[],
   pendingInclusionPct = 0,
 ): ContractPosition {
+  const original = originalContractValue(documents, enteredOriginalContract)
+  const changes = contractChangeDocuments(documents)
+
   const approved = sumBy(
-    changeOrders.filter((c) => c.isApproved),
-    (c) => c.ownerAmount,
+    changes.filter((document) => document.isOfficial),
+    (document) => document.ownerAmount,
   )
   const pending = sumBy(
-    changeOrders.filter((c) => c.isPending),
-    (c) => c.ownerAmount,
+    changes.filter((document) => document.isPending),
+    (document) => document.ownerAmount,
   )
   const weightedPending = sumBy(
-    changeOrders.filter((c) => c.isPending),
-    (c) => c.weightedOwnerAmount,
+    changes.filter((document) => document.isPending),
+    (document) => document.weightedOwnerAmount,
   )
 
-  const current = num(originalContract) + approved
+  const current = original.amount + approved
   const inclusion = Math.max(0, Math.min(1, num(pendingInclusionPct)))
 
   return {
-    originalContract: num(originalContract),
+    originalContract: original.amount,
     approvedChangeOrders: approved,
     currentContract: current,
     pendingChangeOrders: pending,
@@ -98,37 +74,51 @@ export function computeContractPosition(
   }
 }
 
-/** Cost impact of approved change orders, which is what posts to the budget. */
-export function approvedCostImpact(changeOrders: readonly ChangeOrderDerived[]): number {
+/**
+ * Cost impact of approved documents, which is what posts to the budget.
+ *
+ * Every kind counts here, including a subcontract change, because all of them
+ * move cost even when only some of them move revenue.
+ */
+export function approvedCostImpact(documents: readonly DocumentDerived[]): number {
   return sumBy(
-    changeOrders.filter((c) => c.isApproved),
-    (c) => c.costAmount,
+    documents.filter((document) => document.isOfficial),
+    (document) => document.costAmount,
   )
 }
 
-export function changeOrderSummary(changeOrders: readonly ChangeOrderDerived[]) {
-  const approved = changeOrders.filter((c) => c.isApproved)
-  const pending = changeOrders.filter((c) => c.isPending)
-  const rejected = changeOrders.filter((c) => DEAD_STATUSES.has(c.status))
-  const approvedRevenue = sumBy(approved, (c) => c.ownerAmount)
-  const approvedCost = sumBy(approved, (c) => c.costAmount)
+/**
+ * The four totals the change order tab shows, plus the margin behind them.
+ *
+ * Restated over the document totals so there is one definition of "approved"
+ * in the system rather than two that could part company.
+ */
+export function changeOrderSummary(documents: readonly DocumentDerived[]) {
+  const totals = documentTotals(documents)
 
   return {
-    count: changeOrders.length,
-    approvedCount: approved.length,
-    pendingCount: pending.length,
-    rejectedCount: rejected.length,
-    approvedRevenue,
-    approvedCost,
-    approvedMargin: approvedRevenue - approvedCost,
-    approvedMarginPct: safeDiv(approvedRevenue - approvedCost, approvedRevenue),
-    pendingRevenue: sumBy(pending, (c) => c.ownerAmount),
-    pendingCost: sumBy(pending, (c) => c.costAmount),
-    weightedPendingRevenue: sumBy(pending, (c) => c.weightedOwnerAmount),
-    rejectedValue: sumBy(rejected, (c) => c.ownerAmount),
-    avgDaysPending: pending.length
-      ? sumBy(pending, (c) => c.daysPending) / pending.length
-      : 0,
-    scheduleImpactDays: sumBy(approved, (c) => c.scheduleImpactDays),
+    count: totals.enteredCount,
+    approvedCount: totals.approvedCount,
+    pendingCount: totals.pendingCount,
+    rejectedCount: totals.rejectedCount,
+    enteredValue: totals.entered,
+    approvedRevenue: totals.approved,
+    approvedCost: totals.approvedCost,
+    approvedMargin: totals.approvedMargin,
+    approvedMarginPct: totals.approvedMarginPct,
+    pendingRevenue: totals.pending,
+    pendingCost: totals.pendingCost,
+    weightedPendingRevenue: totals.weightedPending,
+    rejectedValue: totals.rejected,
+    avgDaysPending: totals.avgDaysPending,
+    scheduleImpactDays: totals.scheduleImpactDays,
+  }
+}
+
+/** Margin on one document, for a row that wants it without the rest. */
+export function documentMargin(document: DocumentDerived) {
+  return {
+    margin: document.ownerAmount - document.costAmount,
+    marginPct: safeDiv(document.ownerAmount - document.costAmount, document.ownerAmount),
   }
 }

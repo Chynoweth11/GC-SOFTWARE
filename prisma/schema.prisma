@@ -93,6 +93,8 @@ model User {
   verifiedWageSheets    WageRateSheet[]       @relation("WageRateSheetVerifier")
   complianceOwned       ComplianceRequirement[] @relation("ComplianceOwner")
   complianceSubmitted   ComplianceSubmission[]  @relation("ComplianceSubmitter")
+  approvedDocuments     ChangeOrder[]           @relation("DocumentApprover")
+  documentAttachments   DocumentAttachment[]    @relation("DocumentAttacher")
 
   @@index([companyId])
 }
@@ -1027,69 +1029,261 @@ enum ChangeOrderType {
   INTERNAL_BUDGET
 }
 
-enum ChangeOrderStatus {
-  DRAFT
-  PRICING
-  PENDING
-  SUBMITTED
-  UNDER_REVIEW
-  APPROVED
-  REJECTED
-  VOID
-  EXECUTED
+/// What kind of document this is. All of them price, review, sign and approve
+/// the same way, so they are one model rather than four that would drift apart.
+enum DocumentKind {
+  /// A change to the owner contract, priced and submitted for approval.
+  CHANGE_ORDER
+  /// The prime contract itself. Approved contracts set the original contract value.
+  CONTRACT
+  /// A formal amendment to the prime contract.
+  CONTRACT_AMENDMENT
+  /// An addendum issued before or at execution.
+  ADDENDUM
+  /// A change the owner directs, before it becomes a priced change order.
+  OWNER_CHANGE
+  /// A change to a subcontract, which moves cost but not contract value.
+  SUBCONTRACT_CHANGE
+  OTHER
 }
 
+/// Where a document is in the journey from a draft to a signed instrument.
+///
+/// None of these values, on their own, puts money into the project's official
+/// figures. That is done by the approval on the document, which is a separate
+/// and deliberate act. A document can sit at FULLY_SIGNED for a week without
+/// touching the contract value until somebody certifies the approval.
+enum DocumentStatus {
+  DRAFT
+  INTERNAL_REVIEW
+  READY_TO_SEND
+  SENT_FOR_SIGNATURE
+  PARTIALLY_SIGNED
+  FULLY_SIGNED
+  APPROVED
+  REJECTED
+  CANCELLED
+  VOIDED
+  SUPERSEDED
+}
+
+/// Where each party stands on a document out for signature.
+enum SignatureStatus {
+  AWAITING
+  SIGNED
+  DECLINED
+}
+
+/// What an attached file is. Financial records only: no drawings, no specs.
+enum DocumentAttachmentKind {
+  SIGNED_DOCUMENT
+  UNSIGNED_DOCUMENT
+  PRICING_BACKUP
+  SUBCONTRACTOR_QUOTE
+  CORRESPONDENCE
+  OTHER
+}
+
+/**
+ * A change order, contract, amendment or addendum.
+ *
+ * One model for all of them, because they are the same object: something is
+ * priced, reviewed, sent out, signed by every party, and only then allowed to
+ * move the project's money. Four separate models would have drifted apart on
+ * exactly the rule that matters.
+ *
+ * That rule: **`approvedAt` is the only thing that puts money into the
+ * project's official figures.** Not the status, not a signature date, not the
+ * fact that somebody typed an amount in. A document sitting at FULLY_SIGNED
+ * with `approvedAt` null contributes nothing to the contract value, the budget,
+ * the forecast, the dashboard or any report. Somebody has to certify the
+ * approval, and their name and the moment go on the record when they do.
+ *
+ * Amounts are derived, not stored, whenever the document is priced from its
+ * lines. `enteredOwnerAmount` and `enteredCostAmount` are used only when it is
+ * not, which is how a lump-sum document recorded from paper still works.
+ */
 model ChangeOrder {
   id            String            @id @default(cuid())
   projectId     String
   number        String
+  documentKind  DocumentKind      @default(CHANGE_ORDER)
   type          ChangeOrderType   @default(OWNER_REQUEST)
   description   String
   origin        String?
   tradeId       String?
-  status        ChangeOrderStatus @default(DRAFT)
+  status        DocumentStatus    @default(DRAFT)
+  /// Who the document is with: the owner, a subcontractor, an architect.
+  counterparty  String?
+  /// The signature envelope or file reference at the platform it was sent through.
+  reference     String?
+
   dateInitiated DateTime?
   dateSubmitted DateTime?
   dateApproved  DateTime?
   anticipatedApproval DateTime?
-  /// Revenue impact presented to the owner
-  ownerAmount   Float             @default(0)
-  /// Cost impact carried into the budget
-  costAmount    Float             @default(0)
-  submittedAmount Float           @default(0)
-  approvedAmount  Float           @default(0)
-  rejectedAmount  Float           @default(0)
-  probabilityPct  Float           @default(0)
-  scheduleImpactDays Int          @default(0)
+  /// When it went out for signature.
+  sentForSignatureAt  DateTime?
+  /// When the last required party signed. Signing is not approving.
+  fullySignedAt       DateTime?
+
+  /*
+    The approval. Everything downstream of this document reads `approvedAt` and
+    nothing else, so there is exactly one gate and it is auditable.
+  */
+  approvedAt            DateTime?
+  approvedById          String?
+  /// What the approver certified when they ticked the box, kept verbatim.
+  approvalCertification String?
+  /// Why an approval was withdrawn, required before it can be.
+  unapprovedReason      String?
+
+  /// Priced from its own lines, the ordinary case. False records a lump sum
+  /// taken off paper, and the page says which it is reading.
+  priceFromLines Boolean @default(true)
+  /// Used only when `priceFromLines` is false.
+  enteredOwnerAmount Float @default(0)
+  enteredCostAmount  Float @default(0)
+
+  /*
+    The markup chain, the same one the estimate uses and in the same order, so a
+    change order is priced the way the job was priced.
+  */
+  laborBurdenPct  Float @default(0)
+  salesTaxPct     Float @default(0)
+  smallToolsPct   Float @default(0)
+  contingencyPct  Float @default(0)
+  overheadPct     Float @default(0)
+  profitPct       Float @default(0)
+  glInsurancePct  Float @default(0)
+  bondPct         Float @default(0)
+  exciseTaxPct    Float @default(0)
+  roundToNearest  Float @default(0)
+
+  probabilityPct  Float             @default(0)
+  scheduleImpactDays Int            @default(0)
   /// When true the approved amount posts budget revisions on the linked cost codes
-  postsToBudget Boolean           @default(true)
+  postsToBudget Boolean             @default(true)
+  /// The document that replaced this one, where it was superseded.
+  supersededById String?
   notes         String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   trade             Trade?             @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  approvedBy        User?              @relation("DocumentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  supersededBy      ChangeOrder?       @relation("Supersedes", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes        ChangeOrder[]      @relation("Supersedes")
   lines             ChangeOrderLine[]
+  signatures        DocumentSignature[]
+  attachments       DocumentAttachment[]
   budgetRevisions   BudgetRevision[]
   commitmentChanges CommitmentChange[]
 
   @@unique([projectId, number])
   @@index([projectId, status])
+  @@index([projectId, documentKind])
 }
 
+/**
+ * One priced line on a document.
+ *
+ * Deliberately the same shape as a takeoff line, and priced by the same
+ * function: quantity from the measure and dimensions, waste on top, labor at
+ * hours times a rate, material taxed, equipment and subcontract at their unit
+ * costs. A change order is a small estimate, and pricing it any other way
+ * invites the two to disagree.
+ *
+ * The line total is never stored. It is derived every time it is read.
+ */
 model ChangeOrderLine {
   id            String       @id @default(cuid())
   changeOrderId String
   costCodeId    String
   category      CostCategory
   description   String?
-  quantity      Float        @default(1)
-  unitCost      Float        @default(0)
-  amount        Float        @default(0)
-  markupPct     Float        @default(0)
+  /// The section or scope heading this line sits under.
+  scope         String?
+  divisionCode  String?
+
+  measure        MeasureType @default(LS)
+  count          Float       @default(1)
+  length         Float       @default(0)
+  width          Float       @default(0)
+  depth          Float       @default(0)
+  /// Overrides the quantity the dimensions work out to.
+  netQtyOverride Float?
+  uom            String?
+  wastePct       Float       @default(0)
+
+  /// Priced against the estimate's own class list or the company library.
+  laborClass        String?
+  laborHrsPerUnit   Float   @default(0)
+  /// A rate for this line alone. Null uses the class rate.
+  laborRateOverride Float?
+
+  materialUnitCost  Float @default(0)
+  equipmentUnitCost Float @default(0)
+  subUnitCost       Float @default(0)
+  /// Anything that is none of the four: general conditions, an allowance, a
+  /// permit fee. A takeoff sends these to its own general conditions sheet; a
+  /// change order has no such sheet, so they are priced on the line.
+  otherUnitCost     Float @default(0)
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
   costCode    CostCode    @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@index([changeOrderId])
+}
+
+/// One party who has to sign, and whether they have.
+///
+/// Signing is recorded here; approving is recorded on the document. They are
+/// separate because they are separate acts: everyone can have signed and the
+/// money still does not move until somebody in this company says it should.
+model DocumentSignature {
+  id            String          @id @default(cuid())
+  changeOrderId String
+  party         String
+  /// Their role on the document: owner, architect, contractor, subcontractor.
+  role          String?
+  email         String?
+  status        SignatureStatus @default(AWAITING)
+  signedAt      DateTime?
+  /// Why a party declined, where they did.
+  note          String?
+  sortOrder     Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([changeOrderId, party])
+  @@index([changeOrderId])
+}
+
+/// A financial record attached to a document: the signed copy, pricing backup,
+/// a subcontractor quote. A filename reference rather than a document library,
+/// which is deliberate: drawings and specifications belong elsewhere.
+model DocumentAttachment {
+  id            String                 @id @default(cuid())
+  changeOrderId String
+  kind          DocumentAttachmentKind @default(SIGNED_DOCUMENT)
+  fileName      String
+  /// Where the file actually lives, for a system that stores them.
+  location      String?
+  note          String?
+  uploadedById  String?
+  createdAt     DateTime               @default(now())
+
+  changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  uploadedBy  User?       @relation("DocumentAttacher", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([changeOrderId])
 }

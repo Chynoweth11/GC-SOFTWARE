@@ -274,7 +274,15 @@ export async function searchProject(
     }),
     prisma.changeOrder.findMany({
       where: { projectId, project: { companyId }, OR: [{ number: { contains } }, { description: { contains } }] },
-      select: { id: true, number: true, description: true, ownerAmount: true, status: true },
+      select: {
+        id: true,
+        number: true,
+        description: true,
+        status: true,
+        approvedAt: true,
+        priceFromLines: true,
+        enteredOwnerAmount: true,
+      },
       take: 8,
     }),
     prisma.ownerBilling.findMany({
@@ -339,9 +347,12 @@ export async function searchProject(
       href: `${base}/changes`,
       hits: changes.map((c) => ({
         title: `${c.number} ${c.description}`,
-        subtitle: c.status.replace(/_/g, ' ').toLowerCase(),
-        detail: money(c.ownerAmount),
-        href: `${base}/changes`,
+        // Says whether it counts, because the number beside it is meaningless
+        // without that. A priced document is totalled on its own page rather
+        // than here, so only a lump-sum amount is quoted.
+        subtitle: `${c.status.replace(/_/g, ' ').toLowerCase()}${c.approvedAt ? ', approved' : ', not approved'}`,
+        detail: c.priceFromLines ? 'Priced from lines' : money(c.enteredOwnerAmount),
+        href: `${base}/changes/${c.id}`,
       })),
     })
   if (billings.length)

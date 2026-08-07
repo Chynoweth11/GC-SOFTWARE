@@ -2,263 +2,235 @@ import { notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
+import { getProjectDocuments } from '@/lib/queries/documents'
 import { prisma } from '@/lib/db'
-import { CATEGORY_LABELS } from '@/lib/finance/cost'
-import { changeOrderSummary } from '@/lib/finance'
-import { date, money, moneyShort, percent, titleize } from '@/lib/format'
-import { EmptyState, KpiGrid, MoneyKpi, Kpi, Section, StatusPill, Variance, InfoNote } from '@/components/ui'
+import { DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS } from '@/lib/finance'
+import { money, moneyShort, percent } from '@/lib/format'
+import { InfoNote, Kpi, KpiGrid, MoneyKpi, Section } from '@/components/ui'
 import { ChartFrame, DonutChart, HorizontalBars } from '@/components/charts/primitives'
-import { ChangeOrderForm } from '@/components/project/change-order-form'
-import { createChangeOrder, updateChangeOrderStatus, setPendingInclusion } from './actions'
+import { DocumentList } from '@/components/project/document-list'
+import { NewDocumentPanel } from '@/components/project/new-document-panel'
+import { approvalCertificationText, approveDocument, saveDocument, unapproveDocument } from './actions'
 
+export const metadata = { title: 'Change orders and contracts' }
+
+/**
+ * Change orders, contracts, amendments and addendums for one project.
+ *
+ * The four totals at the top are the point of the page. Only one of them is
+ * money: what has been approved and signed. The others say what has been asked
+ * for, what is at stake and what was refused, and they are shown side by side
+ * so nobody can read one as another.
+ */
 export default async function ChangesPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser()
   const { id } = await params
-  const bundle = await getProjectBundle(id, user.companyId)
+
+  const [bundle, documents, trades, certification] = await Promise.all([
+    getProjectBundle(id, user.companyId),
+    getProjectDocuments(id, user.companyId),
+    prisma.trade.findMany({
+      where: { companyId: user.companyId, active: true },
+      select: { id: true, name: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+    approvalCertificationText(),
+  ])
   if (!bundle) notFound()
 
-  const { project, financials: f, changeOrders, changeOrderRecords } = bundle
+  const { project, financials: f } = bundle
   const canEdit = can(user.role, 'edit:change_orders')
+  const canUnapprove = can(user.role, 'unapprove:contract_documents')
   const showMargins = can(user.role, 'view:margins')
+  const totals = documents.totals
 
-  const [trades, costCodes] = await Promise.all([
-    prisma.trade.findMany({ where: { companyId: user.companyId, active: true }, orderBy: { sortOrder: 'asc' } }),
-    prisma.budgetLine.findMany({ where: { projectId: id }, orderBy: [{ category: 'asc' }, { description: 'asc' }] }),
-  ])
-
-  const summary = changeOrderSummary(changeOrders)
-  const recordById = new Map(changeOrderRecords.map((c) => [c.id, c]))
-
-  const byStatus = new Map<string, { count: number; owner: number; cost: number }>()
-  for (const co of changeOrders) {
-    const entry = byStatus.get(co.status) ?? { count: 0, owner: 0, cost: 0 }
-    entry.count += 1
-    entry.owner += co.ownerAmount
-    entry.cost += co.costAmount
-    byStatus.set(co.status, entry)
+  // Value by status, for the shape of what is sitting where.
+  const byStatus = new Map<string, number>()
+  for (const document of documents.documents) {
+    byStatus.set(document.status, (byStatus.get(document.status) ?? 0) + document.ownerAmount)
   }
-  const statusRows = [...byStatus.entries()].sort((a, b) => b[1].owner - a[1].owner)
+  const statusRows = [...byStatus.entries()].sort((a, b) => b[1] - a[1])
 
   const byTrade = new Map<string, number>()
-  for (const co of changeOrders) {
-    const record = recordById.get(co.id)
-    const name = record?.trade?.name ?? 'Unassigned'
-    byTrade.set(name, (byTrade.get(name) ?? 0) + co.ownerAmount)
+  for (const document of documents.documents) {
+    const name = document.tradeName ?? 'Unassigned'
+    byTrade.set(name, (byTrade.get(name) ?? 0) + document.ownerAmount)
   }
   const tradeRows = [...byTrade.entries()].sort((a, b) => b[1] - a[1])
 
   return (
     <div className="space-y-6">
-      <Section title="Change-order position">
-        <KpiGrid cols={6}>
-          <MoneyKpi label="Approved revenue" amount={summary.approvedRevenue} detail={`${summary.approvedCount} approved`} />
-          {showMargins && (
-            <MoneyKpi
-              label="Approved margin"
-              amount={summary.approvedMargin}
-              tone={summary.approvedMargin < 0 ? 'adverse' : 'favorable'}
-              detail={percent(summary.approvedMarginPct)}
-            />
-          )}
+      <Section
+        title="What has been raised, and what actually counts"
+        description="Only the approved and signed total reaches the contract value, the budget, the forecast, the dashboard and the reports"
+      >
+        <KpiGrid cols={4}>
           <MoneyKpi
-            label="Pending revenue"
-            amount={summary.pendingRevenue}
+            label="Total entered"
+            amount={totals.entered}
+            detail={`${totals.enteredCount} documents, whatever their state`}
+          />
+          <MoneyKpi
+            label="Approved and signed"
+            amount={totals.approved}
+            tone="favorable"
+            detail={`${totals.approvedCount} in the contract value`}
+          />
+          <MoneyKpi
+            label="Pending approval"
+            amount={totals.pending}
             tone="caution"
-            detail={`${summary.pendingCount} awaiting a decision`}
+            detail={`${totals.pendingCount} entered but not counted`}
           />
           <MoneyKpi
-            label="Weighted pending"
-            amount={summary.weightedPendingRevenue}
-            hint="Pending revenue × each change order's probability of approval."
-          />
-          <MoneyKpi label="Rejected / void" amount={summary.rejectedValue} detail={`${summary.rejectedCount} closed out`} />
-          <Kpi
-            label="Average days pending"
-            value={summary.avgDaysPending ? Math.round(summary.avgDaysPending).toString() : '-'}
-            tone={summary.avgDaysPending > 30 ? 'caution' : 'neutral'}
-            detail={`${summary.scheduleImpactDays} days of approved schedule impact`}
+            label="Rejected or cancelled"
+            amount={totals.rejected}
+            detail={`${totals.rejectedCount} closed out`}
           />
         </KpiGrid>
+
+        <div className="mt-3">
+          <KpiGrid cols={4}>
+            <MoneyKpi
+              label="Weighted pending"
+              amount={totals.weightedPending}
+              hint="Pending value times each document's probability. Used for forecasting, never for the contract value."
+            />
+            {showMargins && (
+              <MoneyKpi
+                label="Margin on approved"
+                amount={totals.approvedMargin}
+                tone={totals.approvedMargin < 0 ? 'adverse' : 'favorable'}
+                detail={percent(totals.approvedMarginPct)}
+              />
+            )}
+            <Kpi
+              label="Average days open"
+              value={totals.avgDaysPending ? Math.round(totals.avgDaysPending).toString() : '-'}
+              tone={totals.avgDaysPending > 30 ? 'caution' : 'neutral'}
+              detail={`${totals.scheduleImpactDays} days of approved schedule impact`}
+            />
+            <Kpi
+              label="Original contract from"
+              value={documents.original.basis === 'contract documents' ? 'Signed contracts' : 'Project setup'}
+              detail={
+                documents.original.basis === 'contract documents'
+                  ? `${documents.original.documentCount} approved contract documents, ${moneyShort(documents.original.amount)}`
+                  : `${moneyShort(documents.original.amount)} entered when the job was opened`
+              }
+            />
+          </KpiGrid>
+        </div>
       </Section>
 
       <InfoNote>
-        Contract position: original {money(f.contract.originalContract)} + approved {money(f.contract.approvedChangeOrders)} ={' '}
-        <strong>{money(f.contract.currentContract)}</strong> current. With every pending change order approved the contract would reach{' '}
-        {money(f.contract.potentialContract)}. Forecasting currently includes{' '}
-        {percent(project.pendingCoInclusionPct, 0)} of the weighted pending exposure.
+        Original {money(f.contract.originalContract)} plus approved {money(f.contract.approvedChangeOrders)} makes{' '}
+        <strong>{money(f.contract.currentContract)}</strong> of current contract. With every pending document approved
+        it would reach {money(f.contract.potentialContract)}. Forecasting currently carries{' '}
+        {percent(project.pendingCoInclusionPct, 0)} of the weighted pending exposure, and nothing else pending touches
+        any figure on this system.
       </InfoNote>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <ChartFrame title="Value by status">
-          <DonutChart
-            format="moneyShort"
-            centerLabel="Total raised"
-            centerValue={moneyShort(statusRows.reduce((a, [, v]) => a + v.owner, 0))}
-            slices={statusRows.map(([status, v]) => ({ label: titleize(status), value: v.owner }))}
-          />
-        </ChartFrame>
+      {canEdit && (
+        <NewDocumentPanel
+          projectId={id}
+          save={saveDocument}
+          trades={trades.map((trade) => ({ id: trade.id, label: trade.name }))}
+        />
+      )}
 
-        <ChartFrame title="Revenue vs cost by change order" subtitle="The gap is the margin earned on the change" className="lg:col-span-2">
-          <HorizontalBars
-            labels={changeOrders.map((c) => `${c.number} ${recordById.get(c.id)?.description.slice(0, 40) ?? ''}`)}
-            format="moneyShort"
-            series={[
-              { key: 'owner', label: 'Owner amount', values: changeOrders.map((c) => c.ownerAmount) },
-              { key: 'cost', label: 'Cost amount', values: changeOrders.map((c) => c.costAmount), color: 'var(--caution)' },
-            ]}
-          />
-        </ChartFrame>
-      </div>
+      <Section title="Every document on this job">
+        <DocumentList
+          projectId={id}
+          showMargins={showMargins}
+          canUnapprove={canUnapprove}
+          certification={certification}
+          approve={approveDocument}
+          unapprove={unapproveDocument}
+          rows={documents.documents.map((document) => ({
+            id: document.id,
+            number: document.number,
+            documentKind: document.documentKind,
+            kindLabel: DOCUMENT_KIND_LABELS[document.documentKind] ?? document.documentKind,
+            type: document.type,
+            status: document.status,
+            statusLabel: DOCUMENT_STATUS_LABELS[document.status] ?? document.status,
+            description: document.description,
+            counterparty: document.counterparty,
+            tradeName: document.tradeName,
+            ownerAmount: document.ownerAmount,
+            costAmount: document.costAmount,
+            margin: document.margin,
+            marginPct: document.marginPct,
+            probabilityPct: document.probabilityPct,
+            daysPending: document.daysPending,
+            dateInitiated: document.dateInitiated ? document.dateInitiated.toISOString() : null,
+            approvedAt: document.approvedAt ? document.approvedAt.toISOString() : null,
+            approvedByName: document.approvedByName,
+            isOfficial: document.isOfficial,
+            isPending: document.isPending,
+            isDead: document.isDead,
+            canApprove: document.canApprove,
+            approvalBlockedReason: document.approvalBlockedReason,
+            signedCount: document.signedCount,
+            signatureCount: document.signatureCount,
+            lineCount: document.lines.length,
+            attachmentCount: document.attachmentCount,
+            signedDocumentCount: document.signedDocumentCount,
+            amountBasis: document.amountBasis,
+            issues: document.issues,
+          }))}
+        />
+      </Section>
 
-      {tradeRows.length > 0 && (
-        <ChartFrame title="Change-order value by trade">
+      {documents.documents.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <ChartFrame title="Value by status">
+            <DonutChart
+              format="moneyShort"
+              centerLabel="Total raised"
+              centerValue={moneyShort(totals.entered)}
+              slices={statusRows.map(([status, value]) => ({
+                label: DOCUMENT_STATUS_LABELS[status as keyof typeof DOCUMENT_STATUS_LABELS] ?? status,
+                value,
+              }))}
+            />
+          </ChartFrame>
+
+          <ChartFrame
+            title="Amount against cost"
+            subtitle="The gap is the margin on the change"
+            className="lg:col-span-2"
+          >
+            <HorizontalBars
+              labels={documents.documents.map((document) => `${document.number} ${document.description.slice(0, 40)}`)}
+              format="moneyShort"
+              series={[
+                {
+                  key: 'owner',
+                  label: 'Amount',
+                  values: documents.documents.map((document) => document.ownerAmount),
+                },
+                {
+                  key: 'cost',
+                  label: 'Cost',
+                  values: documents.documents.map((document) => document.costAmount),
+                  color: 'var(--caution)',
+                },
+              ]}
+            />
+          </ChartFrame>
+        </div>
+      )}
+
+      {tradeRows.length > 1 && (
+        <ChartFrame title="Value by trade">
           <HorizontalBars
             labels={tradeRows.map(([name]) => name)}
             format="moneyShort"
-            series={[{ key: 'value', label: 'Owner amount', values: tradeRows.map(([, value]) => value) }]}
+            series={[{ key: 'value', label: 'Amount', values: tradeRows.map(([, value]) => value) }]}
           />
         </ChartFrame>
-      )}
-
-      <Section title="Change order log" description="Potential change events, owner change orders and internal budget changes">
-        {changeOrders.length === 0 ? (
-          <EmptyState title="No change orders yet" description="Raise the first one below. Approved orders flow straight into the contract sum and the budget." />
-        ) : (
-          <div className="card-flush">
-            <div className="table-wrap">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>Number</th>
-                    <th>Type</th>
-                    <th>Description</th>
-                    <th>Trade</th>
-                    <th>Origin</th>
-                    <th>Status</th>
-                    <th className="num">Owner amount</th>
-                    <th className="num">Cost amount</th>
-                    {showMargins && <th className="num">Margin</th>}
-                    {showMargins && <th className="num">Margin %</th>}
-                    <th className="num">Probability</th>
-                    <th>Initiated</th>
-                    <th>Approved</th>
-                    <th className="num">Days pending</th>
-                    <th className="num">Schedule</th>
-                    {canEdit && <th />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {changeOrders.map((co) => {
-                    const record = recordById.get(co.id)!
-                    return (
-                      <tr key={co.id}>
-                        <td className="font-medium">{co.number}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{titleize(co.type)}</td>
-                        <td className="max-w-[20rem] truncate" title={record.description}>
-                          {record.description}
-                        </td>
-                        <td style={{ color: 'var(--text-muted)' }}>{record.trade?.name ?? '-'}</td>
-                        <td style={{ color: 'var(--text-subtle)' }}>{record.origin ?? '-'}</td>
-                        <td>
-                          <StatusPill status={co.status} />
-                        </td>
-                        <td className="num">{money(co.ownerAmount)}</td>
-                        <td className="num">{money(co.costAmount)}</td>
-                        {showMargins && (
-                          <td className="num">
-                            <Variance value={co.margin} showSign={false} />
-                          </td>
-                        )}
-                        {showMargins && <td className="num">{percent(co.marginPct)}</td>}
-                        <td className="num">{co.isApproved ? '-' : percent(co.probabilityPct, 0)}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{date(co.dateInitiated)}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{date(co.dateApproved)}</td>
-                        <td className="num" style={{ color: co.isPending && co.daysPending > 30 ? 'var(--caution)' : undefined }}>
-                          {co.daysPending || '-'}
-                        </td>
-                        <td className="num">{co.scheduleImpactDays || '-'}</td>
-                        {canEdit && (
-                          <td className="no-print">
-                            <form action={updateChangeOrderStatus} className="flex items-center gap-1">
-                              <input type="hidden" name="changeOrderId" value={co.id} />
-                              <select name="status" defaultValue={co.status} className="field w-auto py-0.5 text-[11px]" aria-label={`Status for ${co.number}`}>
-                                {['DRAFT', 'PRICING', 'PENDING', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'VOID', 'EXECUTED'].map((s) => (
-                                  <option key={s} value={s}>
-                                    {titleize(s)}
-                                  </option>
-                                ))}
-                              </select>
-                              <button type="submit" className="btn btn-ghost px-1.5 py-0.5 text-[11px]">
-                                Set
-                              </button>
-                            </form>
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={6}>Total, {changeOrders.length}</td>
-                    <td className="num">{money(changeOrders.reduce((a, c) => a + c.ownerAmount, 0))}</td>
-                    <td className="num">{money(changeOrders.reduce((a, c) => a + c.costAmount, 0))}</td>
-                    {showMargins && <td className="num">{money(changeOrders.reduce((a, c) => a + c.margin, 0))}</td>}
-                    {showMargins && <td />}
-                    <td colSpan={canEdit ? 6 : 5} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )}
-      </Section>
-
-      {canEdit && (
-        <>
-          <Section
-            title="Raise a change order"
-            description="An approved change order updates the contract sum and posts its cost impact to the budget."
-          >
-            <ChangeOrderForm
-              projectId={project.id}
-              trades={trades.map((t) => ({ id: t.id, label: t.name }))}
-              costCodes={costCodes.map((c) => ({ id: c.costCodeId, label: `${c.description} (${CATEGORY_LABELS[c.category]})` }))}
-              action={createChangeOrder}
-            />
-          </Section>
-
-          <Section
-            title="Pending exposure in the forecast"
-            description="How much of the weighted pending change-order value the project forecast should include"
-          >
-            <form action={setPendingInclusion} className="card flex flex-wrap items-end gap-3 p-4">
-              <input type="hidden" name="projectId" value={project.id} />
-              <div>
-                <label htmlFor="inclusion" className="label mb-1.5 block">
-                  Inclusion (0 = exclude, 1 = include in full)
-                </label>
-                <input
-                  id="inclusion"
-                  name="pendingCoInclusionPct"
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  max="1"
-                  className="field w-40 text-xs"
-                  defaultValue={project.pendingCoInclusionPct}
-                />
-              </div>
-              <p className="flex-1 text-xs" style={{ color: 'var(--text-subtle)' }}>
-                At the current setting the forecast contract is {money(f.contract.forecastContract)}. Including the full weighted exposure
-                would make it {money(f.contract.currentContract + f.contract.weightedPendingChangeOrders)}.
-              </p>
-              <button type="submit" className="btn btn-primary">
-                Apply
-              </button>
-            </form>
-          </Section>
-        </>
       )}
     </div>
   )

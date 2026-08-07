@@ -99,6 +99,13 @@ export interface EstimateItemInput {
   materialUnitCost: number
   equipmentUnitCost: number
   subUnitCost: number
+  /**
+   * Anything that is none of the four: a permit fee, an allowance, a general
+   * conditions item priced on the line. A takeoff sends these to its own
+   * general conditions sheet and leaves this at zero; a change order has no
+   * such sheet, so it prices them here.
+   */
+  otherUnitCost?: number
   notes?: string | null
 }
 
@@ -141,6 +148,7 @@ export interface EstimateItemDerived extends EstimateItemInput {
   materialCost: number
   equipmentCost: number
   subCost: number
+  otherCost: number
   totalCost: number
   unitCost: number
   qaFlags: string[]
@@ -185,12 +193,13 @@ export function deriveEstimateItem(
   const materialCost = grossQty * num(item.materialUnitCost) * (1 + num(factors.salesTaxPct))
   const equipmentCost = grossQty * num(item.equipmentUnitCost)
   const subCost = grossQty * num(item.subUnitCost)
-  const totalCost = laborCost + materialCost + equipmentCost + subCost
+  const otherCost = grossQty * num(item.otherUnitCost)
+  const totalCost = laborCost + materialCost + equipmentCost + subCost + otherCost
 
   const anyInput =
     num(item.count) + num(item.length) + num(item.width) + num(item.depth) +
     num(item.laborHrsPerUnit) + num(item.materialUnitCost) +
-    num(item.equipmentUnitCost) + num(item.subUnitCost) !== 0
+    num(item.equipmentUnitCost) + num(item.subUnitCost) + num(item.otherUnitCost) !== 0
 
   const qaFlags: string[] = []
   if (anyInput) {
@@ -214,6 +223,7 @@ export function deriveEstimateItem(
     materialCost,
     equipmentCost,
     subCost,
+    otherCost,
     totalCost,
     unitCost: safeDiv(totalCost, grossQty),
     qaFlags,
@@ -361,7 +371,7 @@ export interface EstimateSummary {
   gcItems: ReturnType<typeof deriveGeneralCondition>[]
   bySection: { key: string; label: string; amount: number; pctOfDirect: number }[]
   byDivision: { key: string; label: string; amount: number; pctOfDirect: number }[]
-  costMix: { labor: number; material: number; equipment: number; subcontract: number }
+  costMix: { labor: number; material: number; equipment: number; subcontract: number; other: number }
   takeoffTotal: number
   gcTotal: number
   directCost: number
@@ -456,6 +466,7 @@ export function summarizeEstimate(input: EstimateSummaryInput): EstimateSummary 
       material: sumBy(items, (i) => i.materialCost),
       equipment: sumBy(items, (i) => i.equipmentCost),
       subcontract: subCost,
+      other: sumBy(items, (i) => i.otherCost),
     },
     takeoffTotal,
     gcTotal,

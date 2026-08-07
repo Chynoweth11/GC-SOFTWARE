@@ -15,7 +15,7 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 197 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 229 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked.
 
@@ -80,25 +80,105 @@ forecast tab, so the selection can be justified rather than assumed.
 
 ## 3. Contract and change orders: PC ▸ Setup, Change Orders
 
-Engine: [`src/lib/finance/changeOrders.ts`](../src/lib/finance/changeOrders.ts) · Tests: `workflows.test.ts`
-Database: `ChangeOrder`, `ChangeOrderLine`, `BudgetRevision`
+Engine: [`src/lib/finance/documents.ts`](../src/lib/finance/documents.ts) and
+[`changeOrders.ts`](../src/lib/finance/changeOrders.ts) · Tests: `documents.test.ts`, `workflows.test.ts`
+Database: `ChangeOrder`, `ChangeOrderLine`, `DocumentSignature`, `DocumentAttachment`, `BudgetRevision`
+Appears: project Change orders tab and each document's own page, project summary, budget, forecast, dashboard, change order report, project export
+
+Change orders, the prime contract, amendments and addendums are one model,
+because they are one object: something is priced, reviewed, sent out, signed by
+every party, and only then allowed to move money.
+
+### The rule everything else rests on
+
+**A document reaches the project's official figures when, and only when, it
+carries a certified approval.** Not because its status says approved, not
+because every party has signed, not because somebody typed an amount in.
+`isOfficial(document)` is `document.approvedAt !== null`, it is the only place
+the question is answered, and every contract value, budget revision, forecast,
+dashboard tile and report reads through it.
+
+Setting it is one guarded action: it needs the `approve:contract_documents`
+capability, the document must be fully signed with every recorded party signed
+off, and the approver has to agree in words to a certification that is stored
+verbatim on the record with their name and the moment. `workflows.test.ts`
+asserts the trap this closes: a document whose *status* is APPROVED but which
+carries no approval counts for nothing.
+
+Withdrawing it needs `unapprove:contract_documents`, which only an owner or an
+administrator holds, plus a written reason. Both movements reverse the budget
+revisions, and both are in the permanent history.
 
 | Cell | Excel formula | Software field | Notes |
 |---|---|---|---|
-| `Setup C24` Original Contract | manual entry | `Project.originalContractSum` | |
-| `Setup C25` Approved COs | `=SUMIFS('Change Orders'!$H:$H,$G:$G,"Approved")` | `ContractPosition.approvedChangeOrders` | `APPROVED` **and** `EXECUTED` both count |
+| `Setup C24` Original Contract | manual entry | `ContractPosition.originalContract` | The sum of **approved** documents of kind CONTRACT where the project has any; otherwise `Project.originalContractSum`. The page says which |
+| `Setup C25` Approved COs | `=SUMIFS('Change Orders'!$H:$H,$G:$G,"Approved")` | `approvedChangeOrders` | Σ `ownerAmount` where `approvedAt` is set, over the kinds that move the owner contract |
 | `Setup C26` Current Contract | `=C24+C25` | `currentContract` | |
-| `Setup C27` Pending COs | `=SUMIFS(...,"Pending")+SUMIFS(...,"Submitted")` | `pendingChangeOrders` | Extended to `PENDING`, `SUBMITTED`, `UNDER_REVIEW`, `PRICING` |
+| `Setup C27` Pending COs | `=SUMIFS(...,"Pending")+SUMIFS(...,"Submitted")` | `pendingChangeOrders` | Everything entered, alive and not yet approved |
 | `Setup C28` Potential Contract | `=C26+C27` | `potentialContract` | |
 |: | *(not in the workbook)* | `weightedPendingChangeOrders` | Pending × probability |
 |: | *(not in the workbook)* | `forecastContract` | `current + weighted pending × Project.pendingCoInclusionPct` |
-| `CO J` Margin | `=IF($A6="",0,$H6-$I6)` | `ChangeOrderDerived.margin` | |
+| `CO J` Margin | `=IF($A6="",0,$H6-$I6)` | `DocumentDerived.margin` | Amount less cost |
 | `CO K` Margin % | `=IFERROR($J6/$H6,0)` | `marginPct` | |
-| `CO N` Days Pending | `=IF($G6="Approved",$M6-$F6,Setup!$C$21-$F6)` | `daysPending` | Approved measures to approval; pending ages against the data date |
+| `CO N` Days Pending | `=IF($G6="Approved",$M6-$F6,Setup!$C$21-$F6)` | `daysPending` | Approved measures to the approval; anything else ages against the data date |
 
-**Approved change orders post to the budget automatically** via
-`syncBudgetForChangeOrder()`: and un-approving one reverses that posting, with
-both movements recorded in the revision history.
+### The four totals
+
+Shown side by side on the tab, because each answers a different question and
+only one of them is money.
+
+| Total | What it is |
+|---|---|
+| Entered | Every document, whatever its state |
+| Approved and signed | Certified, and therefore in the contract value |
+| Pending approval | Entered and alive, not yet certified. Exposure, not money |
+| Rejected or cancelled | Rejected, cancelled, voided or superseded |
+
+`documents.test.ts` asserts that the three add back to entered exactly, and
+that each document falls in precisely one of them.
+
+### Pricing a document
+
+`DocumentDerived` prices its lines through **`deriveEstimateItem`**, the same
+function the takeoff uses, and totals them through **`buildBidBuildUp`**, the
+same markup chain in the same order. A change order is a small estimate, and
+two pricing engines would have parted company by the end of the first job.
+
+| Line field | Derivation |
+|---|---|
+| Quantity | From the measure and the dimensions, `deriveNetQuantity` |
+| Gross quantity | Net × (1 + waste) |
+| Labor | Gross × hours per unit × rate × (1 + labor burden), unless the rate came from the classification library and already carries its own |
+| Material | Gross × unit cost × (1 + sales tax) |
+| Equipment, Subcontract | Gross × unit cost |
+| Other | Gross × unit cost. The fifth bucket, for a permit or an allowance: a takeoff sends these to its general conditions sheet and a change order has no such sheet |
+| Line total | The five added |
+
+Then contingency, overhead, profit, general liability, bond and excise tax
+compound in the bid summary's order, and the result rounds. `costAmount` is the
+**cost subtotal** and `ownerAmount` is the **rounded total**, so the margin
+follows from the pricing and cannot be typed in inconsistently.
+
+A document may instead be recorded as a lump sum (`priceFromLines` false), which
+is how the source workbook carried every one of its change orders and how a
+document taken off paper is entered. The entered amounts are then read directly
+and the page says so on its face. Lines can still be added to allocate the cost
+to budget lines.
+
+### Where an approved document goes
+
+`syncBudgetForDocument` posts one `BudgetRevision` per cost code from the
+**live priced lines**, so the budget cannot be raised by an amount the document
+does not display. Withdrawing the approval deletes them, and both the posting
+and the reversal are recorded. Everything else follows from the contract
+position and the budget: forecast, revenue, billing, schedule of values,
+margin, dashboard and reports.
+
+### Status
+
+Eleven values describing where a document is on the way to signature, with
+`syncSignatureStatus` moving it between sent, partially signed and fully signed
+as parties sign. None of them, on their own, moves any money.
 
 ---
 

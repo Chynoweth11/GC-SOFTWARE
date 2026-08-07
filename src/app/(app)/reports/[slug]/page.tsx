@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getCompanyDashboard, parseProjectFilter } from '@/lib/queries/company'
 import { prisma } from '@/lib/db'
+import { getProjectDocuments } from '@/lib/queries/documents'
 import { buildWipSchedule, followUpState, rollupByDimension, sumBy, today } from '@/lib/finance'
 import { date, money, month, percent, titleize } from '@/lib/format'
 import { ExportMenu, PageHeader, Section, StatusPill, Variance } from '@/components/ui'
@@ -55,9 +56,6 @@ export default async function ReportPage({
   const showMargins = can(user.role, 'view:margins')
 
   const bundles = data.projects
-  // The date the financial figures are stated at, read from the data rather
-  // than written into the page.
-  const dataDate = data.asOf
 
   const header = (
     <PageHeader
@@ -605,11 +603,13 @@ export default async function ReportPage({
 
   // ── Change orders ──────────────────────────────────────────────────────
   if (slug === 'change-orders') {
+    // Priced through the same engine the project page uses, so a change order
+    // reads the same amount here as it does there and only counts once approved.
     const changeOrderRows = (
       await Promise.all(
         bundles.map(async (project) => {
-          const orders = await prisma.changeOrder.findMany({ where: { projectId: project.id }, orderBy: { number: 'asc' } })
-          return orders.map((co) => ({ project, co }))
+          const { documents } = await getProjectDocuments(project.id, user.companyId)
+          return documents.map((co) => ({ project, co }))
         }),
       )
     ).flat()
@@ -648,7 +648,14 @@ export default async function ReportPage({
                       <td>
                         <StatusPill status={co.status} />
                       </td>
-                      <td className="num">{money(co.ownerAmount)}</td>
+                      <td className="num">
+                        {money(co.ownerAmount)}
+                        {!co.isOfficial && (
+                          <span className="ml-1 text-[10px]" style={{ color: 'var(--text-subtle)' }}>
+                            not approved
+                          </span>
+                        )}
+                      </td>
                       <td className="num">{money(co.costAmount)}</td>
                       {showMargins && (
                         <td className="num">
@@ -657,11 +664,7 @@ export default async function ReportPage({
                       )}
                       <td className="num">{percent(co.probabilityPct, 0)}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{date(co.dateInitiated)}</td>
-                      <td className="num">
-                        {co.dateInitiated
-                          ? Math.round(((co.dateApproved ?? dataDate).getTime() - co.dateInitiated.getTime()) / 86_400_000)
-                          : '-'}
-                      </td>
+                      <td className="num">{co.dateInitiated ? co.daysPending : '-'}</td>
                     </tr>
                 ))}
               </tbody>

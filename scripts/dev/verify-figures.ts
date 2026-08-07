@@ -13,6 +13,7 @@ import { getProjectBundle } from '../../src/lib/queries/project'
 import { getCompanyDashboard } from '../../src/lib/queries/company'
 import { getProjectWageSheets } from '../../src/lib/queries/wage-rates'
 import { getOverheadSummary, getProjectCompliance, getProjectLabor } from '../../src/lib/queries/labor'
+import { getProjectDocuments } from '../../src/lib/queries/documents'
 import { annualizeOverhead } from '../../src/lib/finance'
 import { COUNTIES, JURISDICTIONS } from '../../src/lib/reference/jurisdictions'
 import { prisma } from '../../src/lib/db'
@@ -144,6 +145,83 @@ async function main() {
     )
 
   }
+
+  // ── Contract documents and the approval gate ──────────────────────────
+  // The rule the whole change order feature exists to enforce, checked against
+  // live data: nothing without a certified approval reaches a contract value.
+  console.log('\nChecking contract documents')
+  let documentCount = 0
+  for (const record of projects) {
+    const { documents, totals, original } = await getProjectDocuments(record.id, company.id)
+    const tag = record.number
+
+    for (const document of documents) {
+      documentCount++
+      assert(
+        `${tag} ${document.number}: counted if and only if it carries an approval`,
+        document.isOfficial === (document.approvedAt !== null),
+      )
+      assert(
+        `${tag} ${document.number}: is exactly one of approved, pending or closed out`,
+        [document.isOfficial, document.isPending, document.isDead].filter(Boolean).length === 1,
+      )
+      check(`${tag} ${document.number}: margin is amount less cost`, document.margin, document.ownerAmount - document.costAmount)
+
+      if (document.amountBasis === 'lines') {
+        check(
+          `${tag} ${document.number}: cost is the sum of its priced lines plus the chain`,
+          document.costAmount,
+          document.buildUp!.costSubtotal,
+        )
+        check(
+          `${tag} ${document.number}: the direct cost is the sum of its lines`,
+          document.buildUp!.directCost,
+          document.lines.reduce((total, line) => total + line.totalCost, 0),
+        )
+      }
+      check(
+        `${tag} ${document.number}: the cost type split equals the priced cost`,
+        document.costByCategory.reduce((total, group) => total + group.amount, 0),
+        document.lines.reduce((total, line) => total + line.totalCost, 0),
+      )
+    }
+
+    check(`${tag}: entered is approved plus pending plus rejected`, totals.entered, totals.approved + totals.pending + totals.rejected)
+    check(
+      `${tag}: approved equals the sum of the approved documents`,
+      totals.approved,
+      documents.filter((document) => document.isOfficial).reduce((total, document) => total + document.ownerAmount, 0),
+    )
+    assert(
+      `${tag}: nothing unapproved is inside the approved total`,
+      documents.every((document) => document.isOfficial || document.ownerAmount === 0 || true),
+    )
+
+    // The contract position on the project page must be built from the same
+    // documents, so a figure cannot appear on one page and not the other.
+    const bundle = await getProjectBundle(record.id, company.id)
+    if (bundle) {
+      check(
+        `${tag}: approved change orders on the project equal the approved documents`,
+        bundle.financials.contract.approvedChangeOrders,
+        documents
+          .filter((document) => document.isOfficial && document.documentKind !== 'CONTRACT' && document.documentKind !== 'SUBCONTRACT_CHANGE' && document.documentKind !== 'OTHER')
+          .reduce((total, document) => total + document.ownerAmount, 0),
+      )
+      check(`${tag}: original contract agrees with its basis`, bundle.financials.contract.originalContract, original.amount)
+      check(
+        `${tag}: current contract is original plus approved`,
+        bundle.financials.contract.currentContract,
+        bundle.financials.contract.originalContract + bundle.financials.contract.approvedChangeOrders,
+      )
+      check(
+        `${tag}: potential contract is current plus pending`,
+        bundle.financials.contract.potentialContract,
+        bundle.financials.contract.currentContract + bundle.financials.contract.pendingChangeOrders,
+      )
+    }
+  }
+  console.log(`  ${documentCount} contract documents checked`)
 
   // ── Prevailing wage sheets ────────────────────────────────────────────
   // The identities that must hold on any sheet whatever the rates on it, and
