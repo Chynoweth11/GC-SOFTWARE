@@ -15,9 +15,11 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 229 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 304 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
-hold the identities the workbooks never checked.
+hold the identities the workbooks never checked. Beyond them, `verify:figures`
+re-checks 772 identities against the live database, `verify:pages` walks every
+route, and `verify:ui` drives 75 interactive checks through a real browser.
 
 ---
 
@@ -150,9 +152,20 @@ two pricing engines would have parted company by the end of the first job.
 | Gross quantity | Net × (1 + waste) |
 | Labor | Gross × hours per unit × rate × (1 + labor burden), unless the rate came from the classification library and already carries its own |
 | Material | Gross × unit cost × (1 + sales tax) |
-| Equipment, Subcontract | Gross × unit cost |
+| Equipment | Gross × unit cost, **plus** gross × machine hours per unit × the hourly rate of the machine named on the line. A line can therefore carry a hired-in lump and a metered machine at once |
+| Subcontract | Gross × unit cost |
 | Other | Gross × unit cost. The fifth bucket, for a permit or an allowance: a takeoff sends these to its general conditions sheet and a change order has no such sheet |
 | Line total | The five added |
+
+Both named rates come from libraries rather than from the line: a labor class
+resolves through `laborRateTable` and a machine through `equipmentRateTable`.
+The two maps are loaded once and handed to the engine, and **every caller hands
+it the same two** - the change orders tab, the document breakdown and the
+project bundle behind the contract value, the budget, the forecast and the
+reports. `verify:figures` compares the project's price for each document against
+its own tab's price, document by document, because a caller pricing against an
+empty map would quietly drop the labor and the plant from a document that still
+read correctly on its own page.
 
 Then contingency, overhead, profit, general liability, bond and excise tax
 compound in the bid summary's order, and the result rounds. `costAmount` is the
@@ -179,6 +192,33 @@ margin, dashboard and reports.
 Eleven values describing where a document is on the way to signature, with
 `syncSignatureStatus` moving it between sent, partially signed and fully signed
 as parties sign. None of them, on their own, moves any money.
+
+### Time and materials, and the double count it invites
+
+A time and materials ticket is the same kind of document as a change order,
+priced through the same engine: `TIME_AND_MATERIALS`, signed on the day for
+hours and machines that were actually on site. What makes it different is where
+it ends up. A ticket is billed either on its own, or through a change order that
+gathers several tickets and presents them as one figure to the owner. Both
+counting would bill the same signed work twice.
+
+`rollsUpToId` names the change order that carries a ticket, and everything else
+follows from it:
+
+| Figure | Rule |
+|---|---|
+| `isRolledUp` | The ticket names a parent |
+| `countsTowardContract` | A revenue document that is **not** rolled up, and is not the prime contract itself |
+| Contract value | Sums `countsTowardContract` only, so a rolled-up ticket adds nothing even when it is approved and signed |
+| `timeAndMaterialsSummary` | Splits the tickets into billed on their own and carried elsewhere, and reports the labor and machine hours standing behind them |
+
+A ticket keeps its own approval, its own signatures and its own priced
+breakdown either way. Rolling it up changes what it contributes, not whether it
+happened. Where a ticket bills is locked once it is approved, on the same
+principle as its pricing: withdraw the approval, with a reason, to move it.
+
+A ticket nobody has signed for is flagged rather than blocked. It is worth what
+somebody put their name to on the day, and the number to chase is on the tab.
 
 ---
 
@@ -601,7 +641,59 @@ correct, and it puts the deadline where the person already looks.
 
 ---
 
-## 16. Output, permissions and portability
+## 16. Equipment rates, hire and standby
+
+Engine: [`src/lib/finance/equipment.ts`](../src/lib/finance/equipment.ts) · Tests: `equipment.test.ts`
+Database: `EquipmentItem`, `ProjectEquipmentAssignment`
+Appears: Admin ▸ Equipment, project Labor and equipment tab, takeoff lines, change order and time and materials lines, project budget, project export
+
+Not in the workbooks. Plant is a cost like any other and was being carried in
+people's heads.
+
+A machine is entered at **the bases it is actually quoted at** - hourly, daily,
+weekly, monthly - and no basis is worked out from another one:
+
+| Figure | How it is derived |
+|---|---|
+| `quotedBases` | Every basis carrying a rate above zero |
+| `effectiveHourlyRate` | The **shortest** quoted basis divided by the hours it covers, because the shortest is closest to an hour and needs the least assuming |
+| `hoursPerUnit` | `HOURLY` 1, `DAILY` `hoursPerDay`, `WEEKLY` `hoursPerDay × daysPerWeek`, `MONTHLY` that again × 4 |
+| `loadedHourlyCost` | `effectiveHourlyRate + operatingCostPerHour`. This is the rate a priced line reads, because "two hours of the excavator" means two hours of it running |
+
+**A week is never five days.** A weekly rate of 4,500 against a daily rate of
+1,200 is a real discount that the machine is really quoted at, and inferring one
+figure from the other would either invent a discount or lose it. A basis left
+empty prices at nothing and says so, which is a question somebody can answer.
+
+What a machine costs a job is three separate things, kept apart:
+
+| Figure | Formula |
+|---|---|
+| Hire | rate at the chosen basis × units, or a rate agreed for this job alone |
+| Fuel and wear | `operatingHours × operatingCostPerHour` - the hours it **ran**, not the hours it was hired |
+| Standby | `standbyHours × standbyRatePerHour` - hired, on site, and not working |
+| Cost to the job | The three added |
+
+Adding these up as one number is how plant cost usually goes missing: a machine
+hired for a fortnight and run for thirty hours costs the hire either way, and a
+job that only records the running hours never sees the difference. Recording
+them apart is what makes standby visible, and the project tab reports how much
+of its plant cost was paid for machines standing idle.
+
+Two checks run against every entry. A machine recorded as running more hours
+than its hire covers is flagged, because that is either a keying slip or an
+under-recorded hire and both are worth seeing. A machine owned outright with no
+operating cost is flagged, because fuel, wear and maintenance are then being
+charged to nothing.
+
+Nothing about the cost is stored. A rate corrected on the equipment list
+reprices the estimate line that names the machine, the change order that runs
+it, the ticket it was on and the project budget it lands in, and none of them
+holds a copy.
+
+---
+
+## 17. Output, permissions and portability
 
 Nothing in this section computes a figure. It documents where the figures go and
 who may see them.

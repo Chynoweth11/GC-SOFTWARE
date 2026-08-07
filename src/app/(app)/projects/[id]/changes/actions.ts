@@ -72,6 +72,7 @@ const DOCUMENT_KINDS = new Set<string>([
   'CONTRACT',
   'CONTRACT_AMENDMENT',
   'ADDENDUM',
+  'TIME_AND_MATERIALS',
   'OWNER_CHANGE',
   'SUBCONTRACT_CHANGE',
   'OTHER',
@@ -381,6 +382,74 @@ export async function saveDocument(formData: FormData): Promise<{ error?: string
   return { id: created.id }
 }
 
+/**
+ * Rolls a time and materials ticket into the change order that bills it.
+ *
+ * The ticket stops counting on its own the moment it is rolled up, because the
+ * change order carries the money. Without this the same signed hours would
+ * reach the contract value twice.
+ */
+export async function rollUpDocument(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'edit:change_orders')
+
+  const id = String(formData.get('id'))
+  const parentId = text(formData.get('rollsUpToId'))
+
+  const document = await ownedDocument(id, user.companyId)
+  if (!document) return { error: 'That document is not on this account.' }
+
+  // Changing where an approved ticket bills moves money, so it is refused the
+  // same way every other pricing change is.
+  const refusal = refuseIfApproved(document, 'what it is billed under')
+  if (refusal) return refusal
+
+  if (parentId) {
+    if (parentId === id) return { error: 'A document cannot be billed under itself.' }
+    const parent = await prisma.changeOrder.findFirst({
+      where: { id: parentId, projectId: document.projectId },
+      select: { id: true, number: true, documentKind: true, rollsUpToId: true },
+    })
+    if (!parent) return { error: 'That document is not on this project.' }
+    if (parent.documentKind === 'TIME_AND_MATERIALS') {
+      return { error: 'A ticket cannot be billed under another ticket. Roll it into a change order.' }
+    }
+    if (parent.rollsUpToId) {
+      return { error: `${parent.number} is itself billed under something else, so nothing can roll into it.` }
+    }
+  }
+
+  const previous = await prisma.changeOrder.findUnique({
+    where: { id },
+    select: { rollsUpTo: { select: { number: true } } },
+  })
+
+  await prisma.changeOrder.update({ where: { id }, data: { rollsUpToId: parentId } })
+
+  const parentNumber = parentId
+    ? (await prisma.changeOrder.findUniqueOrThrow({ where: { id: parentId }, select: { number: true } })).number
+    : null
+
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'ChangeOrder',
+    entityId: id,
+    entityLabel: `${document.project.number} ${document.number}`,
+    action: 'UPDATE',
+    field: 'rollsUpToId',
+    oldValue: previous?.rollsUpTo?.number ?? null,
+    newValue: parentNumber,
+    summary: parentNumber
+      ? `${document.number} is now billed under ${parentNumber}, so it no longer counts on its own`
+      : `${document.number} is no longer billed under another document, so it counts on its own again`,
+  })
+
+  refresh(document.projectId, id)
+  return {}
+}
+
 export async function deleteDocument(formData: FormData): Promise<{ error?: string }> {
   const user = await requireUser()
   assertCan(user.role, 'edit:change_orders')
@@ -585,6 +654,9 @@ const LINE_LABELS: Record<string, string> = {
   laborClass: 'labor class',
   laborHrsPerUnit: 'labor hours per unit',
   laborRateOverride: 'labor rate',
+  equipmentClass: 'machine',
+  equipmentHrsPerUnit: 'machine hours per unit',
+  equipmentRateOverride: 'machine rate',
   materialUnitCost: 'material unit cost',
   equipmentUnitCost: 'equipment unit cost',
   subUnitCost: 'subcontract unit cost',
@@ -639,6 +711,9 @@ export async function saveDocumentLine(formData: FormData): Promise<{ error?: st
     laborClass: text(formData.get('laborClass')),
     laborHrsPerUnit: money(formData.get('laborHrsPerUnit')),
     laborRateOverride: optionalMoney(formData.get('laborRateOverride')),
+    equipmentClass: text(formData.get('equipmentClass')),
+    equipmentHrsPerUnit: money(formData.get('equipmentHrsPerUnit')),
+    equipmentRateOverride: optionalMoney(formData.get('equipmentRateOverride')),
     materialUnitCost: money(formData.get('materialUnitCost')),
     equipmentUnitCost: money(formData.get('equipmentUnitCost')),
     subUnitCost: money(formData.get('subUnitCost')),

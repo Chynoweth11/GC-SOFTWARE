@@ -14,6 +14,7 @@ import { getCompanyDashboard } from '../../src/lib/queries/company'
 import { getProjectWageSheets } from '../../src/lib/queries/wage-rates'
 import { getOverheadSummary, getProjectCompliance, getProjectLabor } from '../../src/lib/queries/labor'
 import { getProjectDocuments } from '../../src/lib/queries/documents'
+import { getEquipmentItems, getProjectEquipment } from '../../src/lib/queries/equipment'
 import { annualizeOverhead } from '../../src/lib/finance'
 import { COUNTIES, JURISDICTIONS } from '../../src/lib/reference/jurisdictions'
 import { prisma } from '../../src/lib/db'
@@ -192,15 +193,54 @@ async function main() {
       totals.approved,
       documents.filter((document) => document.isOfficial).reduce((total, document) => total + document.ownerAmount, 0),
     )
-    assert(
-      `${tag}: nothing unapproved is inside the approved total`,
-      documents.every((document) => document.isOfficial || document.ownerAmount === 0 || true),
+    /*
+      The double count a time and materials ticket invites. A ticket rolled into
+      a change order must not reach the contract value on its own, because the
+      change order carries the money.
+    */
+    for (const document of documents) {
+      assert(
+        `${tag} ${document.number}: a rolled up ticket never counts on its own`,
+        !document.isRolledUp || !document.countsTowardContract,
+      )
+    }
+    check(
+      `${tag}: rolled up value is excluded from the contract change total`,
+      documents
+        .filter((document) => document.countsTowardContract && document.isOfficial)
+        .reduce((total, document) => total + document.ownerAmount, 0),
+      documents
+        .filter((document) => document.isOfficial && !document.isRolledUp && document.documentKind !== 'CONTRACT' && document.documentKind !== 'SUBCONTRACT_CHANGE' && document.documentKind !== 'OTHER')
+        .reduce((total, document) => total + document.ownerAmount, 0),
     )
 
     // The contract position on the project page must be built from the same
     // documents, so a figure cannot appear on one page and not the other.
     const bundle = await getProjectBundle(record.id, company.id)
     if (bundle) {
+      /*
+        Document by document, the project bundle and the change orders tab have
+        to arrive at the same number. They price through the same engine but
+        load their own rate tables, and a document whose lines name a labor
+        classification or a machine is exactly where those two can drift: price
+        it against an empty table and it silently loses its labor and plant.
+      */
+      const onTheTab = new Map(documents.map((document) => [document.id, document]))
+      for (const priced of bundle.changeOrders) {
+        const tabbed = onTheTab.get(priced.id)
+        if (!tabbed) continue
+        check(
+          `${tag} ${priced.number}: the project prices it at the same amount as its own tab`,
+          priced.ownerAmount,
+          tabbed.ownerAmount,
+        )
+        check(
+          `${tag} ${priced.number}: the project prices its cost the same as its own tab`,
+          priced.costAmount,
+          tabbed.costAmount,
+        )
+      }
+
       check(
         `${tag}: approved change orders on the project equal the approved documents`,
         bundle.financials.contract.approvedChangeOrders,
@@ -222,6 +262,55 @@ async function main() {
     }
   }
   console.log(`  ${documentCount} contract documents checked`)
+
+  // ── Equipment ─────────────────────────────────────────────────────────
+  console.log('\nChecking equipment')
+  let equipmentRows = 0
+  for (const record of projects) {
+    const equipment = await getProjectEquipment(record.id, company.id)
+    const tag = record.number
+
+    for (const row of equipment.rows) {
+      equipmentRows++
+      check(`${tag} ${row.displayName}: hire is the rate times the units`, row.rentalCost, row.rate * row.units)
+      check(
+        `${tag} ${row.displayName}: cost is the hire, the fuel and the standby`,
+        row.cost,
+        row.rentalCost + row.operatingCost + row.standbyCost,
+      )
+      assert(`${tag} ${row.displayName}: no negative cost`, row.cost >= -CENT)
+    }
+
+    check(
+      `${tag}: the equipment total equals the sum of its entries`,
+      equipment.totals.cost,
+      equipment.rows.reduce((total, row) => total + row.cost, 0),
+    )
+    check(
+      `${tag}: the three parts add to the whole`,
+      equipment.totals.rentalCost + equipment.totals.operatingCost + equipment.totals.standbyCost,
+      equipment.totals.cost,
+    )
+    check(
+      `${tag}: the ownership split equals the whole`,
+      equipment.byOwnership.reduce((total, group) => total + group.cost, 0),
+      equipment.totals.cost,
+    )
+  }
+  console.log(`  ${equipmentRows} equipment entries checked`)
+
+  const equipmentList = await getEquipmentItems(company.id)
+  for (const item of equipmentList) {
+    assert(
+      `${item.name}: an hourly figure only exists where a rate does`,
+      (item.effectiveHourlyRate > 0) === (item.quotedBases.length > 0),
+    )
+    check(
+      `${item.name}: the loaded hour is the rate plus fuel and wear`,
+      item.loadedHourlyCost,
+      item.effectiveHourlyRate + item.operatingCostPerHour,
+    )
+  }
 
   // ── Prevailing wage sheets ────────────────────────────────────────────
   // The identities that must hold on any sheet whatever the rates on it, and

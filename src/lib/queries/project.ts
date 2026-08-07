@@ -21,25 +21,32 @@ import {
   type CashFlowPeriodInput,
   type CommitmentDerived,
   type CostLineInput,
+  type LaborRateEntry,
   type ProjectFinancials,
   type QuantityProgress,
 } from '@/lib/finance'
 import type { BillingInput, SovLineInput } from '@/lib/finance/billing'
 import type { ChangeOrderDerived } from '@/lib/finance/changeOrders'
 import type { LeveledPackage } from '@/lib/finance/leveling'
-import { getProjectCompliance } from './labor'
+import { getProjectCompliance, laborRateTable } from './labor'
+import { equipmentRateTable } from './equipment'
 
 /**
  * Turns a stored document into a priced one.
  *
- * Rates come from the labor classes named on the lines, priced against nothing
- * by default: a change order names its own rate on the line, which is how these
- * are actually written up. A line that names a class with no rate behind it is
- * flagged by the pricing checks rather than silently costing nothing.
+ * The rate tables are passed in rather than looked up here, and they are the
+ * same two maps the change orders tab prices from: the classification library
+ * and the equipment list. A change order line that names a carpenter or an
+ * excavator therefore reaches the contract value, the budget, the forecast and
+ * every report at the rate the tab shows for it. Pricing this against empty
+ * maps would leave a document worth one figure on its own page and another in
+ * the project total, which is the one thing this system must never do.
  */
 function documentFromRecord(
   record: Awaited<ReturnType<typeof loadChangeOrders>>[number],
   dataDate: Date,
+  laborRates: ReadonlyMap<string, LaborRateEntry>,
+  equipmentRates: ReadonlyMap<string, number>,
 ) {
   return deriveDocument(
     {
@@ -74,6 +81,8 @@ function documentFromRecord(
       approvedByName: record.approvedBy?.name ?? null,
       approvalCertification: record.approvalCertification,
       postsToBudget: record.postsToBudget,
+      rollsUpToId: record.rollsUpToId,
+      rollsUpToNumber: record.rollsUpTo?.number ?? null,
       signatures: record.signatures.map((signature) => ({
         party: signature.party,
         status: signature.status,
@@ -100,14 +109,18 @@ function documentFromRecord(
       laborClass: line.laborClass,
       laborHrsPerUnit: line.laborHrsPerUnit,
       laborRateOverride: line.laborRateOverride,
+      equipmentClass: line.equipmentClass,
+      equipmentHrsPerUnit: line.equipmentHrsPerUnit,
+      equipmentRateOverride: line.equipmentRateOverride,
       materialUnitCost: line.materialUnitCost,
       equipmentUnitCost: line.equipmentUnitCost,
       subUnitCost: line.subUnitCost,
       otherUnitCost: line.otherUnitCost,
       notes: line.notes,
     })),
-    new Map(),
+    laborRates,
     dataDate,
+    equipmentRates,
   )
 }
 
@@ -147,6 +160,7 @@ function loadChangeOrders(projectId: string) {
     include: {
       trade: true,
       approvedBy: { select: { name: true } },
+      rollsUpTo: { select: { number: true } },
       signatures: { orderBy: { sortOrder: 'asc' } },
       attachments: { select: { id: true, kind: true } },
       lines: { include: { costCode: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
@@ -195,6 +209,8 @@ export const getProjectBundle = cache(
       cashFlowPeriods,
       quantityItems,
       packageRecords,
+      laborRates,
+      equipmentRates,
     ] = await Promise.all([
       prisma.budgetLine.findMany({
         where: { projectId },
@@ -227,6 +243,8 @@ export const getProjectBundle = cache(
         include: { trade: true, quotes: { include: { vendor: true } }, awardedVendor: true },
         orderBy: { sortOrder: 'asc' },
       }),
+      laborRateTable(project.companyId),
+      equipmentRateTable(project.companyId),
     ])
 
     // ── Aggregate the transactional records onto their line items ─────────
@@ -295,7 +313,7 @@ export const getProjectBundle = cache(
       through `isOfficial`, which is true only when somebody certified the
       approval. Nothing here reads the status to decide whether money moves.
     */
-    const changeOrders = changeOrderRecords.map((co) => documentFromRecord(co, dataDate))
+    const changeOrders = changeOrderRecords.map((co) => documentFromRecord(co, dataDate, laborRates, equipmentRates))
 
     const budgetByCode = new Map(
       budgetLines.map((l) => [l.costCodeId, l.originalBudget + (revisionByLine.get(l.id) ?? 0)]),

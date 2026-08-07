@@ -54,6 +54,8 @@ const doc = (over: Partial<DocumentInput> = {}): DocumentInput => ({
   approvedByName: 'A person',
   approvalCertification: 'Certified',
   postsToBudget: true,
+  rollsUpToId: null,
+  rollsUpToNumber: null,
   signatures: [],
   attachmentCount: 1,
   signedDocumentCount: 1,

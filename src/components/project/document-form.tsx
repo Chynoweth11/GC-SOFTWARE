@@ -55,6 +55,7 @@ export const DOCUMENT_KIND_OPTIONS: [string, string][] = [
   ['CONTRACT', 'Contract'],
   ['CONTRACT_AMENDMENT', 'Contract amendment'],
   ['ADDENDUM', 'Addendum'],
+  ['TIME_AND_MATERIALS', 'Time and materials ticket'],
   ['OWNER_CHANGE', 'Owner change'],
   ['SUBCONTRACT_CHANGE', 'Subcontract change'],
   ['OTHER', 'Other document'],

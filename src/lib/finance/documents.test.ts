@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  contractChangeDocuments,
   deriveDocument,
   documentTotals,
   isOfficial,
   originalContractValue,
+  timeAndMaterialsSummary,
   type DocumentInput,
   type DocumentLineInput,
   type DocumentMarkups,
@@ -47,6 +49,8 @@ const doc = (over: Partial<DocumentInput> = {}): DocumentInput => ({
   approvedByName: null,
   approvalCertification: null,
   postsToBudget: true,
+  rollsUpToId: null,
+  rollsUpToNumber: null,
   signatures: [],
   attachmentCount: 0,
   signedDocumentCount: 0,
@@ -342,5 +346,159 @@ describe('originalContractValue', () => {
       derive({ id: 'b', documentKind: 'CONTRACT', priceFromLines: false, enteredOwnerAmount: 4_000_000, approvedAt: D('2026-02-05') }),
     ]
     expect(originalContractValue(documents, 0).amount).toBe(10_000_000)
+  })
+})
+
+/**
+ * Time and materials tickets are signed a day at a time and then rolled into a
+ * change order for billing. The one thing that must not happen is both counting.
+ */
+describe('time and materials tickets', () => {
+  const ticket = (over: Partial<DocumentInput> = {}) =>
+    derive({
+      documentKind: 'TIME_AND_MATERIALS',
+      priceFromLines: false,
+      status: 'FULLY_SIGNED',
+      signatures: [{ party: "Owner's representative", status: 'SIGNED', signedAt: D('2026-03-02') }],
+      ...over,
+    })
+
+  it('bills on its own when it is not rolled up', () => {
+    const standalone = ticket({ enteredOwnerAmount: 4_200, approvedAt: D('2026-03-05') })
+    expect(standalone.countsTowardContract).toBe(true)
+    expect(standalone.isRolledUp).toBe(false)
+    expect(contractChangeDocuments([standalone])).toHaveLength(1)
+  })
+
+  it('counts for nothing on its own once it is billed under a change order', () => {
+    const rolled = ticket({
+      enteredOwnerAmount: 4_200,
+      approvedAt: D('2026-03-05'),
+      rollsUpToId: 'co-1',
+      rollsUpToNumber: 'CO-014',
+    })
+    expect(rolled.isRolledUp).toBe(true)
+    expect(rolled.countsTowardContract).toBe(false)
+    expect(contractChangeDocuments([rolled])).toHaveLength(0)
+    expect(rolled.issues.some((issue) => issue.includes('Billed under CO-014'))).toBe(true)
+  })
+
+  /** The double count this exists to prevent, shown end to end. */
+  it('does not let the same work reach the contract value twice', () => {
+    const parent = derive({ id: 'co-1', number: 'CO-014', priceFromLines: false, enteredOwnerAmount: 12_600, approvedAt: D('2026-03-10') })
+    const tickets = [
+      ticket({ id: 't1', enteredOwnerAmount: 4_200, approvedAt: D('2026-03-05'), rollsUpToId: 'co-1', rollsUpToNumber: 'CO-014' }),
+      ticket({ id: 't2', enteredOwnerAmount: 4_200, approvedAt: D('2026-03-06'), rollsUpToId: 'co-1', rollsUpToNumber: 'CO-014' }),
+      ticket({ id: 't3', enteredOwnerAmount: 4_200, approvedAt: D('2026-03-07'), rollsUpToId: 'co-1', rollsUpToNumber: 'CO-014' }),
+    ]
+    const counted = contractChangeDocuments([parent, ...tickets])
+    expect(counted.map((document) => document.number)).toEqual(['CO-014'])
+    expect(counted.reduce((total, document) => total + document.ownerAmount, 0)).toBe(12_600)
+  })
+
+  it('warns about a ticket nobody signed for on the day', () => {
+    const unsigned = ticket({ status: 'DRAFT', signatures: [], enteredOwnerAmount: 900 })
+    expect(unsigned.issues.some((issue) => issue.includes('worth what somebody signed for'))).toBe(true)
+  })
+
+  it('summarises what is rolled up against what is billed on its own', () => {
+    const documents = [
+      ticket({ id: 't1', enteredOwnerAmount: 4_200, rollsUpToId: 'co-1', rollsUpToNumber: 'CO-014' }),
+      ticket({ id: 't2', enteredOwnerAmount: 3_000 }),
+      ticket({ id: 't3', enteredOwnerAmount: 1_500, status: 'DRAFT', signatures: [] }),
+    ]
+    const summary = timeAndMaterialsSummary(documents)
+
+    expect(summary.count).toBe(3)
+    expect(summary.entered).toBe(8_700)
+    expect(summary.rolledUp).toBe(4_200)
+    expect(summary.standalone).toBe(4_500)
+    expect(summary.unsignedCount).toBe(1)
+    expect(summary.unsignedValue).toBe(1_500)
+  })
+
+  it('adds up the hours behind the tickets, which is what they are made of', () => {
+    const priced = derive(
+      { documentKind: 'TIME_AND_MATERIALS', status: 'FULLY_SIGNED' },
+      [
+        line({ measure: 'EA', count: 1, length: 0, width: 0, laborHrsPerUnit: 12, laborRateOverride: 68 }),
+        line({ id: 'l2', measure: 'EA', count: 1, length: 0, width: 0, equipmentHrsPerUnit: 6, equipmentRateOverride: 162 }),
+      ],
+    )
+    const summary = timeAndMaterialsSummary([priced])
+    expect(summary.laborHours).toBe(12)
+    expect(summary.equipmentHours).toBe(6)
+  })
+
+  it('counts the totals on the tab whether a ticket is rolled up or not', () => {
+    // The tab still says what has been raised; only the contract value differs.
+    const documents = [
+      ticket({ id: 't1', enteredOwnerAmount: 4_200, approvedAt: D('2026-03-05'), rollsUpToId: 'co-1', rollsUpToNumber: 'CO-014' }),
+      ticket({ id: 't2', enteredOwnerAmount: 3_000, approvedAt: D('2026-03-06') }),
+    ]
+    const totals = documentTotals(documents)
+    expect(totals.entered).toBe(7_200)
+    expect(totals.rolledUp).toBe(4_200)
+    expect(totals.rolledUpCount).toBe(1)
+  })
+})
+
+describe('pricing equipment on a line', () => {
+  it('runs a machine at hours times its rate, the way labor is priced', () => {
+    const rates = new Map<string, number>([['Excavator, 30 tonne', 162]])
+    const document = deriveDocument(
+      doc(),
+      [line({ measure: 'EA', count: 10, length: 0, width: 0, equipmentClass: 'Excavator, 30 tonne', equipmentHrsPerUnit: 2 })],
+      new Map(),
+      DATA_DATE,
+      rates,
+    )
+    expect(document.lines[0].equipmentHours).toBe(20)
+    expect(document.lines[0].equipmentRate).toBe(162)
+    expect(document.lines[0].equipmentCost).toBe(20 * 162)
+  })
+
+  it('adds a unit cost and an hourly machine together on the same line', () => {
+    const rates = new Map<string, number>([['Excavator, 30 tonne', 162]])
+    const document = deriveDocument(
+      doc(),
+      [
+        line({
+          measure: 'EA',
+          count: 10,
+          length: 0,
+          width: 0,
+          equipmentUnitCost: 40,
+          equipmentClass: 'Excavator, 30 tonne',
+          equipmentHrsPerUnit: 2,
+        }),
+      ],
+      new Map(),
+      DATA_DATE,
+      rates,
+    )
+    expect(document.lines[0].equipmentCost).toBe(10 * 40 + 20 * 162)
+  })
+
+  it('uses a rate typed onto the line over the equipment list', () => {
+    const rates = new Map<string, number>([['Excavator, 30 tonne', 162]])
+    const document = deriveDocument(
+      doc(),
+      [
+        line({
+          measure: 'EA',
+          count: 1,
+          length: 0,
+          width: 0,
+          equipmentClass: 'Excavator, 30 tonne',
+          equipmentHrsPerUnit: 8,
+          equipmentRateOverride: 140,
+        }),
+      ],
+      new Map(),
+      DATA_DATE,
+      rates,
+    )
+    expect(document.lines[0].equipmentCost).toBe(8 * 140)
   })
 })

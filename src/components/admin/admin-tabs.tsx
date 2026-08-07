@@ -35,6 +35,7 @@ export function AdminTabs({
               { href: '/admin/trades', label: 'Trades and divisions' },
               { href: '/admin/vendors', label: 'Vendors' },
               { href: '/admin/labor', label: 'Labor rates and overhead' },
+              { href: '/admin/equipment', label: 'Equipment and rates' },
               { href: '/admin/payroll', label: 'States and prevailing wage' },
             ]
           : []),

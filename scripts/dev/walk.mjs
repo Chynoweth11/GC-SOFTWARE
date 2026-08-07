@@ -104,6 +104,7 @@ async function main() {
     '/admin/trades',
     '/admin/vendors',
     '/admin/labor',
+    '/admin/equipment',
     '/admin/payroll',
     '/admin/import',
     '/admin/restore',

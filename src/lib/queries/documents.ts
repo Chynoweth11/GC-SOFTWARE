@@ -10,7 +10,8 @@ import {
   type DocumentTotals,
   type LaborRateEntry,
 } from '@/lib/finance'
-import { getLaborClassifications } from './labor'
+import { laborRateTable } from './labor'
+import { equipmentRateTable } from './equipment'
 
 /**
  * Contract documents, priced and read back.
@@ -35,6 +36,8 @@ function loadDocuments(where: { projectId?: string; id?: string; companyId: stri
       trade: { select: { name: true } },
       approvedBy: { select: { name: true } },
       supersededBy: { select: { id: true, number: true } },
+      rollsUpTo: { select: { id: true, number: true } },
+      rolledUpTickets: { select: { id: true, number: true } },
       signatures: { orderBy: { sortOrder: 'asc' } },
       attachments: { include: { uploadedBy: { select: { name: true } } }, orderBy: { createdAt: 'desc' } },
       lines: { include: { costCode: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
@@ -97,6 +100,9 @@ export interface DocumentView extends DocumentDerived {
     laborClass: string | null
     laborHrsPerUnit: number
     laborRateOverride: number | null
+    equipmentClass: string | null
+    equipmentHrsPerUnit: number
+    equipmentRateOverride: number | null
     materialUnitCost: number
     equipmentUnitCost: number
     subUnitCost: number
@@ -108,6 +114,7 @@ export interface DocumentView extends DocumentDerived {
 function viewFromRecord(
   record: DocumentRecord,
   laborRates: ReadonlyMap<string, LaborRateEntry>,
+  equipmentRates: ReadonlyMap<string, number>,
   dataDate: Date,
 ): DocumentView {
   const derived = deriveDocument(
@@ -143,6 +150,8 @@ function viewFromRecord(
       approvedByName: record.approvedBy?.name ?? null,
       approvalCertification: record.approvalCertification,
       postsToBudget: record.postsToBudget,
+      rollsUpToId: record.rollsUpToId,
+      rollsUpToNumber: record.rollsUpTo?.number ?? null,
       signatures: record.signatures.map((signature) => ({
         party: signature.party,
         status: signature.status,
@@ -169,6 +178,9 @@ function viewFromRecord(
       laborClass: line.laborClass,
       laborHrsPerUnit: line.laborHrsPerUnit,
       laborRateOverride: line.laborRateOverride,
+      equipmentClass: line.equipmentClass,
+      equipmentHrsPerUnit: line.equipmentHrsPerUnit,
+      equipmentRateOverride: line.equipmentRateOverride,
       materialUnitCost: line.materialUnitCost,
       equipmentUnitCost: line.equipmentUnitCost,
       subUnitCost: line.subUnitCost,
@@ -177,6 +189,7 @@ function viewFromRecord(
     })),
     laborRates,
     dataDate,
+    equipmentRates,
   )
 
   return {
@@ -232,6 +245,9 @@ function viewFromRecord(
       laborClass: line.laborClass,
       laborHrsPerUnit: line.laborHrsPerUnit,
       laborRateOverride: line.laborRateOverride,
+      equipmentClass: line.equipmentClass,
+      equipmentHrsPerUnit: line.equipmentHrsPerUnit,
+      equipmentRateOverride: line.equipmentRateOverride,
       materialUnitCost: line.materialUnitCost,
       equipmentUnitCost: line.equipmentUnitCost,
       subUnitCost: line.subUnitCost,
@@ -240,23 +256,6 @@ function viewFromRecord(
     })),
   }
 }
-
-/**
- * The company classification library, as a rate table a document prices from.
- *
- * The same map the estimate uses, so a change order line that names a
- * classification gets its loaded rate and does not take a flat burden on top
- * of it.
- */
-const laborRateTable = cache(async (companyId: string): Promise<Map<string, LaborRateEntry>> => {
-  const classes = await getLaborClassifications(companyId)
-  return new Map(
-    classes.map((entry) => [
-      entry.name,
-      { rate: entry.loadedHourlyCost, burdened: true, source: `Classification library: ${entry.name}` },
-    ]),
-  )
-})
 
 export interface ProjectDocuments {
   documents: DocumentView[]
@@ -268,13 +267,14 @@ export interface ProjectDocuments {
 
 export const getProjectDocuments = cache(
   async (projectId: string, companyId: string): Promise<ProjectDocuments> => {
-    const [project, records, rates] = await Promise.all([
+    const [project, records, rates, equipmentRates] = await Promise.all([
       prisma.project.findFirst({
         where: { id: projectId, companyId },
         select: { dataDate: true, originalContractSum: true },
       }),
       loadDocuments({ projectId, companyId }),
       laborRateTable(companyId),
+      equipmentRateTable(companyId),
     ])
     if (!project) {
       return {
@@ -286,7 +286,7 @@ export const getProjectDocuments = cache(
     }
 
     const dataDate = project.dataDate ?? today()
-    const documents = records.map((record) => viewFromRecord(record, rates, dataDate))
+    const documents = records.map((record) => viewFromRecord(record, rates, equipmentRates, dataDate))
 
     const kinds = [...new Set(documents.map((document) => document.documentKind))]
     const byKind = kinds.map((kind) => {
@@ -324,15 +324,16 @@ export const getProjectDocument = cache(
     const record = records[0]
     if (!record) return null
 
-    const [project, rates] = await Promise.all([
+    const [project, rates, equipmentRates] = await Promise.all([
       prisma.project.findUniqueOrThrow({
         where: { id: record.projectId },
         select: { dataDate: true },
       }),
       laborRateTable(companyId),
+      equipmentRateTable(companyId),
     ])
 
-    return viewFromRecord(record, rates, project.dataDate ?? today())
+    return viewFromRecord(record, rates, equipmentRates, project.dataDate ?? today())
   },
 )
 

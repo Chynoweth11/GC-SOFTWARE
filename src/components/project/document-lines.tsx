@@ -36,6 +36,9 @@ export interface LineRow {
   laborClass: string | null
   laborHrsPerUnit: number
   laborRateOverride: number | null
+  equipmentClass: string | null
+  equipmentHrsPerUnit: number
+  equipmentRateOverride: number | null
   materialUnitCost: number
   equipmentUnitCost: number
   subUnitCost: number
@@ -48,6 +51,8 @@ export interface LineRow {
     laborRateSource: string | null
     laborHours: number
     laborCost: number
+    equipmentRate: number
+    equipmentHours: number
     materialCost: number
     equipmentCost: number
     subCost: number
@@ -91,6 +96,7 @@ export function DocumentLines({
   rows,
   costCodes,
   laborClasses,
+  equipmentClasses,
   canEdit,
   locked,
   save,
@@ -100,6 +106,7 @@ export function DocumentLines({
   rows: LineRow[]
   costCodes: { id: string; label: string; category: string }[]
   laborClasses: { name: string; rate: number }[]
+  equipmentClasses: { name: string; rate: number }[]
   canEdit: boolean
   /** True once approved, when the pricing may no longer be touched. */
   locked: boolean
@@ -130,6 +137,7 @@ export function DocumentLines({
   const totals = rows.reduce(
     (sum, row) => ({
       hours: sum.hours + row.derived.laborHours,
+      equipmentHours: sum.equipmentHours + row.derived.equipmentHours,
       labor: sum.labor + row.derived.laborCost,
       material: sum.material + row.derived.materialCost,
       equipment: sum.equipment + row.derived.equipmentCost,
@@ -137,7 +145,7 @@ export function DocumentLines({
       other: sum.other + row.derived.otherCost,
       total: sum.total + row.derived.totalCost,
     }),
-    { hours: 0, labor: 0, material: 0, equipment: 0, sub: 0, other: 0, total: 0 },
+    { hours: 0, equipmentHours: 0, labor: 0, material: 0, equipment: 0, sub: 0, other: 0, total: 0 },
   )
 
   return (
@@ -180,6 +188,8 @@ export function DocumentLines({
                   <th className="num">Labor hours</th>
                   <th className="num">Labor rate</th>
                   <th className="num">Labor</th>
+                  <th className="num">Machine hours</th>
+                  <th className="num">Machine rate</th>
                   <th className="num">Material</th>
                   <th className="num">Equipment</th>
                   <th className="num">Subcontract</th>
@@ -198,6 +208,7 @@ export function DocumentLines({
                           row={row}
                           costCodes={costCodes}
                           laborClasses={laborClasses}
+                          equipmentClasses={equipmentClasses}
                           busy={busy}
                           onCancel={() => setEditing(null)}
                           onSubmit={async (formData) => {
@@ -246,6 +257,12 @@ export function DocumentLines({
                         {row.derived.laborRate ? money(row.derived.laborRate, { cents: true }) : '-'}
                       </td>
                       <td className="num">{money(row.derived.laborCost)}</td>
+                      <td className="num">
+                        {row.derived.equipmentHours ? fmtNumber(row.derived.equipmentHours, 1) : '-'}
+                      </td>
+                      <td className="num" title={row.equipmentClass ?? undefined}>
+                        {row.derived.equipmentRate ? money(row.derived.equipmentRate, { cents: true }) : '-'}
+                      </td>
                       <td className="num">{money(row.derived.materialCost)}</td>
                       <td className="num">{money(row.derived.equipmentCost)}</td>
                       <td className="num">{money(row.derived.subCost)}</td>
@@ -281,6 +298,8 @@ export function DocumentLines({
                   <th className="num">{fmtNumber(totals.hours, 1)}</th>
                   <th className="num" />
                   <th className="num">{money(totals.labor)}</th>
+                  <th className="num">{fmtNumber(totals.equipmentHours, 1)}</th>
+                  <th className="num" />
                   <th className="num">{money(totals.material)}</th>
                   <th className="num">{money(totals.equipment)}</th>
                   <th className="num">{money(totals.sub)}</th>
@@ -300,6 +319,7 @@ export function DocumentLines({
             documentId={documentId}
             costCodes={costCodes}
             laborClasses={laborClasses}
+            equipmentClasses={equipmentClasses}
             busy={busy}
             onCancel={() => setAdding(false)}
             onSubmit={async (formData) => {
@@ -332,6 +352,7 @@ function LineForm({
   row,
   costCodes,
   laborClasses,
+  equipmentClasses,
   busy,
   onSubmit,
   onCancel,
@@ -340,6 +361,7 @@ function LineForm({
   row?: LineRow
   costCodes: { id: string; label: string; category: string }[]
   laborClasses: { name: string; rate: number }[]
+  equipmentClasses: { name: string; rate: number }[]
   busy: boolean
   onSubmit: (formData: FormData) => Promise<void>
   onCancel: () => void
@@ -542,6 +564,49 @@ function LineForm({
           <span className="mt-0.5 block text-[11px]" style={{ color: 'var(--text-subtle)' }}>
             A rate typed here is a bare wage and takes the labor burden on top.
           </span>
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            Machine
+          </span>
+          <input
+            name="equipmentClass"
+            defaultValue={row?.equipmentClass ?? ''}
+            list="document-equipment-classes"
+            placeholder="From the equipment list"
+            className="field mt-1 w-full text-sm"
+          />
+          <datalist id="document-equipment-classes">
+            {equipmentClasses.map((entry) => (
+              <option key={entry.name} value={entry.name}>
+                {money(entry.rate, { cents: true })} an hour, with fuel and wear
+              </option>
+            ))}
+          </datalist>
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            Machine hours per unit
+          </span>
+          <input
+            name="equipmentHrsPerUnit"
+            defaultValue={row ? String(row.equipmentHrsPerUnit) : '0'}
+            className="field mt-1 w-full text-sm"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            Machine rate
+          </span>
+          <input
+            name="equipmentRateOverride"
+            defaultValue={row?.equipmentRateOverride != null ? String(row.equipmentRateOverride) : ''}
+            placeholder="Leave empty to use the list"
+            className="field mt-1 w-full text-sm"
+          />
         </label>
 
         <label className="block">

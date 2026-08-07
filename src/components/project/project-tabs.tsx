@@ -29,7 +29,7 @@ export function ProjectTabs({
     { href: `${base}/cashflow`, label: 'Cash flow' },
     { href: `${base}/buyout`, label: 'Buyout' },
     { href: `${base}/quantities`, label: 'Quantities' },
-    ...(canViewWageRates ? [{ href: `${base}/labor`, label: 'Labor and wages' }] : []),
+    ...(canViewWageRates ? [{ href: `${base}/labor`, label: 'Labor and equipment' }] : []),
     { href: `${base}/settings`, label: 'Settings' },
   ]
 

@@ -55,6 +55,7 @@ model Company {
   payrollJurisdictions PayrollJurisdiction[]
   laborClassifications LaborClassification[]
   overheadCosts        OverheadCost[]
+  equipmentItems       EquipmentItem[]
 }
 
 enum Role {
@@ -263,6 +264,7 @@ model CostCode {
   quantityItems   QuantityItem[]
   subInvoices     SubInvoice[]
   laborAssignments ProjectLaborAssignment[]
+  equipmentAssignments ProjectEquipmentAssignment[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -384,6 +386,7 @@ model Vendor {
   invoices    SubInvoice[]
   quotes      BidPackageQuote[]
   awarded     BidPackage[]     @relation("AwardedVendor")
+  equipment   EquipmentItem[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -803,6 +806,7 @@ model Project {
   bidPackages    BidPackage[]
   wageRateSheets WageRateSheet[]
   laborAssignments ProjectLaborAssignment[]
+  equipmentAssignments ProjectEquipmentAssignment[]
   complianceRequirements ComplianceRequirement[]
 
   @@unique([companyId, number])
@@ -1040,6 +1044,8 @@ enum DocumentKind {
   CONTRACT_AMENDMENT
   /// An addendum issued before or at execution.
   ADDENDUM
+  /// A daily time and materials ticket, signed in the field for extra work.
+  TIME_AND_MATERIALS
   /// A change the owner directs, before it becomes a priced change order.
   OWNER_CHANGE
   /// A change to a subcontract, which moves cost but not contract value.
@@ -1166,6 +1172,13 @@ model ChangeOrder {
   postsToBudget Boolean             @default(true)
   /// The document that replaced this one, where it was superseded.
   supersededById String?
+  /// The change order this ticket is billed under.
+  ///
+  /// Time and materials tickets are signed one day at a time and then rolled
+  /// into a change order for billing. A ticket that names its parent here
+  /// contributes nothing to the contract value on its own, because the change
+  /// order carries the money; without this the same work would be counted twice.
+  rollsUpToId    String?
   notes         String?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -1175,6 +1188,8 @@ model ChangeOrder {
   approvedBy        User?              @relation("DocumentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   supersededBy      ChangeOrder?       @relation("Supersedes", fields: [supersededById], references: [id], onDelete: SetNull)
   supersedes        ChangeOrder[]      @relation("Supersedes")
+  rollsUpTo         ChangeOrder?       @relation("RollsUp", fields: [rollsUpToId], references: [id], onDelete: SetNull)
+  rolledUpTickets   ChangeOrder[]      @relation("RollsUp")
   lines             ChangeOrderLine[]
   signatures        DocumentSignature[]
   attachments       DocumentAttachment[]
@@ -1222,6 +1237,12 @@ model ChangeOrderLine {
   laborHrsPerUnit   Float   @default(0)
   /// A rate for this line alone. Null uses the class rate.
   laborRateOverride Float?
+
+  /// The piece of equipment this line runs, named as the equipment list names
+  /// it. Priced at hours times its rate, the same way labor is.
+  equipmentClass        String?
+  equipmentHrsPerUnit   Float   @default(0)
+  equipmentRateOverride Float?
 
   materialUnitCost  Float @default(0)
   equipmentUnitCost Float @default(0)
@@ -2025,4 +2046,132 @@ model ComplianceSubmission {
 
   @@unique([requirementId, dueDate])
   @@index([requirementId])
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Equipment and its rates
+// ─────────────────────────────────────────────────────────────
+
+enum EquipmentOwnership {
+  /// The company owns it. The rate recovers the cost of owning it.
+  OWNED
+  /// Hired in. The rate is what the hire costs.
+  RENTED
+  /// Brought by the operator or the subcontractor, charged through them.
+  OPERATOR_PROVIDED
+}
+
+/// How a rate is quoted. Rental rates are quoted every one of these ways, and
+/// which one applies depends on how long the machine is on the job.
+enum RateBasis {
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/**
+ * A machine, a truck, or a piece of plant, and what it costs.
+ *
+ * Equipment is a cost like labor is a cost, and it is entered once here so an
+ * estimate line, a change order line, a time and materials ticket and a project
+ * budget all price from the same rate. A rate changed here moves all of them.
+ *
+ * Rates are held at every basis they are quoted at rather than one being
+ * converted into the others behind the scenes, because a weekly rate is almost
+ * never five daily rates and pretending otherwise loses money on long hires.
+ * Where a basis has no rate the engine says so instead of inventing one, and
+ * the conversion factors it does use to reach an hourly figure are on the
+ * record here rather than assumed.
+ */
+model EquipmentItem {
+  id        String @id @default(cuid())
+  companyId String
+  code      String?
+  name      String
+  /// Excavator, truck, compactor, pump, small tools.
+  category  String?
+  ownership EquipmentOwnership @default(OWNED)
+
+  hourlyRate  Float @default(0)
+  dailyRate   Float @default(0)
+  weeklyRate  Float @default(0)
+  monthlyRate Float @default(0)
+
+  /// Fuel, wear and maintenance, charged per hour the machine actually runs.
+  /// Separate from the rate because a machine standing idle on site still costs
+  /// its rate and costs none of this.
+  operatingCostPerHour Float @default(0)
+  /// Charged per hour while it is on the job but not working.
+  standbyRatePerHour   Float @default(0)
+
+  /// How a day, a week and a month convert into hours for this machine. Stated
+  /// rather than assumed, because a haul truck on two shifts is not an eight
+  /// hour day.
+  hoursPerDay  Float @default(8)
+  daysPerWeek  Float @default(5)
+
+  /// Who it is hired from, when it is hired.
+  vendorId String?
+  assetTag String?
+
+  costCategory CostCategory @default(EQUIPMENT)
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor      Vendor?                      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  assignments ProjectEquipmentAssignment[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+/**
+ * A piece of equipment charged to a project.
+ *
+ * The cost is never stored. It is the rate at the chosen basis times the units,
+ * plus the operating cost for the hours it actually ran, plus standby, all
+ * worked out each time it is read, so a rate change reprices every job the
+ * machine is on.
+ */
+model ProjectEquipmentAssignment {
+  id              String @id @default(cuid())
+  projectId       String
+  equipmentItemId String
+  /// A particular machine, where the fleet has several of the same kind.
+  label           String?
+  costCodeId      String?
+
+  basis RateBasis @default(DAILY)
+  /// Hours, days, weeks or months, matching the basis.
+  units Float     @default(0)
+
+  /// Hours the machine actually ran, which is what attracts the operating cost.
+  operatingHours Float @default(0)
+  /// Hours it stood on the job doing nothing.
+  standbyHours   Float @default(0)
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  /// A rate agreed for this job alone. Null uses the equipment list.
+  rateOverride Float?
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  item     EquipmentItem @relation(fields: [equipmentItemId], references: [id], onDelete: Restrict)
+  costCode CostCode?     @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([equipmentItemId])
 }

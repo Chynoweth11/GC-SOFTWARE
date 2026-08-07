@@ -14,6 +14,7 @@ import {
   type ComplianceDerived,
   type ComplianceSummary,
   type LaborClassDerived,
+  type LaborRateEntry,
   type OverheadSummary,
   type PayrollBurdenRates,
   type ProjectLaborSummary,
@@ -137,6 +138,26 @@ export const getLaborClassifications = cache(async (companyId: string): Promise<
       assignedShare,
     }
   })
+})
+
+/**
+ * The classification library, as a rate table a priced line reads from.
+ *
+ * Estimates, change orders, time and materials tickets and the project bundle
+ * all price a named classification through this one map, so a wage corrected
+ * once cannot leave two pages disagreeing about what the same line is worth.
+ * The rates come out of `deriveLaborClass` already carrying their burden, which
+ * is why each entry says so: the flat burden percentage must not land on top of
+ * a rate that already includes it.
+ */
+export const laborRateTable = cache(async (companyId: string): Promise<Map<string, LaborRateEntry>> => {
+  const classes = await getLaborClassifications(companyId)
+  return new Map(
+    classes.map((entry) => [
+      entry.name,
+      { rate: entry.loadedHourlyCost, burdened: true, source: `Classification library: ${entry.name}` },
+    ]),
+  )
 })
 
 export interface ProjectLaborView extends ProjectLaborSummary {

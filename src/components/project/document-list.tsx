@@ -43,6 +43,8 @@ export interface DocumentRow {
   isOfficial: boolean
   isPending: boolean
   isDead: boolean
+  isRolledUp: boolean
+  rollsUpToNumber: string | null
   canApprove: boolean
   approvalBlockedReason: string | null
   signedCount: number
@@ -179,6 +181,7 @@ export function DocumentList({
                       {row.counterparty ? ` · ${row.counterparty}` : ''}
                       {row.tradeName ? ` · ${row.tradeName}` : ''}
                       {row.attachmentCount > 0 ? ` · ${row.attachmentCount} attached` : ''}
+                      {row.rollsUpToNumber ? ` · billed under ${row.rollsUpToNumber}` : ''}
                     </div>
                   </td>
                   <td className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -228,6 +231,9 @@ export function DocumentList({
                       />
                       {row.isOfficial && row.signedDocumentCount === 0 && (
                         <Pill tone="caution">No signed copy attached</Pill>
+                      )}
+                      {row.isRolledUp && (
+                        <Pill tone="neutral">Carried by {row.rollsUpToNumber ?? 'another document'}</Pill>
                       )}
                       {!row.isOfficial && row.approvalBlockedReason && !row.isDead && (
                         <span className="wrap text-[11px]" style={{ color: 'var(--text-subtle)' }}>

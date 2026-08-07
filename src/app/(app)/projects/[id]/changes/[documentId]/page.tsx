@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { getDocumentHistory, getProjectDocument } from '@/lib/queries/documents'
 import { getLaborClassifications } from '@/lib/queries/labor'
+import { getEquipmentItems } from '@/lib/queries/equipment'
 import { DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS } from '@/lib/finance'
 import { date, money, percent, titleize } from '@/lib/format'
 import { DataList, InfoNote, Kpi, KpiGrid, MoneyKpi, Pill, Section, StatusPill } from '@/components/ui'
@@ -12,6 +13,7 @@ import { ApprovalCheckbox } from '@/components/project/approval-checkbox'
 import { DocumentLines } from '@/components/project/document-lines'
 import { DocumentAttachments, DocumentSignatures } from '@/components/project/document-signatures'
 import { DeleteDocumentButton, DocumentEditor } from '@/components/project/document-editor'
+import { RollUpControl } from '@/components/project/roll-up-control'
 import {
   approvalCertificationText,
   approveDocument,
@@ -19,6 +21,7 @@ import {
   deleteDocument,
   deleteDocumentLine,
   deleteSignature,
+  rollUpDocument,
   saveAttachment,
   saveDocument,
   saveDocumentLine,
@@ -54,7 +57,7 @@ export default async function DocumentPage({
   const document = await getProjectDocument(documentId, user.companyId)
   if (!document || document.projectId !== id) notFound()
 
-  const [history, costCodes, trades, classifications, certification] = await Promise.all([
+  const [history, costCodes, trades, classifications, equipment, siblings, certification] = await Promise.all([
     getDocumentHistory(documentId, user.companyId),
     prisma.costCode.findMany({
       where: { companyId: user.companyId, active: true },
@@ -67,6 +70,19 @@ export default async function DocumentPage({
       orderBy: { sortOrder: 'asc' },
     }),
     getLaborClassifications(user.companyId),
+    getEquipmentItems(user.companyId),
+    // Documents on this job a ticket could be billed under: anything that is
+    // not a ticket itself and is not already rolled into something else.
+    prisma.changeOrder.findMany({
+      where: {
+        projectId: id,
+        NOT: { id: documentId },
+        documentKind: { not: 'TIME_AND_MATERIALS' },
+        rollsUpToId: null,
+      },
+      select: { id: true, number: true, description: true },
+      orderBy: { number: 'asc' },
+    }),
     approvalCertificationText(),
   ])
 
@@ -186,6 +202,30 @@ export default async function DocumentPage({
         </div>
       )}
 
+      {document.documentKind === 'TIME_AND_MATERIALS' && (
+        <Section
+          title="Where this ticket bills"
+          description="A ticket rolled into a change order stops counting on its own, so the same signed hours cannot reach the contract value twice"
+        >
+          <div className="card p-4">
+            <RollUpControl
+              documentId={document.id}
+              documentNumber={document.number}
+              amount={document.ownerAmount}
+              rollsUpToId={document.rollsUpToId}
+              rollsUpToNumber={document.rollsUpToNumber}
+              canEdit={canEdit}
+              locked={document.isOfficial}
+              save={rollUpDocument}
+              candidates={siblings.map((sibling) => ({
+                id: sibling.id,
+                label: `${sibling.number} ${sibling.description}`,
+              }))}
+            />
+          </div>
+        </Section>
+      )}
+
       <Section
         title="Priced breakdown"
         description="Scope, quantity, labor, material, equipment, subcontract and everything else, priced the way a takeoff is priced"
@@ -202,6 +242,7 @@ export default async function DocumentPage({
             category: code.category,
           }))}
           laborClasses={classifications.map((entry) => ({ name: entry.name, rate: entry.loadedHourlyCost }))}
+          equipmentClasses={equipment.map((item) => ({ name: item.name, rate: item.loadedHourlyCost }))}
           rows={document.lineRecords.map((line, index) => {
             const derived = document.lines[index]
             return {
@@ -217,6 +258,8 @@ export default async function DocumentPage({
                 equipmentCost: derived.equipmentCost,
                 subCost: derived.subCost,
                 otherCost: derived.otherCost,
+                equipmentRate: derived.equipmentRate,
+                equipmentHours: derived.equipmentHours,
                 totalCost: derived.totalCost,
                 unitCost: derived.unitCost,
                 qaFlags: derived.qaFlags,

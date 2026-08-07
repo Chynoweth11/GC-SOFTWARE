@@ -4,23 +4,27 @@ import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { checkAgainstDetermination, FREQUENCY_LABELS } from '@/lib/finance'
 import { getProjectCompliance, getProjectLabor } from '@/lib/queries/labor'
+import { getEquipmentItems, getProjectEquipment } from '@/lib/queries/equipment'
 import { getJurisdictionOptions, getProjectWageSheets } from '@/lib/queries/wage-rates'
 import { InfoNote, Kpi, KpiGrid, MoneyKpi, Section } from '@/components/ui'
 import { LaborAssignments } from '@/components/project/labor-assignments'
+import { EquipmentAssignments } from '@/components/project/equipment-assignments'
 import { ComplianceList } from '@/components/project/compliance-list'
 import { WageRateSheets } from '@/components/project/wage-rate-sheets'
 import { money, percent } from '@/lib/format'
 import {
   deleteComplianceRequirement,
   deleteComplianceSubmission,
+  deleteEquipmentAssignment,
   deleteLaborAssignment,
   recordComplianceSubmission,
   saveComplianceRequirement,
+  saveEquipmentAssignment,
   saveLaborAssignment,
 } from './actions'
 import { deleteWageLine, deleteWageSheet, saveWageLine, saveWageSheet, verifyWageSheet } from './wage-actions'
 
-export const metadata = { title: 'Labor and wages' }
+export const metadata = { title: 'Labor and equipment' }
 
 /**
  * Everything about people on this job, in one place.
@@ -46,8 +50,11 @@ export default async function ProjectLaborPage({ params }: { params: Promise<{ i
   })
   if (!project) notFound()
 
-  const [labor, compliance, sheets, jurisdictions, classifications, costCodes, people] = await Promise.all([
+  const [labor, equipment, equipmentItems, compliance, sheets, jurisdictions, classifications, costCodes, people] =
+    await Promise.all([
     getProjectLabor(id, user.companyId),
+    getProjectEquipment(id, user.companyId),
+    getEquipmentItems(user.companyId),
     getProjectCompliance(id, user.companyId),
     getProjectWageSheets(id, user.companyId),
     getJurisdictionOptions(user.companyId),
@@ -88,10 +95,24 @@ export default async function ProjectLaborPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6">
-      <KpiGrid cols={4}>
-        <MoneyKpi label="Labor and team on this job" amount={labor.totals.cost} detail={`${labor.rows.length} assigned`} />
+      <KpiGrid cols={5}>
+        <MoneyKpi
+          label="People and plant on this job"
+          amount={labor.totals.cost + equipment.totals.cost}
+          detail={`${labor.rows.length + equipment.rows.length} entries`}
+        />
         <MoneyKpi label="Field labor" amount={fieldCost} detail={`${Math.round(labor.byKind.find((g) => g.kind === 'FIELD')?.hours ?? 0)} hours`} />
         <MoneyKpi label="Project team" amount={staffCost} detail="Salaried people charged to this job" />
+        <MoneyKpi
+          label="Equipment"
+          amount={equipment.totals.cost}
+          tone={equipment.totals.standbyCost > 0 ? 'caution' : 'neutral'}
+          detail={
+            equipment.totals.standbyCost > 0
+              ? `${money(equipment.totals.standbyCost)} of it standby`
+              : `${Math.round(equipment.totals.operatingHours)} hours run`
+          }
+        />
         <Kpi
           label="Compliance"
           value={compliance.overdue > 0 ? `${compliance.overdue} overdue` : compliance.dueSoon > 0 ? `${compliance.dueSoon} due soon` : 'Up to date'}
@@ -162,6 +183,60 @@ export default async function ProjectLaborPage({ params }: { params: Promise<{ i
             .
           </p>
         )}
+      </Section>
+
+      <Section
+        title="Equipment on this job"
+        description="What each machine is costing, split into the hire, the fuel and wear, and the time it stood idle"
+      >
+        <EquipmentAssignments
+          projectId={id}
+          canEdit={canEdit}
+          save={saveEquipmentAssignment}
+          remove={deleteEquipmentAssignment}
+          costCodes={costCodes.map((code) => ({ id: code.id, label: `${code.code} ${code.description}` }))}
+          totals={equipment.totals}
+          byOwnership={equipment.byOwnership}
+          standbyShare={equipment.standbyShare}
+          issues={equipment.issues}
+          equipment={equipmentItems.map((item) => ({
+            id: item.id,
+            name: item.name,
+            ownership: item.ownership,
+            quotedBases: item.quotedBases,
+            loadedHourlyCost: item.loadedHourlyCost,
+            active: item.active,
+          }))}
+          rows={equipment.rows.map((row) => ({
+            id: row.id,
+            equipmentItemId: row.equipmentItemId,
+            displayName: row.displayName,
+            itemName: row.itemName,
+            label: row.label,
+            category: row.category,
+            ownership: row.ownership,
+            basis: row.basis,
+            units: row.units,
+            operatingHours: row.operatingHours,
+            standbyHours: row.standbyHours,
+            startDate: row.startDate ? row.startDate.toISOString() : null,
+            endDate: row.endDate ? row.endDate.toISOString() : null,
+            rateOverride: row.rateOverride,
+            rate: row.rate,
+            rateSource: row.rateSource,
+            rentalCost: row.rentalCost,
+            operatingCost: row.operatingCost,
+            standbyCost: row.standbyCost,
+            cost: row.cost,
+            equivalentHours: row.equivalentHours,
+            workingOut: row.workingOut,
+            costCodeId: row.costCodeId,
+            costCodeLabel: row.costCodeLabel,
+            itemActive: row.itemActive,
+            notes: null,
+            issues: row.issues,
+          }))}
+        />
       </Section>
 
       <Section

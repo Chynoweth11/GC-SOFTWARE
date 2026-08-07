@@ -5,7 +5,7 @@ import { requireUser } from '@/lib/auth'
 import { assertCan } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { recordAudit, recordFieldChanges } from '@/lib/audit'
-import type { AssignmentBasis, ComplianceFrequency, ComplianceKind } from '@/generated/prisma/client'
+import type { AssignmentBasis, ComplianceFrequency, ComplianceKind, RateBasis } from '@/generated/prisma/client'
 
 /**
  * Who is on this job, and what this job has to file.
@@ -487,5 +487,164 @@ export async function deleteComplianceSubmission(formData: FormData): Promise<{ 
   })
 
   revalidatePath(`/projects/${submission.requirement.projectId}/labor`)
+  return {}
+}
+
+// ── Equipment on the job ──────────────────────────────────────────────────
+
+const EQUIPMENT_LABELS: Record<string, string> = {
+  equipmentItemId: 'equipment',
+  label: 'machine',
+  costCodeId: 'cost code',
+  basis: 'rate basis',
+  units: 'units',
+  operatingHours: 'operating hours',
+  standbyHours: 'standby hours',
+  startDate: 'on site from',
+  endDate: 'on site to',
+  rateOverride: 'rate for this job',
+  notes: 'notes',
+}
+
+function equipmentFields(row: Record<string, unknown>) {
+  return Object.fromEntries(Object.keys(EQUIPMENT_LABELS).map((key) => [key, row[key]]))
+}
+
+const RATE_BASES = new Set<string>(['HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY'] satisfies RateBasis[])
+
+/**
+ * Charges a machine to a job.
+ *
+ * Nothing about the cost is stored: the basis, the units and the hours are, and
+ * the money is worked out from the equipment list every time it is read, so a
+ * rate change reprices every job the machine is on.
+ */
+export async function saveEquipmentAssignment(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'edit:wage_rates')
+
+  const id = text(formData.get('id'))
+  const projectId = String(formData.get('projectId'))
+  const equipmentItemId = text(formData.get('equipmentItemId'))
+  const basis = String(formData.get('basis') ?? 'DAILY')
+
+  if (!equipmentItemId) return { error: 'Choose the machine.' }
+  if (!RATE_BASES.has(basis)) return { error: 'Choose whether it is charged by the hour, day, week or month.' }
+
+  const project = await ownedProject(projectId, user.companyId)
+  if (!project) return { error: 'That project is not on this account.' }
+
+  const item = await prisma.equipmentItem.findFirst({
+    where: { id: equipmentItemId, companyId: user.companyId },
+    select: { id: true, name: true },
+  })
+  if (!item) return { error: 'That equipment is not on this account.' }
+
+  const costCodeId = text(formData.get('costCodeId'))
+  if (costCodeId) {
+    const costCode = await prisma.costCode.findFirst({
+      where: { id: costCodeId, companyId: user.companyId },
+      select: { id: true },
+    })
+    if (!costCode) return { error: 'That cost code is not on this account.' }
+  }
+
+  const units = number(formData.get('units'))
+  const operatingHours = number(formData.get('operatingHours'))
+  const standbyHours = number(formData.get('standbyHours'))
+  const startDate = day(formData.get('startDate'))
+  const endDate = day(formData.get('endDate'))
+
+  if (units <= 0) return { error: 'Enter how many hours, days, weeks or months it is on for.' }
+  for (const [label, value] of [
+    ['operating hours', operatingHours],
+    ['standby hours', standbyHours],
+  ] as const) {
+    if (value < 0) return { error: `The ${label} cannot be negative.` }
+  }
+  if (startDate && endDate && endDate.getTime() < startDate.getTime()) {
+    return { error: 'The end date is before the start date.' }
+  }
+
+  const data = {
+    equipmentItemId,
+    label: text(formData.get('label')),
+    costCodeId: costCodeId ?? null,
+    basis: basis as RateBasis,
+    units,
+    operatingHours,
+    standbyHours,
+    startDate,
+    endDate,
+    rateOverride: optionalNumber(formData.get('rateOverride')),
+    notes: text(formData.get('notes')),
+  }
+
+  const what = data.label ?? item.name
+
+  if (id) {
+    const existing = await prisma.projectEquipmentAssignment.findFirst({ where: { id, projectId } })
+    if (!existing) return { error: 'That entry is not on this project.' }
+
+    const updated = await prisma.projectEquipmentAssignment.update({ where: { id }, data })
+    await recordFieldChanges({
+      actor: user,
+      entity: 'ProjectEquipmentAssignment',
+      entityId: id,
+      entityLabel: `${project.number} ${what}`,
+      before: equipmentFields(existing as unknown as Record<string, unknown>),
+      after: equipmentFields(updated as unknown as Record<string, unknown>),
+      labels: EQUIPMENT_LABELS,
+    })
+  } else {
+    const last = await prisma.projectEquipmentAssignment.findFirst({
+      where: { projectId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    })
+    const created = await prisma.projectEquipmentAssignment.create({
+      data: { ...data, projectId, sortOrder: (last?.sortOrder ?? -1) + 1 },
+    })
+    await recordAudit({
+      companyId: user.companyId,
+      userId: user.id,
+      actor: user,
+      entity: 'ProjectEquipmentAssignment',
+      entityId: created.id,
+      entityLabel: `${project.number} ${what}`,
+      action: 'CREATE',
+      summary: `${what} charged to ${project.number} for ${units} ${basis.toLowerCase()} units`,
+    })
+  }
+
+  revalidatePath(`/projects/${projectId}/labor`)
+  revalidatePath(`/projects/${projectId}`)
+  return {}
+}
+
+export async function deleteEquipmentAssignment(formData: FormData): Promise<{ error?: string }> {
+  const user = await requireUser()
+  assertCan(user.role, 'edit:wage_rates')
+
+  const id = String(formData.get('id'))
+  const assignment = await prisma.projectEquipmentAssignment.findFirst({
+    where: { id, project: { companyId: user.companyId } },
+    include: { project: { select: { id: true, number: true } }, item: { select: { name: true } } },
+  })
+  if (!assignment) return { error: 'That entry is not on this account.' }
+
+  await prisma.projectEquipmentAssignment.delete({ where: { id } })
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'ProjectEquipmentAssignment',
+    entityId: id,
+    entityLabel: `${assignment.project.number} ${assignment.label ?? assignment.item.name}`,
+    action: 'DELETE',
+    summary: `${assignment.label ?? assignment.item.name} taken off ${assignment.project.number}`,
+  })
+
+  revalidatePath(`/projects/${assignment.projectId}/labor`)
   return {}
 }

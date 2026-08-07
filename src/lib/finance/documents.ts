@@ -36,6 +36,7 @@ export type DocumentKind =
   | 'CONTRACT'
   | 'CONTRACT_AMENDMENT'
   | 'ADDENDUM'
+  | 'TIME_AND_MATERIALS'
   | 'OWNER_CHANGE'
   | 'SUBCONTRACT_CHANGE'
   | 'OTHER'
@@ -58,6 +59,7 @@ export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {
   CONTRACT: 'Contract',
   CONTRACT_AMENDMENT: 'Contract amendment',
   ADDENDUM: 'Addendum',
+  TIME_AND_MATERIALS: 'Time and materials ticket',
   OWNER_CHANGE: 'Owner change',
   SUBCONTRACT_CHANGE: 'Subcontract change',
   OTHER: 'Other document',
@@ -95,6 +97,7 @@ export const REVENUE_KINDS = new Set<DocumentKind>([
   'CONTRACT',
   'CONTRACT_AMENDMENT',
   'ADDENDUM',
+  'TIME_AND_MATERIALS',
   'OWNER_CHANGE',
 ])
 
@@ -142,6 +145,16 @@ export interface DocumentInput {
   approvedByName: string | null
   approvalCertification: string | null
   postsToBudget: boolean
+  /**
+   * The change order this ticket is billed under.
+   *
+   * Time and materials tickets are signed a day at a time and then rolled into
+   * a change order for billing. A ticket that names a parent contributes
+   * nothing to the contract value on its own, because the change order carries
+   * the money. Without this the same work would be counted twice.
+   */
+  rollsUpToId: string | null
+  rollsUpToNumber: string | null
   signatures: { party: string; status: string; signedAt: Date | null }[]
   attachmentCount: number
   signedDocumentCount: number
@@ -171,6 +184,16 @@ export interface DocumentDerived extends DocumentInput {
   /** Entered, signed, but not yet certified: real exposure, not yet money. */
   isPending: boolean
   isDead: boolean
+  /** Billed under another document, so it adds nothing on its own. */
+  isRolledUp: boolean
+  /**
+   * True when this document's amount belongs in the contract value at all.
+   *
+   * False for the prime contract, which sets the original value rather than
+   * changing it; for a subcontract change, which moves cost and no revenue; and
+   * for a ticket rolled up into a change order that carries the money instead.
+   */
+  countsTowardContract: boolean
   /** True when this document may be certified now. */
   canApprove: boolean
   /** Why not, when it cannot. */
@@ -206,6 +229,7 @@ export function deriveDocument(
   lines: readonly DocumentLineInput[],
   laborRates: ReadonlyMap<string, LaborRateEntry>,
   dataDate: Date,
+  equipmentRates: ReadonlyMap<string, number> = new Map(),
 ): DocumentDerived {
   const derivedLines: DocumentLineDerived[] = lines.map((line) => ({
     ...deriveEstimateItem(
@@ -215,6 +239,7 @@ export function deriveDocument(
         salesTaxPct: document.markups.salesTaxPct,
         smallToolsPct: document.markups.smallToolsPct,
         laborRates,
+        equipmentRates,
       },
     ),
     costCodeId: line.costCodeId,
@@ -243,6 +268,9 @@ export function deriveDocument(
   const official = isOfficial(document)
   const isDead = DEAD_STATUSES.has(document.status)
   const isPending = !official && !isDead
+  const isRolledUp = document.rollsUpToId !== null
+  const countsTowardContract =
+    REVENUE_KINDS.has(document.documentKind) && document.documentKind !== 'CONTRACT' && !isRolledUp
 
   let daysPending = 0
   if (document.dateInitiated) {
@@ -281,6 +309,14 @@ export function deriveDocument(
   if (ownerAmount < 0 && REVENUE_KINDS.has(document.documentKind)) {
     issues.push('A credit to the owner. Check the sign before this is approved.')
   }
+  if (isRolledUp) {
+    issues.push(
+      `Billed under ${document.rollsUpToNumber ?? 'another document'}, so this ticket adds nothing to the contract value on its own.`,
+    )
+  }
+  if (document.documentKind === 'TIME_AND_MATERIALS' && signatureCount === 0 && !official) {
+    issues.push('No signing party recorded. A time and materials ticket is worth what somebody signed for on the day.')
+  }
   if (document.priceFromLines && ownerAmount > 0 && costAmount > ownerAmount) {
     issues.push('The cost is above the amount presented, so this document loses money as priced.')
   }
@@ -298,6 +334,8 @@ export function deriveDocument(
     isOfficial: official,
     isPending,
     isDead,
+    isRolledUp,
+    countsTowardContract,
     canApprove: approvalBlockedReason === null,
     approvalBlockedReason,
     signedCount,
@@ -341,6 +379,9 @@ export interface DocumentTotals {
   /** Rejected, cancelled, voided or superseded. */
   rejected: number
   rejectedCount: number
+  /** Of the above, what is billed under another document rather than on its own. */
+  rolledUp: number
+  rolledUpCount: number
   /** Cost side of the same four. */
   approvedCost: number
   pendingCost: number
@@ -378,6 +419,11 @@ export function documentTotals(documents: readonly DocumentDerived[]): DocumentT
     pendingCount: pending.length,
     rejected: sumBy(rejected, (document) => document.ownerAmount),
     rejectedCount: rejected.length,
+    rolledUp: sumBy(
+      documents.filter((document) => document.isRolledUp),
+      (document) => document.ownerAmount,
+    ),
+    rolledUpCount: documents.filter((document) => document.isRolledUp).length,
     approvedCost,
     pendingCost: sumBy(pending, (document) => document.costAmount),
     approvedMargin: approvedRevenue - approvedCost,
@@ -421,7 +467,42 @@ export function originalContractValue(
  * because it is the original value rather than a change to it.
  */
 export function contractChangeDocuments(documents: readonly DocumentDerived[]): DocumentDerived[] {
-  return documents.filter(
-    (document) => REVENUE_KINDS.has(document.documentKind) && document.documentKind !== 'CONTRACT',
-  )
+  return documents.filter((document) => document.countsTowardContract)
+}
+
+/**
+ * Time and materials tickets, and how much of them the change orders carry.
+ *
+ * A ticket is signed on the day, for hours and machines that were actually
+ * there. It becomes money either on its own, where the owner is billed
+ * directly, or through a change order that rolls several tickets together. The
+ * two must not both count, and this says which is which.
+ */
+export function timeAndMaterialsSummary(documents: readonly DocumentDerived[]) {
+  const tickets = documents.filter((document) => document.documentKind === 'TIME_AND_MATERIALS')
+  const rolledUp = tickets.filter((ticket) => ticket.isRolledUp)
+  const standalone = tickets.filter((ticket) => !ticket.isRolledUp)
+  const unsigned = tickets.filter((ticket) => ticket.signedCount < ticket.signatureCount || ticket.signatureCount === 0)
+
+  const laborHours = sumBy(tickets, (ticket) => sumBy(ticket.lines, (line) => line.laborHours))
+  const equipmentHours = sumBy(tickets, (ticket) => sumBy(ticket.lines, (line) => line.equipmentHours))
+
+  return {
+    count: tickets.length,
+    entered: sumBy(tickets, (ticket) => ticket.ownerAmount),
+    approved: sumBy(
+      tickets.filter((ticket) => ticket.isOfficial),
+      (ticket) => ticket.ownerAmount,
+    ),
+    rolledUp: sumBy(rolledUp, (ticket) => ticket.ownerAmount),
+    rolledUpCount: rolledUp.length,
+    standalone: sumBy(standalone, (ticket) => ticket.ownerAmount),
+    standaloneCount: standalone.length,
+    /** Tickets nobody has signed for, which is the number to chase. */
+    unsignedCount: unsigned.length,
+    unsignedValue: sumBy(unsigned, (ticket) => ticket.ownerAmount),
+    laborHours,
+    equipmentHours,
+    cost: sumBy(tickets, (ticket) => ticket.costAmount),
+  }
 }

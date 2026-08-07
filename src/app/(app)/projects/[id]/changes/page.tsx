@@ -4,7 +4,7 @@ import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { getProjectDocuments } from '@/lib/queries/documents'
 import { prisma } from '@/lib/db'
-import { DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS } from '@/lib/finance'
+import { DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS, timeAndMaterialsSummary } from '@/lib/finance'
 import { money, moneyShort, percent } from '@/lib/format'
 import { InfoNote, Kpi, KpiGrid, MoneyKpi, Section } from '@/components/ui'
 import { ChartFrame, DonutChart, HorizontalBars } from '@/components/charts/primitives'
@@ -43,6 +43,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
   const canUnapprove = can(user.role, 'unapprove:contract_documents')
   const showMargins = can(user.role, 'view:margins')
   const totals = documents.totals
+  const tm = timeAndMaterialsSummary(documents.documents)
 
   // Value by status, for the shape of what is sitting where.
   const byStatus = new Map<string, number>()
@@ -131,6 +132,42 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
         any figure on this system.
       </InfoNote>
 
+      {tm.count > 0 && (
+        <Section
+          title="Time and materials"
+          description="Signed a day at a time, then either billed on its own or rolled into a change order that carries it"
+        >
+          <KpiGrid cols={5}>
+            <MoneyKpi label="Tickets raised" amount={tm.entered} detail={`${tm.count} tickets`} />
+            <MoneyKpi
+              label="Billed on their own"
+              amount={tm.standalone}
+              detail={`${tm.standaloneCount} not rolled up`}
+            />
+            <MoneyKpi
+              label="Rolled into change orders"
+              amount={tm.rolledUp}
+              detail={`${tm.rolledUpCount} carried elsewhere, counted once`}
+            />
+            <Kpi
+              label="Hours behind them"
+              value={`${Math.round(tm.laborHours)} labor`}
+              detail={`${Math.round(tm.equipmentHours)} machine hours`}
+            />
+            <MoneyKpi
+              label="Nobody has signed"
+              amount={tm.unsignedValue}
+              tone={tm.unsignedCount > 0 ? 'adverse' : 'favorable'}
+              detail={
+                tm.unsignedCount > 0
+                  ? `${tm.unsignedCount} tickets to chase`
+                  : 'Every ticket is signed'
+              }
+            />
+          </KpiGrid>
+        </Section>
+      )}
+
       {canEdit && (
         <NewDocumentPanel
           projectId={id}
@@ -170,6 +207,8 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
             isOfficial: document.isOfficial,
             isPending: document.isPending,
             isDead: document.isDead,
+            isRolledUp: document.isRolledUp,
+            rollsUpToNumber: document.rollsUpToNumber,
             canApprove: document.canApprove,
             approvalBlockedReason: document.approvalBlockedReason,
             signedCount: document.signedCount,

@@ -526,6 +526,154 @@ async function main() {
   if (!cleaned.includes('Exercise PM')) ok('a classification with nothing depending on it can be deleted')
   else bad('classification delete', 'the classification was still there afterwards')
 
+  // ── Equipment and the rates it is hired at ───────────────────────────────
+  // A machine costs three separate things: the hire, the fuel and wear for the
+  // hours it actually ran, and the standby for the hours it stood idle. They
+  // are proved separately here because adding them up wrongly is the usual way
+  // plant cost goes missing.
+  console.log('\nEquipment and rates')
+
+  const machineName = 'Exercise Excavator'
+  const clearMachine = async () => {
+    await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
+    const existing = page.locator('tr', { hasText: machineName })
+    if ((await existing.count()) > 0) {
+      await existing.first().getByRole('button', { name: 'Delete', exact: true }).click()
+      await page.waitForTimeout(300)
+      await page.getByRole('button', { name: 'Delete the machine' }).click()
+      await page.waitForTimeout(2000)
+    }
+  }
+
+  // Clear anything a previous run left behind, job first so the machine is free
+  // to be deleted.
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  const leftoverPlant = page.locator('tr', { hasText: machineName })
+  if ((await leftoverPlant.count()) > 0) {
+    await leftoverPlant.first().getByRole('button', { name: 'Remove', exact: true }).click()
+    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: 'Take it off the job' }).click()
+    await page.waitForTimeout(2000)
+  }
+  await clearMachine()
+
+  await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Add the first machine|Add a machine/ }).first().click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="name"]', machineName)
+  await page.fill('input[name="category"]', 'Earthmoving')
+  await page.selectOption('select[name="ownership"]', 'RENTED')
+  await page.fill('input[name="hourlyRate"]', '0')
+  await page.fill('input[name="dailyRate"]', '1200')
+  // Quoted at 4,500 a week against 1,200 a day. Five days would be 6,000, and
+  // the whole point of entering each basis is that the software never invents
+  // the difference.
+  await page.fill('input[name="weeklyRate"]', '4500')
+  await page.fill('input[name="monthlyRate"]', '0')
+  await page.fill('input[name="operatingCostPerHour"]', '45')
+  await page.fill('input[name="standbyRatePerHour"]', '300')
+  await page.fill('input[name="hoursPerDay"]', '8')
+  await page.fill('input[name="daysPerWeek"]', '5')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Add it' }).click()])
+
+  await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
+  const machineRow = await page.locator('tr', { hasText: machineName }).first().innerText()
+  /*
+    An hour, all in, worked from the shortest basis that carries a rate:
+
+      daily rate 1,200 over an 8 hour day        150.00
+      fuel and wear an hour                       45.00
+      an hour, all in                            195.00
+  */
+  if (machineRow.includes('$195.00')) {
+    ok('an hourly cost is worked down from the shortest quoted basis and carries fuel and wear')
+  } else {
+    bad('equipment rate', `expected $195.00 an hour all in, row read ${machineRow.replace(/\n/g, ' | ')}`)
+  }
+  if (machineRow.includes('$4,500') && !machineRow.includes('$6,000')) {
+    ok('a weekly rate is kept as quoted rather than multiplied out of the daily one')
+  } else {
+    bad('equipment rate', 'the weekly rate was not carried through as entered')
+  }
+
+  // Charge it to the job, with more hours run than the hire covers, so the
+  // check that catches under-recorded hire has something to catch.
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  await page
+    .getByRole('button', { name: /Charge a machine to this job|Charge another machine/ })
+    .first()
+    .click()
+  await page.waitForTimeout(400)
+  const machineOption = await page.locator('select[name="equipmentItemId"] option', { hasText: machineName }).first().getAttribute('value')
+  await page.selectOption('select[name="equipmentItemId"]', machineOption)
+  await page.selectOption('select[name="basis"]', 'DAILY')
+  await page.fill('input[name="units"]', '10')
+  await page.fill('input[name="operatingHours"]', '90')
+  await page.fill('input[name="standbyHours"]', '4')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Charge it to the job' }).click()])
+
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  const overrunRow = await page.locator('tr', { hasText: machineName }).first().innerText()
+  if (/90 operating hours against a hire that covers 80\.0/.test(overrunRow)) {
+    ok('a machine that ran more hours than its hire covers is flagged rather than quietly priced')
+  } else {
+    bad('equipment overrun check', `the overrun was not flagged, row read ${overrunRow.replace(/\n/g, ' | ')}`)
+  }
+
+  // Correct the hours to something the hire covers, and check the three parts.
+  const plantRow = page.locator('tr', { hasText: machineName }).first()
+  await plantRow.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="operatingHours"]', '60')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save entry' }).click()])
+
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  const dailyRow = await page.locator('tr', { hasText: machineName }).first().innerText()
+  /*
+    Worked by hand, the three costs kept apart:
+
+      hire      10 days x 1,200            12,000.00
+      fuel      60 hours run x 45           2,700.00
+      standby   4 hours idle x 300          1,200.00
+      cost to this job                     15,900.00
+  */
+  const wantsPlant = ['$12,000', '$2,700', '$1,200', '$15,900']
+  const missingPlant = wantsPlant.filter((amount) => !dailyRow.includes(amount))
+  if (missingPlant.length === 0) {
+    ok('hire, fuel and wear, and standby are priced apart and add up to the cost to the job')
+  } else {
+    bad('equipment cost', `missing ${missingPlant.join(', ')} from ${dailyRow.replace(/\n/g, ' | ')}`)
+  }
+
+  // Two weeks on the weekly rate is 9,000, not ten days at the daily rate.
+  await page.locator('tr', { hasText: machineName }).first().getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.waitForTimeout(400)
+  await page.selectOption('select[name="basis"]', 'WEEKLY')
+  await page.fill('input[name="units"]', '2')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save entry' }).click()])
+
+  await page.goto(`${BASE}/projects/${projectId}/labor`, { waitUntil: 'networkidle' })
+  const weeklyRow = await page.locator('tr', { hasText: machineName }).first().innerText()
+  if (weeklyRow.includes('$9,000') && !weeklyRow.includes('$12,000')) {
+    ok('hiring by the week charges the weekly rate, not five daily ones')
+  } else {
+    bad('equipment basis', `two weeks did not price at 9,000, row read ${weeklyRow.replace(/\n/g, ' | ')}`)
+  }
+
+  const laborPageText = await page.locator('body').innerText()
+  if (/\$1,200 of it standby/.test(laborPageText)) {
+    ok('the job reports how much of its plant cost was paid for machines standing idle')
+  } else {
+    bad('standby reporting', 'the standby share did not surface on the labor and equipment tab')
+  }
+
+  // Take it off the job. The machine itself stays on the list, because the
+  // time and materials section below prices a ticket from its rate.
+  await page.locator('tr', { hasText: machineName }).first().getByRole('button', { name: 'Remove', exact: true }).click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Take it off the job' }).click()
+  await page.waitForTimeout(2000)
+
   // ── Contract documents and the approval gate ─────────────────────────────
   // The rule the whole feature exists for, driven end to end: an entered
   // document changes nothing until somebody certifies that it is signed.
@@ -765,6 +913,238 @@ async function main() {
   const tidied = await page.locator('body').innerText()
   if (!tidied.includes('CO-EX1')) ok('an unapproved document can be deleted, and the project is back as it was')
   else bad('cleanup', 'the exercise change order was still on the project')
+
+  // ── Time and materials, and the double counting it invites ───────────────
+  // A ticket is signed on the day for hours and machines that were really
+  // there. It becomes money either on its own or through a change order that
+  // bills it. Both counting would bill the same work twice, and that is the
+  // thing proved here.
+  console.log('\nTime and materials')
+
+  const removeDocument = async (number) => {
+    await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+    const row = page.locator('tr', { hasText: number }).first()
+    if ((await row.count()) === 0) return
+    await row.locator('a').first().click()
+    await page.waitForURL(/\/changes\/[^/]+$/, { timeout: 20000 })
+    const withdraw = page.locator('input[type="checkbox"][aria-label^="Withdraw"]')
+    if ((await withdraw.count()) > 0) {
+      await withdraw.first().click()
+      await page.waitForTimeout(400)
+      await page.fill('[role="dialog"] textarea', 'Clearing an exercise run.')
+      await page.getByRole('button', { name: 'Yes, withdraw it' }).click()
+      await page.waitForTimeout(2500)
+    }
+    // "Remove" appears against lines, signing parties and attachments alike,
+    // so take the first one and back out if the dialog is not a line's.
+    for (let guard = 0; guard < 10; guard++) {
+      const removes = page.getByRole('button', { name: 'Remove', exact: true })
+      if ((await removes.count()) === 0) break
+      await removes.first().click()
+      await page.waitForTimeout(400)
+      const confirmLine = page.getByRole('button', { name: 'Remove the line' })
+      if ((await confirmLine.count()) === 0) {
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(200)
+        break
+      }
+      await confirmLine.click()
+      await page.waitForTimeout(2000)
+    }
+    await page.getByRole('button', { name: 'Delete this document' }).click()
+    await page.waitForTimeout(400)
+    await page.getByRole('button', { name: 'Delete the document' }).click()
+    await page.waitForTimeout(2500)
+  }
+
+  // The ticket first: a change order carrying it cannot be deleted while it
+  // does.
+  await removeDocument('TM-EX1')
+  await removeDocument('CO-EX2')
+
+  const tmBaseline = await contractBefore()
+
+  // The change order that will carry the ticket. Priced from a line with no
+  // markup, so the arithmetic below is the whole story.
+  await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Raise a change order/ }).click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="number"]', 'CO-EX2')
+  await page.fill('input[name="description"]', 'Exercise change order carrying tickets')
+  await page.selectOption('select[name="documentKind"]', 'CHANGE_ORDER')
+  await page.selectOption('select[name="status"]', 'DRAFT')
+  await page.fill('input[name="profitPct"]', '0')
+  await page.fill('input[name="overheadPct"]', '0')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Raise it' }).click()])
+  await page.waitForURL(/\/changes\/[^/]+$/, { timeout: 20000 })
+
+  await page.getByRole('button', { name: /Add the first line|Add a line/ }).first().click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="description"]', 'Exercise carried scope')
+  await page.selectOption('select[name="measure"]', 'LS')
+  await page.fill('input[name="count"]', '1')
+  await page.fill('input[name="otherUnitCost"]', '20000')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Add the line' }).click()])
+
+  // The ticket, priced off the machine on the equipment list rather than a
+  // rate typed in from memory.
+  await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Raise a change order/ }).click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="number"]', 'TM-EX1')
+  await page.fill('input[name="description"]', 'Exercise time and materials day')
+  await page.selectOption('select[name="documentKind"]', 'TIME_AND_MATERIALS')
+  await page.selectOption('select[name="status"]', 'DRAFT')
+  await page.fill('input[name="profitPct"]', '0')
+  await page.fill('input[name="overheadPct"]', '0')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Raise it' }).click()])
+  await page.waitForURL(/\/changes\/[^/]+$/, { timeout: 20000 })
+  const ticketUrl = page.url()
+
+  await page.getByRole('button', { name: /Add the first line|Add a line/ }).first().click()
+  await page.waitForTimeout(400)
+  await page.fill('input[name="description"]', 'Excavator and haul, day rate')
+  await page.selectOption('select[name="measure"]', 'LS')
+  await page.fill('input[name="count"]', '1')
+  await page.fill('input[name="equipmentClass"]', machineName)
+  await page.fill('input[name="equipmentHrsPerUnit"]', '8')
+  await page.fill('input[name="otherUnitCost"]', '440')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Add the line' }).click()])
+
+  /*
+    Worked by hand, the machine rate coming off the equipment list:
+
+      machine   8 hours x 195.00 an hour, all in    1,560.00
+      other                                           440.00
+      no overhead, no profit
+      ticket                                        2,000.00
+  */
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  const ticketText = await page.locator('body').innerText()
+  if (ticketText.includes('$2,000')) {
+    ok('a time and materials ticket prices its machine hours straight off the equipment list')
+  } else {
+    bad('ticket pricing', 'the ticket did not come to 2,000 from the equipment rate and the other cost')
+  }
+  if (/No signing party recorded/.test(ticketText)) {
+    ok('a ticket nobody signed for says so, because that is what a ticket is worth')
+  } else {
+    bad('ticket signature check', 'an unsigned ticket did not report that nobody signed it')
+  }
+
+  await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+  const tmPanel = await page.locator('body').innerText()
+  if (/time and materials/i.test(tmPanel) && /8 machine hours/.test(tmPanel)) {
+    ok('the tickets on a job are summarised with the hours standing behind them')
+  } else {
+    bad('time and materials panel', 'the panel did not carry the machine hours behind the tickets')
+  }
+
+  // Sign it and approve it standing on its own, which is money.
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Add a signing party' }).click()
+  await page.waitForTimeout(300)
+  await page.fill('input[name="party"]', 'Owner representative')
+  await page.fill('input[name="role"]', 'Owner')
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add the party' }).click()])
+
+  const signingRow = page.locator('tr', { hasText: 'Owner representative' }).first()
+  await signingRow.getByRole('button', { name: 'Edit' }).click()
+  await page.waitForTimeout(400)
+  await page.selectOption('select[name="status"]', 'SIGNED')
+  await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Save party' }).click()])
+
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Edit this document' }).click()
+  await page.waitForTimeout(400)
+  await page.selectOption('select[name="status"]', 'FULLY_SIGNED')
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save document' }).click()])
+
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  await page.locator('input[type="checkbox"][aria-label^="Approve"]').first().click()
+  await page.waitForTimeout(400)
+  await page.locator('[role="dialog"] input[type="checkbox"]').check()
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Yes, approve it' }).click()])
+
+  const afterTicketApproval = await contractBefore()
+  if (tmBaseline !== null && afterTicketApproval !== null && afterTicketApproval - tmBaseline === 2000) {
+    ok('a signed ticket billed on its own reaches the contract value like any other change')
+  } else {
+    bad('ticket approval', `expected a rise of 2,000, saw ${tmBaseline} to ${afterTicketApproval}`)
+  }
+
+  // Now bill it through the change order instead. The approval has to come off
+  // first, which is the lock working.
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  const lockedRollUp = await page.locator('body').innerText()
+  if (/where it bills is locked/.test(lockedRollUp)) {
+    ok('an approved ticket cannot be moved under a change order without withdrawing the approval')
+  } else {
+    bad('roll up lock', 'where an approved ticket bills was not locked')
+  }
+
+  await page.locator('input[type="checkbox"][aria-label^="Withdraw"]').first().click()
+  await page.waitForTimeout(400)
+  await page.fill('[role="dialog"] textarea', 'Exercise run, moving the ticket under the change order that bills it.')
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Yes, withdraw it' }).click()])
+
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  const carrierOption = await page
+    .locator('select[name="rollsUpToId"] option', { hasText: 'CO-EX2' })
+    .first()
+    .getAttribute('value')
+  await page.selectOption('select[name="rollsUpToId"]', carrierOption)
+  await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save where it bills' }).click()])
+
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' })
+  const rolledText = await page.locator('body').innerText()
+  if (/carried by CO-EX2|is carried by CO-EX2/.test(rolledText)) {
+    ok('a ticket says which change order carries it, on the ticket itself')
+  } else {
+    bad('roll up', 'the ticket did not say which change order bills it')
+  }
+
+  // Approve it again. It is signed, it is real, and it still must not move the
+  // contract value, because CO-EX2 is what bills this work.
+  await page.locator('input[type="checkbox"][aria-label^="Approve"]').first().click()
+  await page.waitForTimeout(400)
+  await page.locator('[role="dialog"] input[type="checkbox"]').check()
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Yes, approve it' }).click()])
+
+  const afterRolledApproval = await contractBefore()
+  if (afterRolledApproval === tmBaseline) {
+    ok('approving a rolled up ticket adds nothing, so the same signed work cannot be billed twice')
+  } else {
+    bad('double counting', `the rolled up ticket moved the contract value from ${tmBaseline} to ${afterRolledApproval}`)
+  }
+
+  const rolledPanel = await page.locator('body').innerText()
+  if (/1 carried elsewhere, counted once/.test(rolledPanel)) {
+    ok('the tickets panel separates what is billed on its own from what a change order carries')
+  } else {
+    bad('time and materials panel', 'the rolled up tickets were not reported separately')
+  }
+
+  // Put the job back the way it was found.
+  await removeDocument('TM-EX1')
+  await removeDocument('CO-EX2')
+  await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
+  const tmCleaned = await page.locator('body').innerText()
+  const tmFinal = await contractBefore()
+  if (!tmCleaned.includes('TM-EX1') && !tmCleaned.includes('CO-EX2') && tmFinal === tmBaseline) {
+    ok('the tickets and the change order carrying them come off cleanly, leaving the contract value as found')
+  } else {
+    bad('cleanup', `documents left behind, or the contract value sat at ${tmFinal} against ${tmBaseline}`)
+  }
+
+  await clearMachine()
+  await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
+  const plantCleaned = await page.locator('body').innerText()
+  if (!plantCleaned.includes(machineName)) {
+    ok('a machine with nothing charged against it can be taken off the equipment list')
+  } else {
+    bad('equipment cleanup', 'the exercise machine was still on the list')
+  }
 
   // ── Reports and exports ──────────────────────────────────────────────────
   console.log('\nExports')

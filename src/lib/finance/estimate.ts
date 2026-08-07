@@ -96,6 +96,14 @@ export interface EstimateItemInput {
   laborClass: string | null
   laborHrsPerUnit: number
   laborRateOverride: number | null
+  /**
+   * The machine this line runs, named as the equipment list names it. Priced at
+   * hours times its rate, exactly the way labor is, and added to whatever the
+   * equipment unit cost below carries.
+   */
+  equipmentClass?: string | null
+  equipmentHrsPerUnit?: number
+  equipmentRateOverride?: number | null
   materialUnitCost: number
   equipmentUnitCost: number
   subUnitCost: number
@@ -134,6 +142,14 @@ export interface EstimateFactors {
   salesTaxPct: number
   smallToolsPct: number
   laborRates: ReadonlyMap<string, LaborRateEntry>
+  /**
+   * What an hour of each named machine costs, from the equipment list.
+   *
+   * A plain number rather than an entry with a burden flag, because equipment
+   * carries no payroll burden: its rate already includes everything owning or
+   * hiring it costs, and the fuel and wear are on the item beside it.
+   */
+  equipmentRates?: ReadonlyMap<string, number>
 }
 
 export interface EstimateItemDerived extends EstimateItemInput {
@@ -143,6 +159,8 @@ export interface EstimateItemDerived extends EstimateItemInput {
   /** True when `laborRate` already carried its burden, so none was added. */
   laborRateBurdened: boolean
   laborRateSource: string | null
+  equipmentRate: number
+  equipmentHours: number
   laborHours: number
   laborCost: number
   materialCost: number
@@ -191,7 +209,14 @@ export function deriveEstimateItem(
   const laborRateBurdened = !overridden && (entry?.burdened ?? false)
   const laborCost = laborHours * laborRate * (laborRateBurdened ? 1 : 1 + num(factors.laborBurdenPct))
   const materialCost = grossQty * num(item.materialUnitCost) * (1 + num(factors.salesTaxPct))
-  const equipmentCost = grossQty * num(item.equipmentUnitCost)
+  // Equipment prices two ways, and a line may use either or both: a unit cost
+  // the way material does, and hours at a rate the way labor does.
+  const equipmentHours = grossQty * num(item.equipmentHrsPerUnit)
+  const equipmentRate =
+    item.equipmentRateOverride != null
+      ? num(item.equipmentRateOverride)
+      : num(item.equipmentClass ? factors.equipmentRates?.get(item.equipmentClass) : 0)
+  const equipmentCost = grossQty * num(item.equipmentUnitCost) + equipmentHours * equipmentRate
   const subCost = grossQty * num(item.subUnitCost)
   const otherCost = grossQty * num(item.otherUnitCost)
   const totalCost = laborCost + materialCost + equipmentCost + subCost + otherCost
@@ -199,7 +224,8 @@ export function deriveEstimateItem(
   const anyInput =
     num(item.count) + num(item.length) + num(item.width) + num(item.depth) +
     num(item.laborHrsPerUnit) + num(item.materialUnitCost) +
-    num(item.equipmentUnitCost) + num(item.subUnitCost) + num(item.otherUnitCost) !== 0
+    num(item.equipmentUnitCost) + num(item.subUnitCost) + num(item.otherUnitCost) +
+    num(item.equipmentHrsPerUnit) !== 0
 
   const qaFlags: string[] = []
   if (anyInput) {
@@ -218,6 +244,8 @@ export function deriveEstimateItem(
     laborRate,
     laborRateBurdened,
     laborRateSource: overridden ? 'Rate entered on this line' : (entry?.source ?? null),
+    equipmentRate,
+    equipmentHours,
     laborHours,
     laborCost,
     materialCost,
