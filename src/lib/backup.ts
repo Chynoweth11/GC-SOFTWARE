@@ -5,7 +5,8 @@ import { prisma } from '@/lib/db'
  * Project backup and restore.
  *
  * The backup carries stored values only: budgets, commitments, costs, change
- * orders, billings, forecasts and quantities. No derived figure is written into
+ * orders, billings, forecasts, quantities, the wage schedule the job is built
+ * to, its team, its plant and its filings. No derived figure is written into
  * the file, because a restored project must recompute its entire position from
  * the same engine as a live one. A backup that carried a computed margin would
  * become a second source of truth the moment a formula changed.
@@ -16,7 +17,7 @@ import { prisma } from '@/lib/db'
  */
 
 export const BACKUP_FORMAT = 'constructx.project.backup'
-export const BACKUP_VERSION = 1
+export const BACKUP_VERSION = 2
 
 export interface ProjectBackup {
   format: typeof BACKUP_FORMAT
@@ -37,6 +38,10 @@ export interface ProjectBackup {
   cashFlowPeriods: Record<string, unknown>[]
   quantityItems: Record<string, unknown>[]
   snapshots: Record<string, unknown>[]
+  wageRateSheets: Record<string, unknown>[]
+  laborAssignments: Record<string, unknown>[]
+  equipmentAssignments: Record<string, unknown>[]
+  complianceRequirements: Record<string, unknown>[]
 }
 
 function iso(value: Date | null | undefined): string | null {
@@ -52,8 +57,24 @@ export async function exportProject(projectId: string, companyId: string): Promi
   })
   if (!project) return null
 
-  const [budgetLines, revisions, commitments, subInvoices, costs, changeOrders, sovLines, billings, forecasts, cashFlow, quantities, snapshots] =
-    await Promise.all([
+  const [
+    budgetLines,
+    revisions,
+    commitments,
+    subInvoices,
+    costs,
+    changeOrders,
+    sovLines,
+    billings,
+    forecasts,
+    cashFlow,
+    quantities,
+    snapshots,
+    wageSheets,
+    laborAssignments,
+    equipmentAssignments,
+    complianceRequirements,
+  ] = await Promise.all([
       prisma.budgetLine.findMany({
         where: { projectId },
         include: { costCode: { include: { trade: true } }, trade: true },
@@ -83,6 +104,7 @@ export async function exportProject(projectId: string, companyId: string): Promi
         where: { projectId },
         include: {
           trade: true,
+          rollsUpTo: { select: { number: true } },
           signatures: { orderBy: { sortOrder: 'asc' } },
           attachments: { orderBy: { createdAt: 'asc' } },
           lines: { include: { costCode: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
@@ -107,6 +129,37 @@ export async function exportProject(projectId: string, companyId: string): Promi
         orderBy: { sortOrder: 'asc' },
       }),
       prisma.projectSnapshot.findMany({ where: { projectId }, orderBy: { asOf: 'asc' } }),
+      prisma.wageRateSheet.findMany({
+        where: { projectId },
+        include: {
+          jurisdiction: { select: { code: true } },
+          county: { select: { name: true } },
+          verifiedBy: { select: { email: true } },
+          lines: { orderBy: [{ sortOrder: 'asc' }, { trade: 'asc' }] },
+        },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.projectLaborAssignment.findMany({
+        where: { projectId },
+        include: { classification: { select: { name: true } }, costCode: { select: { code: true } } },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      }),
+      prisma.projectEquipmentAssignment.findMany({
+        where: { projectId },
+        include: { item: { select: { name: true } }, costCode: { select: { code: true } } },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      }),
+      prisma.complianceRequirement.findMany({
+        where: { projectId },
+        include: {
+          responsible: { select: { email: true } },
+          submissions: {
+            include: { submittedBy: { select: { email: true } } },
+            orderBy: { dueDate: 'asc' },
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+      }),
     ])
 
   // Every line item the project touches, so a restore into a fresh company can
@@ -267,6 +320,10 @@ export async function exportProject(projectId: string, companyId: string): Promi
       tradeName: co.trade?.name ?? null,
       counterparty: co.counterparty,
       reference: co.reference,
+      // Which document bills this one, by its number. A time and materials
+      // ticket restored without its parent would start counting on its own and
+      // bill the same signed work twice.
+      rollsUpToNumber: co.rollsUpTo?.number ?? null,
       priceFromLines: co.priceFromLines,
       enteredOwnerAmount: co.enteredOwnerAmount,
       enteredCostAmount: co.enteredCostAmount,
@@ -328,6 +385,9 @@ export async function exportProject(projectId: string, companyId: string): Promi
         laborClass: line.laborClass,
         laborHrsPerUnit: line.laborHrsPerUnit,
         laborRateOverride: line.laborRateOverride,
+        equipmentClass: line.equipmentClass,
+        equipmentHrsPerUnit: line.equipmentHrsPerUnit,
+        equipmentRateOverride: line.equipmentRateOverride,
         materialUnitCost: line.materialUnitCost,
         equipmentUnitCost: line.equipmentUnitCost,
         subUnitCost: line.subUnitCost,
@@ -416,6 +476,92 @@ export async function exportProject(projectId: string, companyId: string): Promi
       payload: s.payload,
       createdBy: s.createdBy,
     })),
+
+    /*
+      The wage schedule the job is being built to, its team, its plant and its
+      filings. Each of these names a shared record by its business key: the
+      jurisdiction by code, the classification and the machine by name, so a
+      restore into a company whose ids differ still finds them. Where the target
+      company has no such record the row is skipped with a warning rather than
+      invented, because a wage rate or an equipment rate this system made up
+      would be worse than an obvious gap.
+    */
+    wageRateSheets: wageSheets.map((sheet) => ({
+      name: sheet.name,
+      jurisdictionCode: sheet.jurisdiction.code,
+      countyName: sheet.county?.name ?? null,
+      rateScheduleDate: iso(sheet.rateScheduleDate),
+      determinationRef: sheet.determinationRef,
+      sutaPctOverride: sheet.sutaPctOverride,
+      verifiedAt: iso(sheet.verifiedAt),
+      verifiedByEmail: sheet.verifiedBy?.email ?? null,
+      verifiedNote: sheet.verifiedNote,
+      notes: sheet.notes,
+      lines: sheet.lines.map((line) => ({
+        trade: line.trade,
+        classification: line.classification,
+        hourlyWage: line.hourlyWage,
+        hourlyBenefits: line.hourlyBenefits,
+        trainingPerHour: line.trainingPerHour,
+        workersCompPerHour: line.workersCompPerHour,
+        overtimeMultiplier: line.overtimeMultiplier,
+        publishedBaseWage: line.publishedBaseWage,
+        publishedFringe: line.publishedFringe,
+        notes: line.notes,
+        sortOrder: line.sortOrder,
+      })),
+    })),
+
+    laborAssignments: laborAssignments.map((assignment) => ({
+      classificationName: assignment.classification.name,
+      label: assignment.label,
+      costCode: assignment.costCode?.code ?? null,
+      basis: assignment.basis,
+      budgetedHours: assignment.budgetedHours,
+      allocationPct: assignment.allocationPct,
+      startDate: iso(assignment.startDate),
+      endDate: iso(assignment.endDate),
+      loadedRateOverride: assignment.loadedRateOverride,
+      notes: assignment.notes,
+      sortOrder: assignment.sortOrder,
+    })),
+
+    equipmentAssignments: equipmentAssignments.map((assignment) => ({
+      equipmentName: assignment.item.name,
+      label: assignment.label,
+      costCode: assignment.costCode?.code ?? null,
+      basis: assignment.basis,
+      units: assignment.units,
+      operatingHours: assignment.operatingHours,
+      standbyHours: assignment.standbyHours,
+      startDate: iso(assignment.startDate),
+      endDate: iso(assignment.endDate),
+      rateOverride: assignment.rateOverride,
+      notes: assignment.notes,
+      sortOrder: assignment.sortOrder,
+    })),
+
+    complianceRequirements: complianceRequirements.map((requirement) => ({
+      kind: requirement.kind,
+      title: requirement.title,
+      agency: requirement.agency,
+      frequency: requirement.frequency,
+      firstDueDate: iso(requirement.firstDueDate),
+      endsOn: iso(requirement.endsOn),
+      leadDays: requirement.leadDays,
+      responsibleEmail: requirement.responsible?.email ?? null,
+      notes: requirement.notes,
+      active: requirement.active,
+      sortOrder: requirement.sortOrder,
+      submissions: requirement.submissions.map((submission) => ({
+        dueDate: iso(submission.dueDate),
+        periodEnd: iso(submission.periodEnd),
+        submittedAt: iso(submission.submittedAt),
+        submittedByEmail: submission.submittedBy?.email ?? null,
+        reference: submission.reference,
+        notes: submission.notes,
+      })),
+    })),
   }
 }
 
@@ -469,7 +615,11 @@ const COST_TX_TYPES = ['ACTUAL', 'ACCRUAL', 'COMMITTED_ADJUSTMENT'] as const
 const COST_TX_SOURCES = ['MANUAL', 'IMPORT', 'SUB_INVOICE', 'PAYROLL', 'PURCHASE_ORDER', 'JOURNAL'] as const
 const CO_TYPES = ['OWNER_REQUEST', 'DESIGN_CHANGE', 'FIELD_CONDITION', 'ALLOWANCE_RECONCILE', 'ASI_DRIVEN', 'BACKCHARGE', 'TIME_ONLY', 'INTERNAL_BUDGET'] as const
 const CO_STATUSES = ['DRAFT', 'INTERNAL_REVIEW', 'READY_TO_SEND', 'SENT_FOR_SIGNATURE', 'PARTIALLY_SIGNED', 'FULLY_SIGNED', 'APPROVED', 'REJECTED', 'CANCELLED', 'VOIDED', 'SUPERSEDED'] as const
-const DOCUMENT_KINDS = ['CHANGE_ORDER', 'CONTRACT', 'CONTRACT_AMENDMENT', 'ADDENDUM', 'OWNER_CHANGE', 'SUBCONTRACT_CHANGE', 'OTHER'] as const
+const DOCUMENT_KINDS = ['CHANGE_ORDER', 'CONTRACT', 'CONTRACT_AMENDMENT', 'ADDENDUM', 'OWNER_CHANGE', 'SUBCONTRACT_CHANGE', 'TIME_AND_MATERIALS', 'OTHER'] as const
+const ASSIGNMENT_BASES = ['HOURS', 'ALLOCATION'] as const
+const RATE_BASES = ['HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY'] as const
+const COMPLIANCE_KINDS = ['CERTIFIED_PAYROLL', 'PREVAILING_WAGE_POSTING', 'FRINGE_BENEFIT_STATEMENT', 'APPRENTICESHIP_UTILIZATION', 'EEO_REPORT', 'WAGE_DETERMINATION_UPDATE', 'INTENT_OR_AFFIDAVIT', 'OSHA_LOG', 'INSURANCE_CERTIFICATE', 'LICENSE_OR_REGISTRATION', 'OTHER'] as const
+const COMPLIANCE_FREQUENCIES = ['WEEKLY', 'BIWEEKLY', 'SEMIMONTHLY', 'MONTHLY', 'QUARTERLY', 'ANNUAL', 'ONE_TIME'] as const
 const SIGNATURE_STATUSES = ['AWAITING', 'SIGNED', 'DECLINED'] as const
 const ATTACHMENT_KINDS = ['SIGNED_DOCUMENT', 'UNSIGNED_DOCUMENT', 'PRICING_BACKUP', 'SUBCONTRACTOR_QUOTE', 'CORRESPONDENCE', 'OTHER'] as const
 const MEASURE_TYPES = ['EA', 'LF', 'SF', 'SY', 'CY', 'CF', 'TON', 'LB', 'HR', 'DAY', 'LS', 'ALLOWANCE'] as const
@@ -578,6 +728,22 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
       }))
     if (!existing) bump('clients')
     clientId = client.id
+  }
+
+  /*
+    A person, by the email the backup recorded. Never created: a restore that
+    invented user accounts would be a way in, and an unmatched name is a
+    question for a person rather than something to guess at.
+  */
+  const userIdByEmail = new Map<string, string | null>()
+  async function userId(email: unknown): Promise<string | null> {
+    const key = asStr(email).trim().toLowerCase()
+    if (!key) return null
+    if (userIdByEmail.has(key)) return userIdByEmail.get(key) ?? null
+    const person = await prisma.user.findFirst({ where: { companyId, email: key } })
+    if (!person) warnings.push(`${key} is not a user in this company, so what they recorded was restored unattributed.`)
+    userIdByEmail.set(key, person?.id ?? null)
+    return person?.id ?? null
   }
 
   let pmUserId: string | null = null
@@ -757,6 +923,9 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
           laborClass: asStr(line.laborClass) || null,
           laborHrsPerUnit: asNum(line.laborHrsPerUnit),
           laborRateOverride: line.laborRateOverride == null ? null : asNum(line.laborRateOverride),
+          equipmentClass: asStr(line.equipmentClass) || null,
+          equipmentHrsPerUnit: asNum(line.equipmentHrsPerUnit),
+          equipmentRateOverride: line.equipmentRateOverride == null ? null : asNum(line.equipmentRateOverride),
           materialUnitCost: asNum(line.materialUnitCost),
           equipmentUnitCost: asNum(line.equipmentUnitCost),
           subUnitCost: asNum(line.subUnitCost),
@@ -766,6 +935,26 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
         },
       })
     }
+  }
+
+  /*
+    Which document bills which, resolved once every document exists. A ticket
+    that named its parent before the parent was created would have lost the
+    link and started counting on its own, billing the same signed work twice.
+  */
+  for (const co of rows(doc.changeOrders)) {
+    const parentNumber = asStr(co.rollsUpToNumber)
+    if (!parentNumber) continue
+    const childId = changeOrderIdByNumber.get(asStr(co.number))
+    const parentId = changeOrderIdByNumber.get(parentNumber)
+    if (!childId) continue
+    if (!parentId) {
+      warnings.push(
+        `${asStr(co.number)} was billed under ${parentNumber}, which is not in the backup; it was restored billing on its own.`,
+      )
+      continue
+    }
+    await prisma.changeOrder.update({ where: { id: childId }, data: { rollsUpToId: parentId } })
   }
 
   for (const revision of rows(doc.budgetRevisions)) {
@@ -1055,6 +1244,170 @@ export async function restoreProject(backup: unknown, user: { id: string; compan
       },
     })
     bump('snapshots')
+  }
+
+  /*
+    The wage schedule, the team, the plant and the filings.
+
+    Each of these leans on a company-level record this restore must not invent:
+    a wage jurisdiction, a labor classification, a machine on the equipment
+    list. Creating one would mean making up a tax rate or an hourly rate, and a
+    fabricated rate is worse than a visible gap, so a missing reference skips
+    the row and says so in the warnings.
+  */
+  for (const sheet of rows(doc.wageRateSheets)) {
+    const code = asStr(sheet.jurisdictionCode)
+    const jurisdiction = code
+      ? await prisma.payrollJurisdiction.findFirst({ where: { companyId, code } })
+      : null
+    if (!jurisdiction) {
+      warnings.push(`Wage sheet ${asStr(sheet.name)} names jurisdiction ${code || 'none'}, which is not set up here; it was skipped.`)
+      continue
+    }
+    const countyName = asStr(sheet.countyName)
+    const county = countyName
+      ? await prisma.payrollCounty.findFirst({ where: { jurisdictionId: jurisdiction.id, name: countyName } })
+      : null
+    if (countyName && !county) {
+      warnings.push(`Wage sheet ${asStr(sheet.name)} names county ${countyName}, which is not on ${jurisdiction.code}; it was restored without one.`)
+    }
+
+    const record = await prisma.wageRateSheet.create({
+      data: {
+        projectId,
+        name: asStr(sheet.name) || 'Restored wage sheet',
+        jurisdictionId: jurisdiction.id,
+        countyId: county?.id ?? null,
+        rateScheduleDate: asDate(sheet.rateScheduleDate),
+        determinationRef: asStr(sheet.determinationRef) || null,
+        sutaPctOverride: sheet.sutaPctOverride == null ? null : asNum(sheet.sutaPctOverride),
+        // The verification travels with the sheet: a sheet restored as
+        // unverified would look checked by nobody, and a sheet restored as
+        // verified by the wrong person would be worse.
+        verifiedAt: asDate(sheet.verifiedAt),
+        verifiedById: await userId(sheet.verifiedByEmail),
+        verifiedNote: asStr(sheet.verifiedNote) || null,
+        notes: asStr(sheet.notes) || null,
+      },
+    })
+    bump('wageRateSheets')
+
+    for (const line of rows(sheet.lines)) {
+      await prisma.wageRateLine.create({
+        data: {
+          sheetId: record.id,
+          trade: asStr(line.trade) || 'Trade',
+          classification: asStr(line.classification) || null,
+          hourlyWage: asNum(line.hourlyWage),
+          hourlyBenefits: asNum(line.hourlyBenefits),
+          trainingPerHour: asNum(line.trainingPerHour),
+          workersCompPerHour: asNum(line.workersCompPerHour),
+          overtimeMultiplier: asNum(line.overtimeMultiplier) || 1.5,
+          publishedBaseWage: line.publishedBaseWage == null ? null : asNum(line.publishedBaseWage),
+          publishedFringe: line.publishedFringe == null ? null : asNum(line.publishedFringe),
+          notes: asStr(line.notes) || null,
+          sortOrder: asNum(line.sortOrder),
+        },
+      })
+      bump('wageRateLines')
+    }
+  }
+
+  for (const assignment of rows(doc.laborAssignments)) {
+    const name = asStr(assignment.classificationName)
+    const classification = name
+      ? await prisma.laborClassification.findFirst({ where: { companyId, name } })
+      : null
+    if (!classification) {
+      warnings.push(`A labor assignment names classification ${name || 'none'}, which is not in this company's library; it was skipped.`)
+      continue
+    }
+    await prisma.projectLaborAssignment.create({
+      data: {
+        projectId,
+        classificationId: classification.id,
+        label: asStr(assignment.label) || null,
+        costCodeId: await costCodeId(assignment.costCode),
+        basis: asEnum(assignment.basis, ASSIGNMENT_BASES, 'ALLOCATION'),
+        budgetedHours: asNum(assignment.budgetedHours),
+        allocationPct: asNum(assignment.allocationPct),
+        startDate: asDate(assignment.startDate),
+        endDate: asDate(assignment.endDate),
+        loadedRateOverride: assignment.loadedRateOverride == null ? null : asNum(assignment.loadedRateOverride),
+        notes: asStr(assignment.notes) || null,
+        sortOrder: asNum(assignment.sortOrder),
+      },
+    })
+    bump('laborAssignments')
+  }
+
+  for (const assignment of rows(doc.equipmentAssignments)) {
+    const name = asStr(assignment.equipmentName)
+    const item = name ? await prisma.equipmentItem.findFirst({ where: { companyId, name } }) : null
+    if (!item) {
+      warnings.push(`An equipment entry names ${name || 'no machine'}, which is not on this company's equipment list; it was skipped.`)
+      continue
+    }
+    await prisma.projectEquipmentAssignment.create({
+      data: {
+        projectId,
+        equipmentItemId: item.id,
+        label: asStr(assignment.label) || null,
+        costCodeId: await costCodeId(assignment.costCode),
+        basis: asEnum(assignment.basis, RATE_BASES, 'DAILY'),
+        units: asNum(assignment.units),
+        operatingHours: asNum(assignment.operatingHours),
+        standbyHours: asNum(assignment.standbyHours),
+        startDate: asDate(assignment.startDate),
+        endDate: asDate(assignment.endDate),
+        rateOverride: assignment.rateOverride == null ? null : asNum(assignment.rateOverride),
+        notes: asStr(assignment.notes) || null,
+        sortOrder: asNum(assignment.sortOrder),
+      },
+    })
+    bump('equipmentAssignments')
+  }
+
+  for (const requirement of rows(doc.complianceRequirements)) {
+    const firstDueDate = asDate(requirement.firstDueDate)
+    if (!firstDueDate) {
+      warnings.push(`Compliance requirement ${asStr(requirement.title)} has no first deadline; it was skipped.`)
+      continue
+    }
+    const record = await prisma.complianceRequirement.create({
+      data: {
+        projectId,
+        kind: asEnum(requirement.kind, COMPLIANCE_KINDS, 'OTHER'),
+        title: asStr(requirement.title) || 'Restored requirement',
+        agency: asStr(requirement.agency) || null,
+        frequency: asEnum(requirement.frequency, COMPLIANCE_FREQUENCIES, 'WEEKLY'),
+        firstDueDate,
+        endsOn: asDate(requirement.endsOn),
+        leadDays: asNum(requirement.leadDays),
+        responsibleUserId: await userId(requirement.responsibleEmail),
+        notes: asStr(requirement.notes) || null,
+        active: requirement.active !== false,
+        sortOrder: asNum(requirement.sortOrder),
+      },
+    })
+    bump('complianceRequirements')
+
+    for (const submission of rows(requirement.submissions)) {
+      const dueDate = asDate(submission.dueDate)
+      if (!dueDate) continue
+      await prisma.complianceSubmission.create({
+        data: {
+          requirementId: record.id,
+          dueDate,
+          periodEnd: asDate(submission.periodEnd),
+          submittedAt: asDate(submission.submittedAt) ?? dueDate,
+          submittedById: await userId(submission.submittedByEmail),
+          reference: asStr(submission.reference) || null,
+          notes: asStr(submission.notes) || null,
+        },
+      })
+      bump('complianceSubmissions')
+    }
   }
 
   return { projectId, number, created, warnings }

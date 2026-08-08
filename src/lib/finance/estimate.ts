@@ -235,6 +235,15 @@ export function deriveEstimateItem(
     if (totalCost <= 0) qaFlags.push('No cost priced')
     if (num(item.laborHrsPerUnit) > 0 && !item.laborClass) qaFlags.push('Labor hours without a labor class')
     if (num(item.laborHrsPerUnit) > 0 && laborRate <= 0) qaFlags.push('Labor class has no rate')
+    // The same two questions about the machine. Hours against no machine, or a
+    // machine with nothing behind it, both price the plant on this line at
+    // nothing and are worth a person's attention rather than a silent zero.
+    if (num(item.equipmentHrsPerUnit) > 0 && !item.equipmentClass) {
+      qaFlags.push('Machine hours without a machine')
+    }
+    if (num(item.equipmentHrsPerUnit) > 0 && equipmentRate <= 0) {
+      qaFlags.push('Machine has no rate')
+    }
   }
 
   return {

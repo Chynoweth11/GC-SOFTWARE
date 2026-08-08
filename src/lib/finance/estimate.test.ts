@@ -198,6 +198,89 @@ describe('QA flags: Takeoff column X', () => {
     const derived = deriveEstimateItem(item({ count: 5, laborClass: 'Ironworker', laborHrsPerUnit: 2, measure: 'EA' }), factors)
     expect(derived.qaFlags).toContain('Labor class has no rate')
   })
+
+  it('machine hours without a machine is flagged', () => {
+    const derived = deriveEstimateItem(item({ count: 5, measure: 'EA', equipmentHrsPerUnit: 3 }), factors)
+    expect(derived.qaFlags).toContain('Machine hours without a machine')
+  })
+
+  it('a machine with no rate on the equipment list is flagged', () => {
+    const derived = deriveEstimateItem(
+      item({ count: 5, measure: 'EA', equipmentClass: 'Crawler crane', equipmentHrsPerUnit: 3 }),
+      factors,
+    )
+    expect(derived.qaFlags).toContain('Machine has no rate')
+  })
+})
+
+describe('line pricing: a machine on a takeoff line', () => {
+  /*
+    The excavator quoted at 1,200 a day over an 8 hour day, with 45 an hour of
+    fuel and wear, reaches the rate table as 195 an hour. That is the figure the
+    equipment engine derives, and pricing a line from it must not rework it.
+  */
+  const withMachines: EstimateFactors = {
+    ...factors,
+    equipmentRates: new Map([['Excavator 320', 195]]),
+  }
+
+  it('prices machine hours at the equipment list rate', () => {
+    const derived = deriveEstimateItem(
+      item({ measure: 'EA', count: 10, equipmentClass: 'Excavator 320', equipmentHrsPerUnit: 2 }),
+      withMachines,
+    )
+    expect(derived.equipmentHours).toBe(20)
+    expect(derived.equipmentRate).toBe(195)
+    expect(derived.equipmentCost).toBe(3_900)
+  })
+
+  it('carries a hired-in lump and a metered machine on the same line', () => {
+    const derived = deriveEstimateItem(
+      item({
+        measure: 'EA',
+        count: 10,
+        equipmentUnitCost: 15,
+        equipmentClass: 'Excavator 320',
+        equipmentHrsPerUnit: 2,
+      }),
+      withMachines,
+    )
+    // 10 x 15 hired in, plus 20 machine hours at 195.
+    expect(derived.equipmentCost).toBe(150 + 3_900)
+  })
+
+  it('a rate agreed for this bid alone overrides the list', () => {
+    const derived = deriveEstimateItem(
+      item({
+        measure: 'EA',
+        count: 10,
+        equipmentClass: 'Excavator 320',
+        equipmentHrsPerUnit: 2,
+        equipmentRateOverride: 150,
+      }),
+      withMachines,
+    )
+    expect(derived.equipmentRate).toBe(150)
+    expect(derived.equipmentCost).toBe(3_000)
+  })
+
+  it('takes no labor burden and no sales tax, because a machine is neither', () => {
+    const derived = deriveEstimateItem(
+      item({ measure: 'EA', count: 1, equipmentClass: 'Excavator 320', equipmentHrsPerUnit: 1 }),
+      withMachines,
+    )
+    expect(derived.equipmentCost).toBe(195)
+    expect(derived.totalCost).toBe(195)
+  })
+
+  it('a machine named on a line with no rate table behind it prices at nothing and says so', () => {
+    const derived = deriveEstimateItem(
+      item({ measure: 'EA', count: 10, equipmentClass: 'Excavator 320', equipmentHrsPerUnit: 2 }),
+      factors,
+    )
+    expect(derived.equipmentCost).toBe(0)
+    expect(derived.qaFlags).toContain('Machine has no rate')
+  })
 })
 
 describe('general conditions: duration-driven quantities', () => {

@@ -46,6 +46,36 @@ async function main() {
   })
   page.on('pageerror', (error) => consoleErrors.push(String(error)))
 
+  /*
+    Read the page once it says what it is going to say.
+
+    Every mutation here goes through a server action and a refresh, and how long
+    that takes depends on what else the machine is doing. Sleeping a fixed time
+    and then asserting turns a slow moment into a false failure, so these wait
+    for the sentence they are looking for and give up only when it is really
+    not coming.
+  */
+  const bodyWhen = async (pattern, timeout = 20000) => {
+    const deadline = Date.now() + timeout
+    let text = await page.locator('body').innerText()
+    while (!pattern.test(text) && Date.now() < deadline) {
+      await page.waitForTimeout(250)
+      text = await page.locator('body').innerText()
+    }
+    return text
+  }
+
+  /** The same, for a deletion: wait until the thing has gone. */
+  const bodyWithout = async (pattern, timeout = 20000) => {
+    const deadline = Date.now() + timeout
+    let text = await page.locator('body').innerText()
+    while (pattern.test(text) && Date.now() < deadline) {
+      await page.waitForTimeout(250)
+      text = await page.locator('body').innerText()
+    }
+    return text
+  }
+
   await signIn(page, 'owner@constructx.com', 'constructx')
   ok('sign in as the owner')
 
@@ -57,18 +87,75 @@ async function main() {
     await page.waitForSelector('[role="dialog"] input')
   }
 
+  /*
+    Wait for the search to answer rather than sleeping a fixed time. The palette
+    goes to the server for its results, and on a cold start that takes longer
+    than any sleep worth writing, which is a flake rather than a finding. While
+    it is thinking it shows neither results nor "nothing matches", so waiting
+    for either of those is waiting for a real answer.
+  */
+  /*
+    Wait for the palette to actually answer.
+
+    Two traps here. It debounces, so for a moment after typing it says nothing
+    matches before it has even asked, which is why an empty answer is only
+    believed after the debounce and the round trip have both had time. And it
+    goes to the server, so on a cold start results arrive later than any fixed
+    sleep worth writing.
+  */
+  const paletteAnswer = async (term) => {
+    let held = 0
+    let previous = null
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const typed = await page.locator('[role="dialog"] input').inputValue()
+      const text = await page.locator('[role="dialog"]').innerText()
+      const results = await page.locator('[role="dialog"] button').count()
+      const answered =
+        typed === term && !/Type at least/.test(text) && (results > 0 || /Nothing matches/.test(text))
+
+      // An answer has to hold still before it is believed. Typing key by key
+      // fires a request per keystroke, and an early one can land first with a
+      // different set of hits behind it.
+      if (answered && text === previous) {
+        held++
+        if (held >= 4) return text
+      } else {
+        held = 0
+      }
+      previous = answered ? text : null
+      await page.waitForTimeout(250)
+    }
+    return null
+  }
+
+  /*
+    Type into the palette and wait for it to answer.
+
+    Filling a box before the page has hydrated sets the value in the DOM and
+    nothing in React, so the palette sits on its prompt forever. On a warm
+    server that never happens and on a cold one it happens often, so if the
+    prompt is still there after three seconds the term is typed again, key by
+    key, against a page that is by then certainly listening.
+  */
+  const searchFor = async (term) => {
+    await page.locator('[role="dialog"] input').fill(term)
+    const answered = await paletteAnswer(term)
+    if (answered !== null) return answered
+    await page.locator('[role="dialog"] input').fill('')
+    await page.locator('[role="dialog"] input').pressSequentially(term, { delay: 30 })
+    return (await paletteAnswer(term)) ?? page.locator('[role="dialog"]').innerText()
+  }
+
   for (const [term, expect] of [
     ['Cascade', 'Project'],
     ['Riverbend', null],
     ['concrete', null],
   ]) {
     await openPalette()
-    await page.locator('[role="dialog"] input').fill(term)
-    await page.waitForTimeout(900)
-    const text = await page.locator('[role="dialog"]').innerText()
+    const text = await searchFor(term)
     const hits = await page.locator('[role="dialog"] button').count()
     if (/Nothing matches|Type at least/.test(text)) {
-      bad(`search "${term}"`, 'no results')
+      bad(`search "${term}"`, `no results, palette read ${JSON.stringify(text.slice(0, 160))}`)
     } else if (expect && !text.toLowerCase().includes(expect.toLowerCase())) {
       bad(`search "${term}" groups results`, `no "${expect}" group in the list`)
     } else {
@@ -80,8 +167,7 @@ async function main() {
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
   await page.keyboard.press('/')
   await page.waitForSelector('[role="dialog"] input', { timeout: 5000 })
-  await page.locator('[role="dialog"] input').fill('Cascade')
-  await page.waitForTimeout(900)
+  await searchFor('Cascade')
   await page.keyboard.press('Enter')
   await page.waitForTimeout(1200)
   if (page.url().includes('/projects/')) ok('the palette opens from the keyboard and Enter opens the result')
@@ -89,7 +175,16 @@ async function main() {
 
   // ── Project search ───────────────────────────────────────────────────────
   console.log('\nProject search')
-  const projectId = page.url().split('/projects/')[1]?.split('/')[0]
+  // Everything below works on one job. If the palette did not land on one,
+  // pick one from the list rather than letting a single failure take the rest
+  // of the run down with it.
+  let projectId = page.url().split('/projects/')[1]?.split('/')[0]
+  if (!projectId) {
+    await page.goto(`${BASE}/projects`, { waitUntil: 'networkidle' })
+    const href = await page.locator('a[href^="/projects/"]').first().getAttribute('href')
+    projectId = href?.split('/')[2]
+    await page.goto(`${BASE}/projects/${projectId}`, { waitUntil: 'networkidle' })
+  }
   await page.locator('input[placeholder="Search this project"]').first().fill('framing')
   await page.waitForTimeout(1200)
   const projectHits = await page.locator('main a, main button').filter({ hasText: /framing/i }).count()
@@ -224,7 +319,7 @@ async function main() {
   await page.fill('#audit-q', clientName)
   await page.keyboard.press('Enter')
   await page.waitForTimeout(1500)
-  const historyText = await page.locator('body').innerText()
+  const historyText = await bodyWhen(new RegExp(clientName))
   // Actions render in this tree as CREATE / UPDATE / DELETE.
   if (historyText.includes(clientName) && /create/i.test(historyText) && /delete/i.test(historyText)) {
     ok('the history recorded the client being created, edited and deleted')
@@ -272,7 +367,7 @@ async function main() {
     page.waitForTimeout(1500),
     page.getByRole('button', { name: 'Record the check' }).click(),
   ])
-  const payrollText = await page.locator('body').innerText()
+  const payrollText = await bodyWhen(/have an unemployment rate entered/)
   if (/1 of 51 have an unemployment rate entered, 1 checked/.test(payrollText)) {
     ok('a state unemployment rate can be entered and the check recorded')
   } else {
@@ -290,9 +385,12 @@ async function main() {
   await page.fill('input[name="determinationRef"]', 'Exercise determination')
   await Promise.all([page.waitForTimeout(1800), page.getByRole('button', { name: 'Open the sheet' }).click()])
 
-  const unverified = await page.locator('text=/Nobody has checked this sheet/').count()
-  if (unverified > 0) ok('a new sheet says plainly that nobody has checked it')
-  else bad('wage sheet verification', 'a brand new sheet did not warn that it is unverified')
+  const newSheet = await bodyWhen(/Nobody has checked this sheet/)
+  if (/Nobody has checked this sheet/.test(newSheet)) {
+    ok('a new sheet says plainly that nobody has checked it')
+  } else {
+    bad('wage sheet verification', 'a brand new sheet did not warn that it is unverified')
+  }
 
   await page.getByRole('button', { name: 'Add a trade' }).first().click()
   await page.waitForTimeout(300)
@@ -321,7 +419,7 @@ async function main() {
 
       60 + 20 + 0.36 + 4.59 + 1.20 + 0.50 + 1.30    = 87.95
   */
-  const sheetText = await page.locator('body').innerText()
+  const sheetText = await bodyWhen(/\$65\.90/)
   const expectations = [
     ['$60.00', 'subtotal'],
     ['$0.24', 'FUTA on the wage'],
@@ -350,7 +448,7 @@ async function main() {
   await page.waitForTimeout(300)
   await page.fill('textarea[aria-label="Verification note"]', 'Checked against the exercise determination dated 3 March 2026')
   await Promise.all([page.waitForTimeout(1800), page.getByRole('button', { name: 'Record the check' }).click()])
-  const verifiedText = await page.locator('body').innerText()
+  const verifiedText = await bodyWhen(/[Vv]erified/)
   if (/Verified/.test(verifiedText) && !/Nobody has checked this sheet/.test(verifiedText)) {
     ok('the sheet can be verified and says who checked it')
   } else {
@@ -371,7 +469,7 @@ async function main() {
   await page.waitForTimeout(300)
   await page.getByRole('button', { name: 'Delete sheet' }).click()
   await page.waitForTimeout(1800)
-  const afterDelete = await page.locator('body').innerText()
+  const afterDelete = await bodyWithout(/Exercise wage sheet/)
   if (/No wage sheet on this project/.test(afterDelete)) ok('a wage sheet can be deleted')
   else bad('wage sheet delete', 'the sheet was still there afterwards')
 
@@ -416,7 +514,7 @@ async function main() {
     wage there would be badly wrong, and this line is what proves the engine
     reads the basis off the state.
   */
-  const libraryText = await page.locator('body').innerText()
+  const libraryText = await bodyWhen(/Exercise PM/)
   if (libraryText.includes('$76.65')) {
     ok('a salary is reduced to a loaded hour that matches the arithmetic done by hand')
   } else {
@@ -442,7 +540,7 @@ async function main() {
     week is the annual hours over 52, so 40 hours, and half of that across 38.7
     weeks is 774 hours at the 76.65 rate above.
   */
-  const assignmentText = await page.locator('body').innerText()
+  const assignmentText = await bodyWhen(/Exercise PM/)
   const assignmentChecks = ['Exercise person', '774', '$76.65']
   const missingAssignment = assignmentChecks.filter((value) => !assignmentText.includes(value))
   if (missingAssignment.length === 0) {
@@ -463,7 +561,7 @@ async function main() {
   await page.fill('input[name="agency"]', 'Exercise agency')
   await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Add the requirement' }).click()])
 
-  const complianceText = await page.locator('body').innerText()
+  const complianceText = await bodyWhen(/Overdue/)
   if (/Overdue/.test(complianceText) && /deadlines have gone unanswered|Overdue by 21 days/.test(complianceText)) {
     ok('a requirement behind schedule reports the oldest unanswered deadline, not the next one')
   } else {
@@ -473,7 +571,7 @@ async function main() {
   await page.getByRole('button', { name: 'Record a filing' }).first().click()
   await page.waitForTimeout(300)
   await Promise.all([page.waitForTimeout(2000), page.getByRole('button', { name: 'Record it' }).click()])
-  const afterFiling = await page.locator('body').innerText()
+  const afterFiling = await bodyWhen(/1 filed/)
   if (/1 filed/.test(afterFiling)) ok('a filing can be recorded against the deadline it answers')
   else bad('compliance filing', 'the filing did not register')
 
@@ -488,7 +586,7 @@ async function main() {
   else bad('calendar alarms', 'no alarms in the feed')
 
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  const dashboardText = await page.locator('body').innerText()
+  const dashboardText = await bodyWhen(/Exercise certified payroll/)
   // Section titles render through text-transform, so innerText comes back
   // upper case. Match without regard to case rather than to the styling.
   if (/labor compliance deadlines/i.test(dashboardText) && /Exercise certified payroll/.test(dashboardText)) {
@@ -522,7 +620,7 @@ async function main() {
   await page.waitForTimeout(300)
   await page.getByRole('button', { name: 'Delete classification' }).click()
   await page.waitForTimeout(2000)
-  const cleaned = await page.locator('body').innerText()
+  const cleaned = await bodyWithout(/Exercise PM/)
   if (!cleaned.includes('Exercise PM')) ok('a classification with nothing depending on it can be deleted')
   else bad('classification delete', 'the classification was still there afterwards')
 
@@ -660,7 +758,7 @@ async function main() {
     bad('equipment basis', `two weeks did not price at 9,000, row read ${weeklyRow.replace(/\n/g, ' | ')}`)
   }
 
-  const laborPageText = await page.locator('body').innerText()
+  const laborPageText = await bodyWhen(/of it standby/)
   if (/\$1,200 of it standby/.test(laborPageText)) {
     ok('the job reports how much of its plant cost was paid for machines standing idle')
   } else {
@@ -668,11 +766,75 @@ async function main() {
   }
 
   // Take it off the job. The machine itself stays on the list, because the
-  // time and materials section below prices a ticket from its rate.
+  // takeoff and the time and materials sections below both price from its rate.
   await page.locator('tr', { hasText: machineName }).first().getByRole('button', { name: 'Remove', exact: true }).click()
   await page.waitForTimeout(300)
   await page.getByRole('button', { name: 'Take it off the job' }).click()
   await page.waitForTimeout(2000)
+
+  // The same rate, reaching a bid. A takeoff line that names the machine has to
+  // price it at the list rate, otherwise a job is bid without its plant.
+  await page.goto(`${BASE}/estimating`, { waitUntil: 'networkidle' })
+  const estimateIds = [
+    ...new Set(
+      (await page.locator('a[href^="/estimating/"]').evaluateAll((links) => links.map((a) => a.getAttribute('href'))))
+        .filter((href) => href && /^\/estimating\/[^/]+$/.test(href))
+        .map((href) => href.split('/')[2])
+        .filter((id) => id !== 'new'),
+    ),
+  ]
+
+  // An awarded estimate is locked and cannot take a line, so use the first one
+  // that is still open.
+  let estimateId = null
+  for (const candidate of estimateIds) {
+    await page.goto(`${BASE}/estimating/${candidate}/takeoff`, { waitUntil: 'networkidle' })
+    if ((await page.getByRole('button', { name: 'Add takeoff line' }).count()) > 0) {
+      estimateId = candidate
+      break
+    }
+  }
+  if (!estimateId) {
+    bad('takeoff equipment', 'no open estimate to price a machine on')
+  } else {
+    const leftoverLine = page.locator('tr', { hasText: 'Exercise machine line' })
+    if ((await leftoverLine.count()) > 0) {
+      await leftoverLine.first().getByRole('button', { name: 'Delete', exact: true }).click()
+      await page.waitForTimeout(2000)
+    }
+
+    await page.getByRole('button', { name: 'Add takeoff line' }).click()
+    await page.waitForTimeout(400)
+    await page.fill('input[name="description"]', 'Exercise machine line')
+    await page.selectOption('select[name="measure"]', 'EA')
+    await page.fill('input[name="count"]', '10')
+    const takeoffMachine = await page
+      .locator('select[name="equipmentClass"] option', { hasText: machineName })
+      .first()
+      .getAttribute('value')
+    await page.selectOption('select[name="equipmentClass"]', takeoffMachine)
+    await page.fill('input[name="equipmentHrsPerUnit"]', '2')
+    await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Add line', exact: true }).click()])
+
+    await page.goto(`${BASE}/estimating/${estimateId}/takeoff`, { waitUntil: 'networkidle' })
+    const takeoffRow = await page.locator('tr', { hasText: 'Exercise machine line' }).first().innerText()
+    // 10 each x 2 machine hours x 195.00 an hour, all in, is 3,900.
+    if (takeoffRow.includes('$195.00') && takeoffRow.includes('$3,900')) {
+      ok('a takeoff line that names a machine prices it at the equipment list rate')
+    } else {
+      bad('takeoff equipment', `expected 20 hours at 195, row read ${takeoffRow.replace(/\n/g, ' | ')}`)
+    }
+
+    await page.locator('tr', { hasText: 'Exercise machine line' }).first().getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.waitForTimeout(2500)
+    await page.goto(`${BASE}/estimating/${estimateId}/takeoff`, { waitUntil: 'networkidle' })
+    const takeoffCleaned = await bodyWithout(/Exercise machine line/)
+    if (!takeoffCleaned.includes('Exercise machine line')) {
+      ok('the takeoff line comes off again, leaving the bid as it was found')
+    } else {
+      bad('takeoff cleanup', 'the exercise takeoff line was still on the bid')
+    }
+  }
 
   // ── Contract documents and the approval gate ─────────────────────────────
   // The rule the whole feature exists for, driven end to end: an entered
@@ -744,7 +906,7 @@ async function main() {
       profit        106,000 x 10 percent     10,600.00
       total                                 116,600.00
   */
-  const pricedText = await page.locator('body').innerText()
+  const pricedText = await bodyWhen(/\$116,600/)
   if (pricedText.includes('$116,600')) {
     ok('a change order priced from its lines runs the markup chain in the bid summary order')
   } else {
@@ -791,7 +953,7 @@ async function main() {
   await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save document' }).click()])
 
   await page.goto(documentUrl, { waitUntil: 'networkidle' })
-  const unsignedText = await page.locator('body').innerText()
+  const unsignedText = await bodyWhen(/parties have not signed/)
   if (/2 parties have not signed/.test(unsignedText)) {
     ok('approval is refused while a required party has not signed')
   } else {
@@ -808,7 +970,7 @@ async function main() {
   }
 
   await page.goto(documentUrl, { waitUntil: 'networkidle' })
-  const signedText = await page.locator('body').innerText()
+  const signedText = await bodyWhen(/2 of 2/)
   if (/2 of 2/.test(signedText) && !/parties have not signed/.test(signedText)) {
     ok('the document follows its signatures to fully signed')
   } else {
@@ -828,7 +990,7 @@ async function main() {
   }
   await page.getByRole('button', { name: 'No, cancel' }).click()
   await page.waitForTimeout(800)
-  const afterCancel = await page.locator('body').innerText()
+  const afterCancel = await bodyWhen(/Not in any figure yet/)
   if (/Not in any figure yet/.test(afterCancel)) {
     ok('answering no leaves the document unapproved')
   } else {
@@ -842,7 +1004,7 @@ async function main() {
   await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Yes, approve it' }).click()])
 
   await page.goto(documentUrl, { waitUntil: 'networkidle' })
-  const approvedText = await page.locator('body').innerText()
+  const approvedText = await bodyWhen(/In the contract value/)
   if (/In the contract value/.test(approvedText) && /is in this project/.test(approvedText)) {
     ok('certifying the approval puts the amount into the contract value')
   } else {
@@ -858,7 +1020,7 @@ async function main() {
 
   // An approved document's pricing is locked.
   await page.goto(documentUrl, { waitUntil: 'networkidle' })
-  const lockedText = await page.locator('body').innerText()
+  const lockedText = await bodyWhen(/pricing is locked/)
   if (/pricing is locked/.test(lockedText)) {
     ok('an approved document has its pricing locked')
   } else {
@@ -886,7 +1048,7 @@ async function main() {
 
   // The history carries the whole story, and cannot be edited.
   await page.goto(documentUrl, { waitUntil: 'networkidle' })
-  const documentHistory = await page.locator('body').innerText()
+  const documentHistory = await bodyWhen(/Unlock/)
   const historyWants = ['Create', 'Approve', 'Unlock']
   const missingHistory = historyWants.filter((word) => !documentHistory.includes(word))
   if (missingHistory.length === 0 && /I certify, to the best of my knowledge/.test(documentHistory)) {
@@ -910,7 +1072,7 @@ async function main() {
   await page.waitForTimeout(2500)
 
   await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
-  const tidied = await page.locator('body').innerText()
+  const tidied = await bodyWithout(/CO-EX1/)
   if (!tidied.includes('CO-EX1')) ok('an unapproved document can be deleted, and the project is back as it was')
   else bad('cleanup', 'the exercise change order was still on the project')
 
@@ -1020,7 +1182,7 @@ async function main() {
       ticket                                        2,000.00
   */
   await page.goto(ticketUrl, { waitUntil: 'networkidle' })
-  const ticketText = await page.locator('body').innerText()
+  const ticketText = await bodyWhen(/\$2,000/)
   if (ticketText.includes('$2,000')) {
     ok('a time and materials ticket prices its machine hours straight off the equipment list')
   } else {
@@ -1033,7 +1195,7 @@ async function main() {
   }
 
   await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
-  const tmPanel = await page.locator('body').innerText()
+  const tmPanel = await bodyWhen(/machine hours/)
   if (/time and materials/i.test(tmPanel) && /8 machine hours/.test(tmPanel)) {
     ok('the tickets on a job are summarised with the hours standing behind them')
   } else {
@@ -1076,7 +1238,7 @@ async function main() {
   // Now bill it through the change order instead. The approval has to come off
   // first, which is the lock working.
   await page.goto(ticketUrl, { waitUntil: 'networkidle' })
-  const lockedRollUp = await page.locator('body').innerText()
+  const lockedRollUp = await bodyWhen(/where it bills is locked/)
   if (/where it bills is locked/.test(lockedRollUp)) {
     ok('an approved ticket cannot be moved under a change order without withdrawing the approval')
   } else {
@@ -1097,7 +1259,7 @@ async function main() {
   await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Save where it bills' }).click()])
 
   await page.goto(ticketUrl, { waitUntil: 'networkidle' })
-  const rolledText = await page.locator('body').innerText()
+  const rolledText = await bodyWhen(/carried by CO-EX2/)
   if (/carried by CO-EX2|is carried by CO-EX2/.test(rolledText)) {
     ok('a ticket says which change order carries it, on the ticket itself')
   } else {
@@ -1118,7 +1280,7 @@ async function main() {
     bad('double counting', `the rolled up ticket moved the contract value from ${tmBaseline} to ${afterRolledApproval}`)
   }
 
-  const rolledPanel = await page.locator('body').innerText()
+  const rolledPanel = await bodyWhen(/carried elsewhere, counted once/)
   if (/1 carried elsewhere, counted once/.test(rolledPanel)) {
     ok('the tickets panel separates what is billed on its own from what a change order carries')
   } else {
@@ -1129,7 +1291,7 @@ async function main() {
   await removeDocument('TM-EX1')
   await removeDocument('CO-EX2')
   await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
-  const tmCleaned = await page.locator('body').innerText()
+  const tmCleaned = await bodyWithout(/TM-EX1|CO-EX2/)
   const tmFinal = await contractBefore()
   if (!tmCleaned.includes('TM-EX1') && !tmCleaned.includes('CO-EX2') && tmFinal === tmBaseline) {
     ok('the tickets and the change order carrying them come off cleanly, leaving the contract value as found')
@@ -1139,7 +1301,7 @@ async function main() {
 
   await clearMachine()
   await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
-  const plantCleaned = await page.locator('body').innerText()
+  const plantCleaned = await bodyWithout(new RegExp(machineName))
   if (!plantCleaned.includes(machineName)) {
     ok('a machine with nothing charged against it can be taken off the equipment list')
   } else {

@@ -583,6 +583,11 @@ model EstimateItem {
   laborClass  String?
   laborHrsPerUnit Float @default(0)
   laborRateOverride Float?
+  /// The machine this line runs, named as the equipment list names it
+  equipmentClass String?
+  equipmentHrsPerUnit Float @default(0)
+  /// A rate agreed for this bid alone, overriding the equipment list
+  equipmentRateOverride Float?
   materialUnitCost  Float @default(0)
   equipmentUnitCost Float @default(0)
   subUnitCost       Float @default(0)

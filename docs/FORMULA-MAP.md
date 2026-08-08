@@ -15,11 +15,17 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 304 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 311 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
-re-checks 772 identities against the live database, `verify:pages` walks every
-route, and `verify:ui` drives 75 interactive checks through a real browser.
+re-checks 772 identities against the live database, `verify:exports` writes and
+reparses every workbook and PDF, `verify:backup` round trips every project
+through export and restore, `verify:pages` walks every route, and `verify:ui`
+drives 77 interactive checks through a real browser.
+
+None of the browser checks sleep and hope. Each one waits for the sentence it is
+looking for and gives up only when it is really not coming, so a slow moment on
+a busy machine is not reported as a broken feature.
 
 ---
 
@@ -378,10 +384,14 @@ Database: `Estimate`, `EstimateItem`, `EstimateSection`, `GeneralConditionItem`,
 | `O` Rate | `=INDEX('Bid Setup'!$F$5:$F$10,MATCH($M7,...))` | `laborRate`, from `LaborRate`, with a per-line override |
 | `P` Labor $ burdened | `=$L7*$N7*$O7*(1+'Bid Setup'!$F$13)` | `laborCost` |
 | `R` Material $ taxed | `=$L7*$Q7*(1+'Bid Setup'!$F$14)` | `materialCost` |
-| `T` Equipment $ | `=$L7*$S7` | `equipmentCost` |
+| `T` Equipment $ | `=$L7*$S7` | `equipmentCost`, extended: the hired-in lump **plus** machine hours at the equipment list's loaded hourly rate |
 | `V` Sub $ | `=$L7*$U7` | `subCost` |
 | `W` TOTAL $ | `=$P7+$R7+$T7+$V7` | `totalCost` |
-| `X` Check | nested `IF` → `⚠ div` / `⚠ meas` / `⚠ qty` / `⚠ cost` / `⚠ class` | `qaFlags[]`: full sentences, plus a new "labor class has no rate" check |
+| `X` Check | nested `IF` → `⚠ div` / `⚠ meas` / `⚠ qty` / `⚠ cost` / `⚠ class` | `qaFlags[]`: full sentences, plus new checks for a labor class with no rate, machine hours with no machine, and a machine with no rate |
+
+A takeoff line names its machine the way it names its labor class, and both
+resolve against a company library rather than a number typed on the line. A rate
+agreed for one bid alone goes in the override box and the line says so.
 
 ### Markup chain: TB ▸ Bid Summary G5:G16
 
@@ -709,14 +719,26 @@ who may see them.
 | Report permissions | One capability map read by the report card, the page and both export routes | `REPORT_REQUIRES` in `report-spec.ts` |
 | Saved views | A stored query string, never a stored result: opening one recomputes today's figures | `SavedView` model, `src/lib/queries/views.ts` |
 | Dashboard layout | Order and visibility only; role decides which panels exist and the stored layout is reconciled against that set on every load | `src/lib/dashboard-panels.ts` |
-| Project backup | Stored values only, shared records keyed by business key rather than id | `src/lib/backup.ts` |
+| Project backup | Stored values only, shared records keyed by business key rather than id. Carries the budget, commitments, costs, contract documents with their approvals and roll-ups, billings, forecasts, quantities, wage sheets, the project team, the plant and the compliance filings | `src/lib/backup.ts` |
 
 **Why the backup carries no derived figure.** A restored project recalculates its
 whole position: percent complete, earned value, EAC, margin, backlog, from the
 same engine a live project uses. Writing a computed margin into the file would
-create a second source of truth the moment a formula changed. The round trip is
-tested: exporting job 26-001, restoring it and re-exporting produces a byte-identical
-file, and all thirty-one headline figures match the original exactly.
+create a second source of truth the moment a formula changed.
+
+**The round trip is checked, not assumed.** `npm run verify:backup` exports every
+project, restores each one, exports it again and compares the two files field by
+field, then compares twenty-one headline figures computed from the engine. Before
+it runs it puts one of everything onto a job, a wage sheet, a person, a machine,
+a compliance filing and a time and materials ticket billed under a change order,
+because a backup that round trips empty arrays proves nothing. Everything it
+makes is torn down afterwards.
+
+**What a restore will not invent.** A wage jurisdiction, a labor classification,
+a machine on the equipment list and a user account are all company records the
+backup names but does not carry. If the receiving company has no such record the
+row is skipped and the restore says so. Creating one would mean inventing a tax
+rate, an hourly rate or a way in.
 
 **Restores never overwrite.** A restore always creates a new project. If the job
 number is taken it takes the next free suffix and says so, because a restore that

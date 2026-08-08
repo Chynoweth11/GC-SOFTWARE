@@ -30,6 +30,7 @@ export function TakeoffTable({
   sections,
   divisions,
   laborClasses,
+  equipmentClasses,
   canEdit,
   save,
   remove,
@@ -40,6 +41,7 @@ export function TakeoffTable({
   sections: { id: string; label: string }[]
   divisions: { id: string; code: string; label: string }[]
   laborClasses: { className: string; rate: number }[]
+  equipmentClasses: { name: string; rate: number }[]
   canEdit: boolean
   save: (formData: FormData) => Promise<{ error?: string }>
   remove: (formData: FormData) => Promise<void>
@@ -69,12 +71,13 @@ export function TakeoffTable({
     (a, i) => ({
       laborHours: a.laborHours + i.laborHours,
       laborCost: a.laborCost + i.laborCost,
+      equipmentHours: a.equipmentHours + i.equipmentHours,
       materialCost: a.materialCost + i.materialCost,
       equipmentCost: a.equipmentCost + i.equipmentCost,
       subCost: a.subCost + i.subCost,
       totalCost: a.totalCost + i.totalCost,
     }),
-    { laborHours: 0, laborCost: 0, materialCost: 0, equipmentCost: 0, subCost: 0, totalCost: 0 },
+    { laborHours: 0, laborCost: 0, equipmentHours: 0, materialCost: 0, equipmentCost: 0, subCost: 0, totalCost: 0 },
   )
 
   const editingItem = editing && editing !== 'new' ? items.find((i) => i.id === editing) : null
@@ -208,6 +211,52 @@ export function TakeoffTable({
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
+        <div className="lg:col-span-2">
+          <label className="label mb-1 block" htmlFor="tk-machine">
+            Machine
+          </label>
+          <select id="tk-machine" name="equipmentClass" defaultValue={editingItem?.equipmentClass ?? ''} className="field py-1.5 text-xs">
+            <option value="">None</option>
+            {equipmentClasses.map((machine) => (
+              <option key={machine.name} value={machine.name}>
+                {machine.name}: {money(machine.rate, { cents: true })}/hr with fuel
+              </option>
+            ))}
+            {/*
+              A machine taken off the list stays on the lines that named it,
+              so editing one of those lines for any other reason does not
+              quietly drop the machine and the cost with it.
+            */}
+            {editingItem?.equipmentClass &&
+              !equipmentClasses.some((machine) => machine.name === editingItem.equipmentClass) && (
+                <option value={editingItem.equipmentClass}>{editingItem.equipmentClass}: no longer on the list</option>
+              )}
+          </select>
+        </div>
+        <div>
+          <label className="label mb-1 block" htmlFor="tk-machine-hrs">
+            Machine hrs / unit
+          </label>
+          <input id="tk-machine-hrs" name="equipmentHrsPerUnit" type="number" step="0.001" min="0" defaultValue={editingItem?.equipmentHrsPerUnit ?? ''} className="field py-1.5 text-xs" />
+        </div>
+        <div>
+          <label className="label mb-1 block" htmlFor="tk-machine-rate">
+            Machine rate
+          </label>
+          <input
+            id="tk-machine-rate"
+            name="equipmentRateOverride"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="From the list"
+            defaultValue={editingItem?.equipmentRateOverride ?? ''}
+            className="field py-1.5 text-xs"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
         <div>
           <label className="label mb-1 block" htmlFor="tk-mat">
             Material $/unit
@@ -316,6 +365,9 @@ export function TakeoffTable({
                 <th className="num">Hrs/unit</th>
                 <th className="num">Rate</th>
                 <th className="num">Labor $</th>
+                <th>Machine</th>
+                <th className="num">Machine hrs</th>
+                <th className="num">Machine rate</th>
                 <th className="num">Material $</th>
                 <th className="num">Equipment $</th>
                 <th className="num">Subcontract $</th>
@@ -344,6 +396,9 @@ export function TakeoffTable({
                   <td className="num">{i.laborHrsPerUnit || '-'}</td>
                   <td className="num">{i.laborRate ? money(i.laborRate) : '-'}</td>
                   <td className="num">{money(i.laborCost)}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{i.equipmentClass ?? '-'}</td>
+                  <td className="num">{i.equipmentHours ? fmtNumber(i.equipmentHours, 1) : '-'}</td>
+                  <td className="num">{i.equipmentRate ? money(i.equipmentRate, { cents: true }) : '-'}</td>
                   <td className="num">{money(i.materialCost)}</td>
                   <td className="num">{money(i.equipmentCost)}</td>
                   <td className="num">{money(i.subCost)}</td>
@@ -387,7 +442,7 @@ export function TakeoffTable({
 
               {canEdit && editingItem && (
                 <tr>
-                  <td colSpan={21} style={{ background: 'var(--surface-inset)' }}>
+                  <td colSpan={24} style={{ background: 'var(--surface-inset)' }}>
                     {renderForm()}
                   </td>
                 </tr>
@@ -399,6 +454,9 @@ export function TakeoffTable({
                 <td className="num">{fmtNumber(totals.laborHours, 1)} hr</td>
                 <td />
                 <td className="num">{money(totals.laborCost)}</td>
+                <td />
+                <td className="num">{fmtNumber(totals.equipmentHours, 1)} hr</td>
+                <td />
                 <td className="num">{money(totals.materialCost)}</td>
                 <td className="num">{money(totals.equipmentCost)}</td>
                 <td className="num">{money(totals.subCost)}</td>

@@ -298,6 +298,15 @@ export async function saveTakeoffItem(formData: FormData): Promise<{ error?: str
     return isFinite(parsed) ? parsed : 0
   }
 
+  // An empty box means "use the equipment list", which is not the same as a
+  // rate of zero, so it has to stay null rather than fall through `num`.
+  const optionalNum = (key: string) => {
+    const raw = String(formData.get(key) ?? '').trim()
+    if (raw === '') return null
+    const parsed = Number(raw)
+    return isFinite(parsed) ? parsed : null
+  }
+
   const data = {
     estimateId,
     sectionId: String(formData.get('sectionId') ?? '') || null,
@@ -313,6 +322,9 @@ export async function saveTakeoffItem(formData: FormData): Promise<{ error?: str
     wastePct: num('wastePct'),
     laborClass: String(formData.get('laborClass') ?? '') || null,
     laborHrsPerUnit: num('laborHrsPerUnit'),
+    equipmentClass: String(formData.get('equipmentClass') ?? '') || null,
+    equipmentHrsPerUnit: num('equipmentHrsPerUnit'),
+    equipmentRateOverride: optionalNum('equipmentRateOverride'),
     materialUnitCost: num('materialUnitCost'),
     equipmentUnitCost: num('equipmentUnitCost'),
     subUnitCost: num('subUnitCost'),

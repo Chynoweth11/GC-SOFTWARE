@@ -20,9 +20,10 @@
     "verify:figures": "NODE_OPTIONS=--conditions=react-server tsx scripts/dev/verify-figures.ts",
     "verify:exports": "NODE_OPTIONS=--conditions=react-server tsx scripts/dev/verify-exports.ts",
     "verify:audit": "tsx scripts/dev/verify-audit-immutability.ts",
+    "verify:backup": "NODE_OPTIONS=--conditions=react-server tsx scripts/dev/verify-backup.ts",
     "verify:pages": "node scripts/dev/walk.mjs",
     "verify:ui": "node scripts/dev/exercise.mjs",
-    "verify": "npm run test && npm run verify:figures && npm run verify:exports && npm run verify:audit"
+    "verify": "npm run test && npm run verify:figures && npm run verify:exports && npm run verify:audit && npm run verify:backup"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.9.1",

@@ -10,6 +10,7 @@ import {
   type MeasureType,
 } from '@/lib/finance'
 import { getLaborClassifications } from './labor'
+import { equipmentRateTable } from './equipment'
 
 export const getEstimateBundle = cache(async (estimateId: string, companyId: string) => {
   const estimate = await prisma.estimate.findFirst({
@@ -43,6 +44,16 @@ export const getEstimateBundle = cache(async (estimateId: string, companyId: str
   const library = new Map(
     (await getLaborClassifications(companyId)).map((entry) => [entry.id, entry]),
   )
+
+  /*
+    The machines, priced the same way from the same list.
+
+    A takeoff line that says "eight hours of the excavator" reads the equipment
+    list's hourly cost, fuel and wear included, so a rate corrected on the list
+    reprices every open bid that runs that machine. A rate agreed for one bid
+    alone goes on the line as an override and says so.
+  */
+  const equipmentRates = await equipmentRateTable(companyId)
 
   const laborRates = new Map<string, LaborRateEntry>(
     estimate.laborRates.map((row) => {
@@ -101,6 +112,9 @@ export const getEstimateBundle = cache(async (estimateId: string, companyId: str
     laborClass: i.laborClass,
     laborHrsPerUnit: i.laborHrsPerUnit,
     laborRateOverride: i.laborRateOverride,
+    equipmentClass: i.equipmentClass,
+    equipmentHrsPerUnit: i.equipmentHrsPerUnit,
+    equipmentRateOverride: i.equipmentRateOverride,
     materialUnitCost: i.materialUnitCost,
     equipmentUnitCost: i.equipmentUnitCost,
     subUnitCost: i.subUnitCost,
@@ -123,6 +137,7 @@ export const getEstimateBundle = cache(async (estimateId: string, companyId: str
       salesTaxPct: estimate.salesTaxPct,
       smallToolsPct: estimate.smallToolsPct,
       laborRates,
+      equipmentRates,
     },
     durationWeeks: estimate.durationWeeks,
     buildingAreaSf: estimate.buildingAreaSf,
