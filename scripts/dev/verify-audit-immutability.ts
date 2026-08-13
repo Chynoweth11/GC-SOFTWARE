@@ -6,6 +6,7 @@
  * still read exactly as written.
  */
 import { prisma } from '../../src/lib/db'
+import { auditGuardStatements, dropAuditGuardStatements, isPostgres } from '../../src/lib/db-adapter'
 
 /** Mirrors recordAudit without pulling in the server-only module graph. */
 async function recordAudit(entry: {
@@ -97,20 +98,31 @@ async function main() {
   console.log(`\n${blocked} of ${attempts.length} attempts blocked`)
   console.log(`entry intact: ${intact ? 'yes' : 'NO'}`)
 
-  // Dropping the triggers is the one thing SQLite permits. The client reinstates
-  // them the next time it starts, so check that the repair actually happens.
-  await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS audit_log_is_append_only_update')
-  await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS audit_log_is_append_only_delete')
-  await prisma.$executeRawUnsafe(
-    `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_update BEFORE UPDATE ON "AuditLog" BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be modified.'); END`,
-  )
-  await prisma.$executeRawUnsafe(
-    `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_delete BEFORE DELETE ON "AuditLog" BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be deleted.'); END`,
-  )
-  const triggers = await prisma.$queryRawUnsafe<{ name: string }[]>(
-    `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'audit_log%'`,
-  )
+  /*
+    Dropping the triggers is the one thing either engine permits: they are
+    ordinary schema and anybody holding the database can remove them. The client
+    reinstates them the next time it starts, so check that the repair actually
+    happens rather than trusting that it would.
+
+    Both engines are asked the same two questions in their own words, because
+    the guarantee has to hold on whichever one a company is running.
+  */
+  for (const sql of dropAuditGuardStatements()) await prisma.$executeRawUnsafe(sql)
+  for (const sql of auditGuardStatements()) await prisma.$executeRawUnsafe(sql)
+
+  const triggers = isPostgres()
+    ? await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT tgname AS name FROM pg_trigger WHERE tgname LIKE 'audit_log%'`,
+      )
+    : await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'audit_log%'`,
+      )
   console.log('triggers present after repair:', triggers.map((t) => t.name).join(', '))
+
+  if (triggers.length !== 2) {
+    console.log(`FAIL  expected two guards after the repair, found ${triggers.length}`)
+    process.exit(1)
+  }
 
   process.exit(blocked === attempts.length && intact ? 0 : 1)
 }

@@ -11,7 +11,7 @@
  * Deleting the file is therefore a supported way to start over.
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import process from 'node:process'
@@ -30,6 +30,33 @@ function run(command, args) {
 }
 
 const url = process.env.DATABASE_URL ?? DEFAULT_URL
+
+/*
+  The generated client is baked to one engine.
+
+  Prisma writes the provider into the client at generate time, so a client
+  generated for SQLite refuses to talk to Postgres and the other way round. The
+  error it gives is accurate but arrives at the first query, which is a long way
+  from the thing that caused it. So the provider is checked here, before
+  anything runs, and the client is regenerated when it disagrees with the
+  connection string.
+*/
+function generatedProvider() {
+  const clientPath = path.resolve(process.cwd(), 'src/generated/prisma/index.js')
+  if (!existsSync(clientPath)) return null
+  const match = readFileSync(clientPath, 'utf8').match(/activeProvider"\s*:\s*"([a-z]+)"/i)
+  return match ? match[1] : null
+}
+
+const wantsPostgres = url.startsWith('postgres://') || url.startsWith('postgresql://')
+const wanted = wantsPostgres ? 'postgresql' : 'sqlite'
+const generated = generatedProvider()
+
+if (generated !== null && generated !== wanted) {
+  console.log(`[ensure-db] The generated client is for ${generated}; regenerating it for ${wanted}.`)
+  run('npx', ['--yes', 'prisma', 'generate'])
+}
+
 const file = databaseFile(url)
 
 if (!file) {

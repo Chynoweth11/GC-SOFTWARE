@@ -18,7 +18,7 @@ Source workbooks:
 Verification: `src/lib/finance/*.test.ts`, 346 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
-re-checks 772 identities against the live database, `verify:exports` writes and
+re-checks 761 identities against the live database, `verify:exports` writes and
 reparses every workbook and PDF, `verify:backup` round trips every project
 through export and restore, `verify:pages` walks every route, and `verify:ui`
 drives 90 interactive checks through a real browser. All of it runs on every
@@ -770,6 +770,32 @@ rate, an hourly rate or a way in.
 **Restores never overwrite.** A restore always creates a new project. If the job
 number is taken it takes the next free suffix and says so, because a restore that
 could silently replace live budgets and billings is a way to lose a month of work.
+
+---
+
+## Where the data lives
+
+The schema is written once, in `prisma/schema.prisma`, and it says SQLite
+because a fresh clone should run with no setup at all. That is not a stopgap: it
+is genuinely enough for one office on one machine with a real backup behind it.
+
+Postgres is what a company with more than one person saving at a time should be
+on. SQLite takes one writer at a time, so two project managers pressing save
+together queue behind each other, and at some size that stops being invisible.
+
+| Concern | How it works |
+|---|---|
+| The Postgres schema | Generated from the SQLite one by `scripts/postgres-schema.mjs`, so a field added to one is in the other the next time it runs. CI fails if the derived copy is stale |
+| Migrations | Separate lineages, because the SQL a migration emits is dialect-specific and one directory cannot honestly serve both |
+| The driver | Chosen from the connection string in `src/lib/db-adapter.ts`, by the application, the seed and every verification script alike |
+| The generated client | Baked to one engine by Prisma, so `npm run dev` regenerates it when the connection string disagrees rather than failing at the first query |
+| The audit guards | The same guarantee said two ways: SQLite raises from inside the trigger, Postgres from a function. Written down once, installed by the migration and again on every boot |
+
+**Both are checked, not one and an assumption.** CI runs the engine identities,
+every workbook and PDF, the audit tamper attempts and the backup round trip
+against a real Postgres as well as against SQLite. The two produce the same 761
+identities and the same 54 export sheets, which is the only evidence worth
+having that the move is safe.
 
 ---
 

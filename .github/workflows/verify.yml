@@ -60,6 +60,51 @@ jobs:
       # Every project exported, restored, exported again and compared.
       - run: npm run verify:backup
 
+  postgres:
+    name: The same figures on Postgres
+    runs-on: ubuntu-latest
+    # SQLite is the default and is genuinely enough for one office on one
+    # machine. Postgres is what a company with more than one person saving at a
+    # time should be on, so the same engines and the same identities are checked
+    # against it rather than assumed to carry across.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: constructx
+          POSTGRES_PASSWORD: constructx
+          POSTGRES_DB: constructx
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://constructx:constructx@127.0.0.1:5432/constructx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check the derived Postgres schema is in step with the source one
+        run: |
+          node scripts/postgres-schema.mjs
+          git diff --exit-code prisma/postgres/schema.prisma \
+            || (echo "prisma/postgres/schema.prisma is stale. Run node scripts/postgres-schema.mjs and commit it." && exit 1)
+      - name: Build the database from the migrations and seed it
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+          npx tsx prisma/seed.ts
+      - run: npm run verify:figures
+      - run: npm run verify:exports
+      - run: npm run verify:audit
+      - run: npm run verify:backup
+
   browser:
     name: Every route and every control
     runs-on: ubuntu-latest

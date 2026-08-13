@@ -9,12 +9,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes, scryptSync } from 'node:crypto'
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 import { PrismaClient, type CostCategory, type Prisma } from '../src/generated/prisma/client'
+import { auditGuardStatements, createAdapter, dropAuditGuardStatements } from '../src/lib/db-adapter'
 import { COUNTIES, JURISDICTIONS } from '../src/lib/reference/jurisdictions'
 
-const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? 'file:./prisma/dev.db' })
-const prisma = new PrismaClient({ adapter })
+// The same decision the application makes, made in the same place, so the seed
+// can never quietly fill a different database than the one being run.
+const prisma = new PrismaClient({ adapter: createAdapter() })
 
 type Row = Record<string, string | number | boolean | null>
 /**
@@ -273,21 +274,11 @@ const MEASURE_MAP: Record<string, string> = {
  * halfway through still leaves the history protected.
  */
 async function withAuditGuardsLifted<T>(run: () => Promise<T>): Promise<T> {
-  await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS audit_log_is_append_only_update')
-  await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS audit_log_is_append_only_delete')
+  for (const sql of dropAuditGuardStatements()) await prisma.$executeRawUnsafe(sql)
   try {
     return await run()
   } finally {
-    await prisma.$executeRawUnsafe(
-      `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_update
-       BEFORE UPDATE ON "AuditLog"
-       BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be modified.'); END`,
-    )
-    await prisma.$executeRawUnsafe(
-      `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_delete
-       BEFORE DELETE ON "AuditLog"
-       BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be deleted.'); END`,
-    )
+    for (const sql of auditGuardStatements()) await prisma.$executeRawUnsafe(sql)
   }
 }
 

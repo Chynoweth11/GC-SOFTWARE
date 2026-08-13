@@ -1,5 +1,5 @@
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 import { PrismaClient, Prisma } from '@/generated/prisma/client'
+import { auditGuardStatements, createAdapter, databaseUrl } from './db-adapter'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof createClient> | undefined
@@ -18,30 +18,29 @@ const FORBIDDEN_ON_AUDIT = new Set([
 /**
  * Reinstates the triggers that make the audit history append only.
  *
- * A migration installs them, but a trigger is ordinary schema and can be dropped
- * by anyone holding the database file. Recreating them on every start means the
- * protection comes back on the next boot rather than staying quietly off.
+ * A migration installs them, but a trigger is ordinary schema and can be
+ * dropped by anyone holding the database. Recreating them on every start means
+ * the protection comes back on the next boot rather than staying quietly off.
+ *
+ * In order rather than in parallel: on Postgres the triggers depend on the
+ * function existing first.
  */
-function installAuditGuards(client: PrismaClient) {
-  const statements = [
-    `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_update
-     BEFORE UPDATE ON "AuditLog"
-     BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be modified.'); END`,
-    `CREATE TRIGGER IF NOT EXISTS audit_log_is_append_only_delete
-     BEFORE DELETE ON "AuditLog"
-     BEGIN SELECT RAISE(ABORT, 'The audit history is permanent and cannot be deleted.'); END`,
-  ]
-  return Promise.all(statements.map((sql) => client.$executeRawUnsafe(sql))).catch((error) => {
-    console.error('Could not install the audit history guards', error)
-  })
+function installAuditGuards(client: PrismaClient, url: string) {
+  return auditGuardStatements(url)
+    .reduce(
+      (chain, sql) => chain.then(() => client.$executeRawUnsafe(sql)).then(() => undefined),
+      Promise.resolve(),
+    )
+    .catch((error) => {
+      console.error('Could not install the audit history guards', error)
+    })
 }
 
 function createClient() {
-  const url = process.env.DATABASE_URL ?? 'file:./prisma/dev.db'
-  const adapter = new PrismaBetterSqlite3({ url })
-  const base = new PrismaClient({ adapter })
+  const url = databaseUrl()
+  const base = new PrismaClient({ adapter: createAdapter(url) })
 
-  void installAuditGuards(base)
+  void installAuditGuards(base, url)
 
   // Refused in the client as well as in the database. The triggers are the real
   // guarantee; this states the intent at the call site and returns a plain

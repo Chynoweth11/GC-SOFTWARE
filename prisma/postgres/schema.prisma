@@ -1,0 +1,2222 @@
+// Generated from ../schema.prisma by scripts/postgres-schema.mjs.
+// Do not edit. Change prisma/schema.prisma and run the script again.
+
+// ConstructX, construction financial operating system
+// Single source of truth for estimating, budgets, commitments, job cost,
+// forecasting, billing and company-level financial rollups.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tenancy, identity and audit
+// ─────────────────────────────────────────────────────────────
+
+model Company {
+  id                     String   @id @default(cuid())
+  name                   String
+  legalName              String?
+  address                String?
+  city                   String?
+  state                  String?
+  phone                  String?
+  fiscalYearStartMonth   Int      @default(1)
+  targetMarginPct        Float    @default(0.16)
+  defaultRetentionPct    Float    @default(0.05)
+  defaultLaborBurdenPct  Float    @default(0.34)
+  defaultOverheadPct     Float    @default(0.06)
+  /// Federal unemployment, employer share, on the wage. The net 0.6 percent a
+  /// state in good standing pays after the credit against the 6.0 percent rate.
+  /// Federal, so it lives here once rather than on every state.
+  futaPct                Float    @default(0.006)
+  /// Social security and Medicare, employer share: 6.2 plus 1.45 percent.
+  ficaPct                Float    @default(0.0765)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  users          User[]
+  projects       Project[]
+  clients        Client[]
+  vendors        Vendor[]
+  costCodes      CostCode[]
+  trades         Trade[]
+  divisions      CsiDivision[]
+  bids           Bid[]
+  estimates      Estimate[]
+  monthlyActuals CompanyMonthly[]
+  arAging        ArAgingBucket[]
+  auditLogs      AuditLog[]
+  savedViews     SavedView[]
+  vendorStates   VendorState[]
+  vendorRegions  VendorRegion[]
+  payrollJurisdictions PayrollJurisdiction[]
+  laborClassifications LaborClassification[]
+  overheadCosts        OverheadCost[]
+  equipmentItems       EquipmentItem[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EXECUTIVE
+  PROJECT_MANAGER
+  PROJECT_ENGINEER
+  ESTIMATOR
+  ACCOUNTING
+  FINANCE
+  READ_ONLY
+}
+
+model User {
+  id           String    @id @default(cuid())
+  companyId    String
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(READ_ONLY)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  managedProjects Project[] @relation("ProjectManager")
+  auditLogs       AuditLog[]
+  savedViews      SavedView[]
+  preferences     UserPreference[]
+
+  verifiedJurisdictions PayrollJurisdiction[] @relation("PayrollJurisdictionVerifier")
+  verifiedCounties      PayrollCounty[]       @relation("PayrollCountyVerifier")
+  verifiedWageSheets    WageRateSheet[]       @relation("WageRateSheetVerifier")
+  complianceOwned       ComplianceRequirement[] @relation("ComplianceOwner")
+  complianceSubmitted   ComplianceSubmission[]  @relation("ComplianceSubmitter")
+  approvedDocuments     ChangeOrder[]           @relation("DocumentApprover")
+  documentAttachments   DocumentAttachment[]    @relation("DocumentAttacher")
+
+  @@index([companyId])
+}
+
+/// A named filter combination on the dashboard or a report.
+/// Stores the query string only. The figures are always recomputed, so a saved
+/// view can never serve a stale number.
+model SavedView {
+  id        String   @id @default(cuid())
+  userId    String
+  companyId String
+  /// "dashboard" or the report slug the view belongs to.
+  scope     String
+  name      String
+  query     String
+  /// Loaded automatically when the user opens this scope.
+  isDefault Boolean  @default(false)
+  /// Visible to everyone in the company rather than just its author.
+  shared    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope, name])
+  @@index([companyId, scope])
+}
+
+/// Per-user interface state: which dashboard tiles are shown and in what order.
+/// Interface preference only; never a financial value.
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Every attempt to sign in, successful or not.
+///
+/// Kept so a run of failures can be counted and stopped. A password box with no
+/// limit behind it is a guessing machine, and this system holds a company's
+/// contract values. The identifier is the email typed and the address it came
+/// from, so one person fat-fingering their password does not lock out the
+/// office, and one address working through a list is stopped whatever email it
+/// tries.
+model LoginAttempt {
+  id         String   @id @default(cuid())
+  /// The email as typed, lowercased. Not a user id: most failures name an
+  /// account that does not exist.
+  email      String
+  ipAddress  String?
+  successful Boolean  @default(false)
+  /// Set when the attempt was refused before the password was even checked.
+  refusedFor String?
+  createdAt  DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+/// The permanent record of every change made in the system.
+///
+/// Append only. Database triggers reject UPDATE and DELETE on this table, so
+/// the history cannot be rewritten by the application, by a migration, or by
+/// anyone with a database console. Administrators read it; nobody edits it.
+///
+/// The author and the record's name are copied in rather than joined, because a
+/// history that says "user deleted" instead of naming who made the change is not
+/// a history worth keeping.
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String
+  userId      String?
+  /// Who made the change, kept even if the user record is later removed.
+  userName    String?
+  userEmail   String?
+  userRole    String?
+  entity      String
+  entityId    String
+  /// What the record was called at the time, so the entry still reads plainly
+  /// after the record itself has been deleted.
+  entityLabel String?
+  action      String
+  field       String?
+  oldValue    String?
+  newValue    String?
+  summary     String?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, entity, entityId])
+  @@index([companyId, createdAt])
+  @@index([companyId, userId])
+  @@index([companyId, action])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reference data: divisions, trades, cost codes
+// ─────────────────────────────────────────────────────────────
+
+enum CostCategory {
+  LABOR
+  MATERIAL
+  EQUIPMENT
+  SUBCONTRACT
+  GENERAL_CONDITIONS
+  OVERHEAD
+  CONTINGENCY
+  OTHER
+}
+
+model CsiDivision {
+  id        String @id @default(cuid())
+  companyId String
+  code      String
+  name      String
+  sortOrder Int    @default(0)
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  trades        Trade[]
+  costCodes     CostCode[]
+  estimateItems EstimateItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model Trade {
+  id         String  @id @default(cuid())
+  companyId  String
+  name       String
+  divisionId String?
+  sortOrder  Int     @default(0)
+  active     Boolean @default(true)
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  division     CsiDivision?  @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  costCodes    CostCode[]
+  budgetLines  BudgetLine[]
+  changeOrders ChangeOrder[]
+  bidPackages  BidPackage[]
+  vendors      Vendor[]
+  laborClassifications LaborClassification[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model CostCode {
+  id          String       @id @default(cuid())
+  companyId   String
+  code        String
+  description String
+  category    CostCategory
+  divisionId  String?
+  tradeId     String?
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0)
+
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  division        CsiDivision?      @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  trade           Trade?            @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  budgetLines     BudgetLine[]
+  commitmentLines CommitmentLine[]
+  costTx          CostTransaction[]
+  changeOrderLine ChangeOrderLine[]
+  forecastLines   ForecastLine[]
+  sovLines        SovLine[]
+  quantityItems   QuantityItem[]
+  subInvoices     SubInvoice[]
+  laborAssignments ProjectLaborAssignment[]
+  equipmentAssignments ProjectEquipmentAssignment[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Clients and vendors
+// ─────────────────────────────────────────────────────────────
+
+enum ClientType {
+  RESIDENTIAL
+  COMMERCIAL
+  PUBLIC
+  DEVELOPER
+  INSTITUTIONAL
+  OTHER
+}
+
+model Client {
+  id        String      @id @default(cuid())
+  companyId String
+  name      String
+  type      ClientType  @default(OTHER)
+  /// Archived clients stay on their historic projects but are hidden from
+  /// pickers. A client with history is archived rather than deleted, because
+  /// removing it would orphan the projects that reference it.
+  active    Boolean     @default(true)
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  createdAt DateTime    @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projects Project[]
+  bids     Bid[]
+
+  @@index([companyId])
+}
+
+/// A state a vendor can work in. Regions hang off it.
+model VendorState {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  /// Two-letter abbreviation, used in compact tables.
+  code      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  regions VendorRegion[]
+  vendors Vendor[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+/// A working area inside a state, for example Tri-Cities or Denver Metro.
+/// Fully user-defined so each company can name its own patch.
+model VendorRegion {
+  id        String   @id @default(cuid())
+  companyId String
+  stateId   String
+  name      String
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  state   VendorState @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  vendors Vendor[]
+
+  @@unique([stateId, name])
+  @@index([companyId])
+}
+
+model Vendor {
+  id               String   @id @default(cuid())
+  companyId        String
+  name             String
+  active           Boolean  @default(true)
+  isSubcontractor  Boolean  @default(true)
+  /// Where this vendor works. Both are optional so a vendor is never blocked
+  /// from being created before its area is known.
+  stateId          String?
+  regionId         String?
+  tradeId          String?
+  contactName      String?
+  phone            String?
+  email            String?
+  address          String?
+  taxId            String?
+  w9OnFile         Boolean  @default(false)
+  glExpiration     DateTime?
+  wcExpiration     DateTime?
+  autoExpiration   DateTime?
+  umbrellaExpiration DateTime?
+  bondRequired     Boolean  @default(false)
+  bondStatus       String?
+  paymentHold      Boolean  @default(false)
+  paymentHoldReason String?
+  performanceRating Float?
+  safetyRating      Float?
+  qualityRating     Float?
+  scheduleRating    Float?
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  state       VendorState?     @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  region      VendorRegion?    @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  trade       Trade?           @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  commitments Commitment[]
+  costTx      CostTransaction[]
+  invoices    SubInvoice[]
+  quotes      BidPackageQuote[]
+  awarded     BidPackage[]     @relation("AwardedVendor")
+  equipment   EquipmentItem[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bid pipeline (CRM for opportunities)
+// ─────────────────────────────────────────────────────────────
+
+enum BidStatus {
+  LEAD
+  QUALIFYING
+  ESTIMATING
+  SUBMITTED
+  PENDING_DECISION
+  ON_HOLD
+  WON
+  LOST
+  NO_BID
+  WITHDRAWN
+}
+
+model Bid {
+  id             String    @id @default(cuid())
+  companyId      String
+  number         String
+  name           String
+  clientId       String?
+  clientContact  String?
+  clientPhone    String?
+  clientType     ClientType @default(OTHER)
+  leadSource     String?
+  location       String?
+  estimator      String?
+  dateReceived   DateTime?
+  bidDue         DateTime?
+  estimatedValue Float     @default(0)
+  submittedAmount Float    @default(0)
+  dateSubmitted  DateTime?
+  status         BidStatus @default(LEAD)
+  winProbability Float     @default(0)
+  lastContact    DateTime?
+  nextFollowUp   DateTime?
+  touches        Int       @default(0)
+  nextAction     String?
+  decisionDate   DateTime?
+  outcomeReason  String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client    Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  estimates Estimate[]
+  projects  Project[]
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Estimating and quantity takeoff
+// ─────────────────────────────────────────────────────────────
+
+enum EstimateStatus {
+  DRAFT
+  IN_PROGRESS
+  REVIEW
+  SUBMITTED
+  AWARDED
+  LOST
+  ARCHIVED
+}
+
+model Estimate {
+  id             String         @id @default(cuid())
+  companyId      String
+  bidId          String?
+  name           String
+  version        Int            @default(1)
+  status         EstimateStatus @default(DRAFT)
+  clientName     String?
+  architect      String?
+  address        String?
+  projectType    String?
+  bidDueDate     DateTime?
+  estimator      String?
+  drawingSet     String?
+  addenda        String?
+  durationWeeks  Float          @default(0)
+  buildingAreaSf Float          @default(0)
+
+  // factors
+  laborBurdenPct Float @default(0.34)
+  salesTaxPct    Float @default(0.086)
+  smallToolsPct  Float @default(0.03)
+
+  // markup chain, applied in order
+  contingencyPct Float @default(0.03)
+  overheadPct    Float @default(0.06)
+  profitPct      Float @default(0.10)
+  glInsurancePct Float @default(0.012)
+  bondPct        Float @default(0.01)
+  exciseTaxPct   Float @default(0.005)
+  roundToNearest Float @default(500)
+
+  lockedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company        Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bid            Bid?                  @relation(fields: [bidId], references: [id], onDelete: SetNull)
+  laborRates     LaborRate[]
+  sections       EstimateSection[]
+  items          EstimateItem[]
+  gcItems        GeneralConditionItem[]
+  alternates     EstimateAlternate[]
+  clarifications EstimateClarification[]
+  bidPackages    BidPackage[]
+  projects       Project[]
+
+  @@index([companyId, status])
+}
+
+/**
+ * A labor class priced on one estimate.
+ *
+ * Normally a pointer at the company's classification library, so a rate entered
+ * once prices every estimate that uses it and a pay rise does not have to be
+ * chased through open bids. `rate` is then null and the loaded rate is derived.
+ *
+ * A rate may still be typed in directly, for a class the library does not carry
+ * or a number agreed for this bid alone. Exactly one of the two is ever set,
+ * and the estimate says which it is reading.
+ */
+model LaborRate {
+  id               String @id @default(cuid())
+  estimateId       String
+  className        String
+  /// A rate entered for this estimate alone. Null when a classification is linked.
+  rate             Float?
+  classificationId String?
+  sortOrder        Int    @default(0)
+
+  estimate       Estimate             @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  classification LaborClassification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
+
+  @@unique([estimateId, className])
+}
+
+model EstimateSection {
+  id         String @id @default(cuid())
+  estimateId String
+  name       String
+  sortOrder  Int    @default(0)
+
+  estimate Estimate       @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  items    EstimateItem[]
+
+  @@index([estimateId])
+}
+
+enum MeasureType {
+  EA
+  LF
+  SF
+  SY
+  CY
+  CF
+  TON
+  LB
+  HR
+  DAY
+  LS
+  ALLOWANCE
+}
+
+model EstimateItem {
+  id          String  @id @default(cuid())
+  estimateId  String
+  sectionId   String?
+  divisionId  String?
+  description String
+  drawingRef  String?
+  measure     MeasureType @default(EA)
+  count       Float   @default(0)
+  length      Float   @default(0)
+  width       Float   @default(0)
+  depth       Float   @default(0)
+  /// Optional override of the derived quantity; null means derive from dimensions
+  netQtyOverride Float?
+  uom         String?
+  wastePct    Float   @default(0)
+  laborClass  String?
+  laborHrsPerUnit Float @default(0)
+  laborRateOverride Float?
+  /// The machine this line runs, named as the equipment list names it
+  equipmentClass String?
+  equipmentHrsPerUnit Float @default(0)
+  /// A rate agreed for this bid alone, overriding the equipment list
+  equipmentRateOverride Float?
+  materialUnitCost  Float @default(0)
+  equipmentUnitCost Float @default(0)
+  subUnitCost       Float @default(0)
+  notes       String?
+  sortOrder   Int     @default(0)
+
+  estimate Estimate         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  section  EstimateSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  division CsiDivision?     @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+
+  @@index([estimateId])
+}
+
+model GeneralConditionItem {
+  id         String @id @default(cuid())
+  estimateId String
+  item       String
+  basis      String @default("LS")
+  qty        Float  @default(0)
+  /// When true, qty follows the estimate duration in weeks
+  followsDuration Boolean @default(false)
+  unitCost   Float  @default(0)
+  notes      String?
+  sortOrder  Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+model EstimateAlternate {
+  id          String @id @default(cuid())
+  estimateId  String
+  number      String
+  description String
+  amount      Float  @default(0)
+  accepted    Boolean @default(false)
+  sortOrder   Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+model EstimateClarification {
+  id         String @id @default(cuid())
+  estimateId String
+  text       String
+  sortOrder  Int    @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bid leveling / buyout (shared by estimates and awarded projects)
+// ─────────────────────────────────────────────────────────────
+
+enum BuyoutStatus {
+  BIDDING
+  LEVELED
+  AWARDED
+  BOUGHT_OUT
+}
+
+model BidPackage {
+  id          String       @id @default(cuid())
+  estimateId  String?
+  projectId   String?
+  tradeId     String?
+  name        String
+  divisionCode String?
+  budgetAmount Float       @default(0)
+  /// Amount carried in the estimate/budget before buyout
+  carriedAmount Float      @default(0)
+  awardedVendorId String?
+  awardAmount  Float       @default(0)
+  status       BuyoutStatus @default(BIDDING)
+  notes        String?
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+
+  estimate      Estimate?         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  project       Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  trade         Trade?            @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  awardedVendor Vendor?           @relation("AwardedVendor", fields: [awardedVendorId], references: [id], onDelete: SetNull)
+  quotes        BidPackageQuote[]
+
+  @@index([estimateId])
+  @@index([projectId])
+}
+
+enum QuoteStatus {
+  PENDING
+  RECEIVED
+  DECLINED
+  NO_BID
+}
+
+model BidPackageQuote {
+  id           String      @id @default(cuid())
+  packageId    String
+  vendorId     String?
+  vendorName   String
+  baseAmount   Float       @default(0)
+  adjustmentAmount Float   @default(0)
+  inclusions   String?
+  exclusions   String?
+  qualifications String?
+  allowances   Float       @default(0)
+  status       QuoteStatus @default(PENDING)
+  notes        String?
+  sortOrder    Int         @default(0)
+
+  package BidPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  vendor  Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  @@index([packageId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Projects
+// ─────────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  BIDDING
+  AWARDED
+  PRECONSTRUCTION
+  UNDER_CONSTRUCTION
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CLOSED
+}
+
+enum EacMethod {
+  BOTTOM_UP
+  CPI_BASED
+  BUDGET_RATE
+}
+
+enum PocMethod {
+  COST_TO_COST
+  QUANTITY
+  SUBCONTRACTOR_PROGRESS
+  SCHEDULE
+  MANUAL
+  EARNED_VALUE
+  BILLING
+}
+
+model Project {
+  id                 String        @id @default(cuid())
+  companyId          String
+  number             String
+  name               String
+  clientId           String?
+  address            String?
+  city               String?
+  state              String?
+  projectType        String?
+  deliveryMethod     String?
+  architect          String?
+  pmUserId           String?
+  superintendent     String?
+  status             ProjectStatus @default(ACTIVE)
+
+  noticeToProceed    DateTime?
+  contractStart      DateTime?
+  contractCompletion DateTime?
+  forecastCompletion DateTime?
+  dataDate           DateTime?
+
+  originalContractSum   Float @default(0)
+  ownerRetentionPct     Float @default(0.05)
+  defaultSubRetentionPct Float @default(0.05)
+  targetMarginPct       Float @default(0.18)
+  laborBurdenPct        Float @default(0.34)
+  overheadPct           Float @default(0.06)
+  workDaysPerWeek       Int   @default(5)
+
+  eacMethod EacMethod @default(BOTTOM_UP)
+  pocMethod PocMethod @default(COST_TO_COST)
+  /// Fraction 0-1 used when pocMethod is MANUAL
+  manualPctComplete Float?
+  /// Fraction of pending change orders included in forecast
+  pendingCoInclusionPct Float @default(0)
+
+  safetyScore        Float?
+  qualityScore       Float?
+  clientSatScore     Float?
+  recordablesYtd     Int    @default(0)
+  nearMissesYtd      Int    @default(0)
+  observationsYtd    Int    @default(0)
+
+  sourceEstimateId String?
+  sourceBidId      String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company        Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client         Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  pm             User?             @relation("ProjectManager", fields: [pmUserId], references: [id], onDelete: SetNull)
+  sourceEstimate Estimate?         @relation(fields: [sourceEstimateId], references: [id], onDelete: SetNull)
+  sourceBid      Bid?              @relation(fields: [sourceBidId], references: [id], onDelete: SetNull)
+
+  budgetLines    BudgetLine[]
+  revisions      BudgetRevision[]
+  commitments    Commitment[]
+  costTx         CostTransaction[]
+  changeOrders   ChangeOrder[]
+  sovLines       SovLine[]
+  ownerBillings  OwnerBilling[]
+  subInvoices    SubInvoice[]
+  forecastPeriods ForecastPeriod[]
+  cashFlowPeriods CashFlowPeriod[]
+  quantityItems  QuantityItem[]
+  snapshots      ProjectSnapshot[]
+  bidPackages    BidPackage[]
+  wageRateSheets WageRateSheet[]
+  laborAssignments ProjectLaborAssignment[]
+  equipmentAssignments ProjectEquipmentAssignment[]
+  complianceRequirements ComplianceRequirement[]
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Budget
+// ─────────────────────────────────────────────────────────────
+
+model BudgetLine {
+  id             String       @id @default(cuid())
+  projectId      String
+  costCodeId     String
+  description    String
+  category       CostCategory
+  tradeId        String?
+  originalBudget Float        @default(0)
+  notes          String?
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode  CostCode         @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+  trade     Trade?           @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  revisions BudgetRevision[]
+
+  @@unique([projectId, costCodeId])
+  @@index([projectId])
+}
+
+enum BudgetRevisionType {
+  CHANGE_ORDER
+  TRANSFER
+  REVISION
+  CONTINGENCY_DRAW
+}
+
+model BudgetRevision {
+  id            String             @id @default(cuid())
+  projectId     String
+  budgetLineId  String
+  type          BudgetRevisionType
+  amount        Float
+  reason        String
+  changeOrderId String?
+  /// Paired transfer id so a transfer's two halves stay linked
+  transferGroup String?
+  createdBy     String?
+  createdAt     DateTime           @default(now())
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  budgetLine  BudgetLine   @relation(fields: [budgetLineId], references: [id], onDelete: Cascade)
+  changeOrder ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([budgetLineId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Commitments (subcontracts and purchase orders)
+// ─────────────────────────────────────────────────────────────
+
+enum CommitmentType {
+  SUBCONTRACT
+  PURCHASE_ORDER
+  MATERIAL
+  EQUIPMENT
+  SERVICE
+}
+
+enum CommitmentStatus {
+  DRAFT
+  ISSUED
+  EXECUTED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  INVOICED
+  CLOSED
+  CANCELLED
+}
+
+model Commitment {
+  id            String           @id @default(cuid())
+  projectId     String
+  vendorId      String
+  type          CommitmentType   @default(SUBCONTRACT)
+  number        String
+  description   String?
+  scopeOfWork   String?
+  originalAmount Float           @default(0)
+  retentionPct  Float            @default(0.05)
+  status        CommitmentStatus @default(ISSUED)
+  dateIssued    DateTime?
+  dateExecuted  DateTime?
+  expectedDelivery DateTime?
+  actualDelivery   DateTime?
+  receivedAmount   Float         @default(0)
+  /// Manager's forecast of the final cost of this commitment
+  forecastFinalOverride Float?
+  pctComplete   Float            @default(0)
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vendor  Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  lines   CommitmentLine[]
+  changes CommitmentChange[]
+  invoices SubInvoice[]
+  costTx  CostTransaction[]
+
+  @@unique([projectId, number])
+  @@index([projectId])
+}
+
+model CommitmentLine {
+  id           String @id @default(cuid())
+  commitmentId String
+  costCodeId   String
+  description  String?
+  amount       Float  @default(0)
+
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  costCode   CostCode   @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@index([commitmentId])
+}
+
+enum CommitmentChangeStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  VOID
+}
+
+model CommitmentChange {
+  id           String                 @id @default(cuid())
+  commitmentId String
+  number       String
+  description  String
+  amount       Float                  @default(0)
+  status       CommitmentChangeStatus @default(PENDING)
+  dateSubmitted DateTime?
+  dateApproved  DateTime?
+  changeOrderId String?
+  createdAt    DateTime               @default(now())
+
+  commitment  Commitment   @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  changeOrder ChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([commitmentId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Job cost transactions
+// ─────────────────────────────────────────────────────────────
+
+enum CostTxType {
+  ACTUAL
+  ACCRUAL
+  COMMITTED_ADJUSTMENT
+}
+
+enum CostTxSource {
+  MANUAL
+  IMPORT
+  SUB_INVOICE
+  PAYROLL
+  PURCHASE_ORDER
+  JOURNAL
+}
+
+model CostTransaction {
+  id           String       @id @default(cuid())
+  projectId    String
+  costCodeId   String
+  date         DateTime
+  type         CostTxType   @default(ACTUAL)
+  source       CostTxSource @default(MANUAL)
+  vendorId     String?
+  commitmentId String?
+  subInvoiceId String?
+  description  String
+  reference    String?
+  amount       Float
+  /// Hours for labor transactions, used for productivity analysis
+  hours        Float?
+  /// Set when an imported row could not be auto-coded
+  needsCoding  Boolean      @default(false)
+  /// Hash of source row used to detect duplicate imports
+  importHash   String?
+  attachmentName String?
+  attachmentUrl  String?
+  notes        String?
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode   CostCode    @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+  vendor     Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  commitment Commitment? @relation(fields: [commitmentId], references: [id], onDelete: SetNull)
+  subInvoice SubInvoice? @relation(fields: [subInvoiceId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, date])
+  @@index([projectId, costCodeId])
+  @@index([importHash])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Change orders
+// ─────────────────────────────────────────────────────────────
+
+enum ChangeOrderType {
+  OWNER_REQUEST
+  DESIGN_CHANGE
+  FIELD_CONDITION
+  ALLOWANCE_RECONCILE
+  ASI_DRIVEN
+  BACKCHARGE
+  TIME_ONLY
+  INTERNAL_BUDGET
+}
+
+/// What kind of document this is. All of them price, review, sign and approve
+/// the same way, so they are one model rather than four that would drift apart.
+enum DocumentKind {
+  /// A change to the owner contract, priced and submitted for approval.
+  CHANGE_ORDER
+  /// The prime contract itself. Approved contracts set the original contract value.
+  CONTRACT
+  /// A formal amendment to the prime contract.
+  CONTRACT_AMENDMENT
+  /// An addendum issued before or at execution.
+  ADDENDUM
+  /// A daily time and materials ticket, signed in the field for extra work.
+  TIME_AND_MATERIALS
+  /// A change the owner directs, before it becomes a priced change order.
+  OWNER_CHANGE
+  /// A change to a subcontract, which moves cost but not contract value.
+  SUBCONTRACT_CHANGE
+  OTHER
+}
+
+/// Where a document is in the journey from a draft to a signed instrument.
+///
+/// None of these values, on their own, puts money into the project's official
+/// figures. That is done by the approval on the document, which is a separate
+/// and deliberate act. A document can sit at FULLY_SIGNED for a week without
+/// touching the contract value until somebody certifies the approval.
+enum DocumentStatus {
+  DRAFT
+  INTERNAL_REVIEW
+  READY_TO_SEND
+  SENT_FOR_SIGNATURE
+  PARTIALLY_SIGNED
+  FULLY_SIGNED
+  APPROVED
+  REJECTED
+  CANCELLED
+  VOIDED
+  SUPERSEDED
+}
+
+/// Where each party stands on a document out for signature.
+enum SignatureStatus {
+  AWAITING
+  SIGNED
+  DECLINED
+}
+
+/// What an attached file is. Financial records only: no drawings, no specs.
+enum DocumentAttachmentKind {
+  SIGNED_DOCUMENT
+  UNSIGNED_DOCUMENT
+  PRICING_BACKUP
+  SUBCONTRACTOR_QUOTE
+  CORRESPONDENCE
+  OTHER
+}
+
+/**
+ * A change order, contract, amendment or addendum.
+ *
+ * One model for all of them, because they are the same object: something is
+ * priced, reviewed, sent out, signed by every party, and only then allowed to
+ * move the project's money. Four separate models would have drifted apart on
+ * exactly the rule that matters.
+ *
+ * That rule: **`approvedAt` is the only thing that puts money into the
+ * project's official figures.** Not the status, not a signature date, not the
+ * fact that somebody typed an amount in. A document sitting at FULLY_SIGNED
+ * with `approvedAt` null contributes nothing to the contract value, the budget,
+ * the forecast, the dashboard or any report. Somebody has to certify the
+ * approval, and their name and the moment go on the record when they do.
+ *
+ * Amounts are derived, not stored, whenever the document is priced from its
+ * lines. `enteredOwnerAmount` and `enteredCostAmount` are used only when it is
+ * not, which is how a lump-sum document recorded from paper still works.
+ */
+model ChangeOrder {
+  id            String            @id @default(cuid())
+  projectId     String
+  number        String
+  documentKind  DocumentKind      @default(CHANGE_ORDER)
+  type          ChangeOrderType   @default(OWNER_REQUEST)
+  description   String
+  origin        String?
+  tradeId       String?
+  status        DocumentStatus    @default(DRAFT)
+  /// Who the document is with: the owner, a subcontractor, an architect.
+  counterparty  String?
+  /// The signature envelope or file reference at the platform it was sent through.
+  reference     String?
+
+  dateInitiated DateTime?
+  dateSubmitted DateTime?
+  dateApproved  DateTime?
+  anticipatedApproval DateTime?
+  /// When it went out for signature.
+  sentForSignatureAt  DateTime?
+  /// When the last required party signed. Signing is not approving.
+  fullySignedAt       DateTime?
+
+  /*
+    The approval. Everything downstream of this document reads `approvedAt` and
+    nothing else, so there is exactly one gate and it is auditable.
+  */
+  approvedAt            DateTime?
+  approvedById          String?
+  /// What the approver certified when they ticked the box, kept verbatim.
+  approvalCertification String?
+  /// Why an approval was withdrawn, required before it can be.
+  unapprovedReason      String?
+
+  /// Priced from its own lines, the ordinary case. False records a lump sum
+  /// taken off paper, and the page says which it is reading.
+  priceFromLines Boolean @default(true)
+  /// Used only when `priceFromLines` is false.
+  enteredOwnerAmount Float @default(0)
+  enteredCostAmount  Float @default(0)
+
+  /*
+    The markup chain, the same one the estimate uses and in the same order, so a
+    change order is priced the way the job was priced.
+  */
+  laborBurdenPct  Float @default(0)
+  salesTaxPct     Float @default(0)
+  smallToolsPct   Float @default(0)
+  contingencyPct  Float @default(0)
+  overheadPct     Float @default(0)
+  profitPct       Float @default(0)
+  glInsurancePct  Float @default(0)
+  bondPct         Float @default(0)
+  exciseTaxPct    Float @default(0)
+  roundToNearest  Float @default(0)
+
+  probabilityPct  Float             @default(0)
+  scheduleImpactDays Int            @default(0)
+  /// When true the approved amount posts budget revisions on the linked cost codes
+  postsToBudget Boolean             @default(true)
+  /// The document that replaced this one, where it was superseded.
+  supersededById String?
+  /// The change order this ticket is billed under.
+  ///
+  /// Time and materials tickets are signed one day at a time and then rolled
+  /// into a change order for billing. A ticket that names its parent here
+  /// contributes nothing to the contract value on its own, because the change
+  /// order carries the money; without this the same work would be counted twice.
+  rollsUpToId    String?
+  notes         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  trade             Trade?             @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  approvedBy        User?              @relation("DocumentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  supersededBy      ChangeOrder?       @relation("Supersedes", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes        ChangeOrder[]      @relation("Supersedes")
+  rollsUpTo         ChangeOrder?       @relation("RollsUp", fields: [rollsUpToId], references: [id], onDelete: SetNull)
+  rolledUpTickets   ChangeOrder[]      @relation("RollsUp")
+  lines             ChangeOrderLine[]
+  signatures        DocumentSignature[]
+  attachments       DocumentAttachment[]
+  budgetRevisions   BudgetRevision[]
+  commitmentChanges CommitmentChange[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@index([projectId, documentKind])
+}
+
+/**
+ * One priced line on a document.
+ *
+ * Deliberately the same shape as a takeoff line, and priced by the same
+ * function: quantity from the measure and dimensions, waste on top, labor at
+ * hours times a rate, material taxed, equipment and subcontract at their unit
+ * costs. A change order is a small estimate, and pricing it any other way
+ * invites the two to disagree.
+ *
+ * The line total is never stored. It is derived every time it is read.
+ */
+model ChangeOrderLine {
+  id            String       @id @default(cuid())
+  changeOrderId String
+  costCodeId    String
+  category      CostCategory
+  description   String?
+  /// The section or scope heading this line sits under.
+  scope         String?
+  divisionCode  String?
+
+  measure        MeasureType @default(LS)
+  count          Float       @default(1)
+  length         Float       @default(0)
+  width          Float       @default(0)
+  depth          Float       @default(0)
+  /// Overrides the quantity the dimensions work out to.
+  netQtyOverride Float?
+  uom            String?
+  wastePct       Float       @default(0)
+
+  /// Priced against the estimate's own class list or the company library.
+  laborClass        String?
+  laborHrsPerUnit   Float   @default(0)
+  /// A rate for this line alone. Null uses the class rate.
+  laborRateOverride Float?
+
+  /// The piece of equipment this line runs, named as the equipment list names
+  /// it. Priced at hours times its rate, the same way labor is.
+  equipmentClass        String?
+  equipmentHrsPerUnit   Float   @default(0)
+  equipmentRateOverride Float?
+
+  materialUnitCost  Float @default(0)
+  equipmentUnitCost Float @default(0)
+  subUnitCost       Float @default(0)
+  /// Anything that is none of the four: general conditions, an allowance, a
+  /// permit fee. A takeoff sends these to its own general conditions sheet; a
+  /// change order has no such sheet, so they are priced on the line.
+  otherUnitCost     Float @default(0)
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  costCode    CostCode    @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@index([changeOrderId])
+}
+
+/// One party who has to sign, and whether they have.
+///
+/// Signing is recorded here; approving is recorded on the document. They are
+/// separate because they are separate acts: everyone can have signed and the
+/// money still does not move until somebody in this company says it should.
+model DocumentSignature {
+  id            String          @id @default(cuid())
+  changeOrderId String
+  party         String
+  /// Their role on the document: owner, architect, contractor, subcontractor.
+  role          String?
+  email         String?
+  status        SignatureStatus @default(AWAITING)
+  signedAt      DateTime?
+  /// Why a party declined, where they did.
+  note          String?
+  sortOrder     Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([changeOrderId, party])
+  @@index([changeOrderId])
+}
+
+/// A financial record attached to a document: the signed copy, pricing backup,
+/// a subcontractor quote. A filename reference rather than a document library,
+/// which is deliberate: drawings and specifications belong elsewhere.
+model DocumentAttachment {
+  id            String                 @id @default(cuid())
+  changeOrderId String
+  kind          DocumentAttachmentKind @default(SIGNED_DOCUMENT)
+  fileName      String
+  /// Where the file actually lives. A link somebody typed, when the file is
+  /// held elsewhere; the storage key, when this system holds it.
+  location      String?
+
+  /// Which store holds it: `local`, `s3`, or null when this is only a link.
+  storage       String?
+  /// The key inside that store. Never guessable, so a signed document cannot be
+  /// found by trying likely names.
+  storageKey    String?
+  contentType   String?
+  byteSize      Int?
+  /// SHA-256 of the bytes as stored. The point of the whole exercise: a signed
+  /// change order can be proved later to be the file that was approved, not one
+  /// that replaced it.
+  checksum      String?
+
+  note          String?
+  uploadedById  String?
+  createdAt     DateTime               @default(now())
+
+  changeOrder ChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  uploadedBy  User?       @relation("DocumentAttacher", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([changeOrderId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Owner billing: schedule of values and pay applications
+// ─────────────────────────────────────────────────────────────
+
+model SovLine {
+  id             String  @id @default(cuid())
+  projectId      String
+  number         String
+  description    String
+  costCodeId     String?
+  scheduledValue Float   @default(0)
+  /// Set when this SOV line was created by an approved change order
+  changeOrderNumber String?
+  sortOrder      Int     @default(0)
+
+  project  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode CostCode?          @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  lines    OwnerBillingLine[]
+
+  @@unique([projectId, number])
+  @@index([projectId])
+}
+
+enum BillingStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PAID
+  REJECTED
+}
+
+model OwnerBilling {
+  id            String        @id @default(cuid())
+  projectId     String
+  appNumber     Int
+  periodTo      DateTime
+  dateSubmitted DateTime?
+  dateApproved  DateTime?
+  datePaid      DateTime?
+  retainagePct  Float         @default(0.05)
+  amountPaid    Float         @default(0)
+  status        BillingStatus @default(DRAFT)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   OwnerBillingLine[]
+
+  @@unique([projectId, appNumber])
+  @@index([projectId])
+}
+
+model OwnerBillingLine {
+  id              String @id @default(cuid())
+  billingId       String
+  sovLineId       String
+  workThisPeriod  Float  @default(0)
+  storedMaterials Float  @default(0)
+
+  billing OwnerBilling @relation(fields: [billingId], references: [id], onDelete: Cascade)
+  sovLine SovLine      @relation(fields: [sovLineId], references: [id], onDelete: Cascade)
+
+  @@unique([billingId, sovLineId])
+  @@index([billingId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Subcontractor billing
+// ─────────────────────────────────────────────────────────────
+
+model SubInvoice {
+  id            String    @id @default(cuid())
+  projectId     String
+  commitmentId  String?
+  vendorId      String
+  costCodeId    String?
+  invoiceNumber String
+  periodEnd     DateTime?
+  amount        Float     @default(0)
+  retentionPct  Float     @default(0.05)
+  dateReceived  DateTime?
+  approved      Boolean   @default(false)
+  dateApproved  DateTime?
+  amountPaid    Float     @default(0)
+  datePaid      DateTime?
+  lienWaiverReceived Boolean @default(false)
+  attachmentName String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  commitment Commitment?       @relation(fields: [commitmentId], references: [id], onDelete: SetNull)
+  vendor     Vendor            @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  costCode   CostCode?         @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  costTx     CostTransaction[]
+
+  @@index([projectId])
+  @@index([vendorId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Monthly forecasting
+// ─────────────────────────────────────────────────────────────
+
+enum ForecastStatus {
+  OPEN
+  LOCKED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model ForecastPeriod {
+  id        String         @id @default(cuid())
+  projectId String
+  periodEnd DateTime
+  status    ForecastStatus @default(OPEN)
+  lockedAt  DateTime?
+  lockedBy  String?
+  notes     String?
+  createdAt DateTime       @default(now())
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   ForecastLine[]
+
+  @@unique([projectId, periodEnd])
+  @@index([projectId])
+}
+
+model ForecastLine {
+  id         String @id @default(cuid())
+  periodId   String
+  costCodeId String
+
+  // snapshot values captured when the period is locked
+  currentBudget Float @default(0)
+  costToDate    Float @default(0)
+  committed     Float @default(0)
+  accrued       Float @default(0)
+  remainingCommitment Float @default(0)
+
+  pctComplete Float  @default(0)
+  /// Manager's estimate of remaining cost; null means derive from budget and % complete
+  etcOverride Float?
+  estimateToComplete Float @default(0)
+  estimateAtCompletion Float @default(0)
+  previousEac Float  @default(0)
+
+  riskLevel  RiskLevel @default(LOW)
+  confidence Float     @default(0.8)
+  note       String?
+
+  period   ForecastPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  costCode CostCode       @relation(fields: [costCodeId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, costCodeId])
+  @@index([periodId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Cash flow / S-curve
+// ─────────────────────────────────────────────────────────────
+
+model CashFlowPeriod {
+  id        String   @id @default(cuid())
+  projectId String
+  periodEnd DateTime
+  /// Planned progress increment for the month (fraction)
+  plannedDeltaPct Float @default(0)
+  /// Actual percent complete at month end (fraction), null for future months
+  actualPctComplete Float?
+  /// Actual cost recorded in the month, null for future months
+  actualCost Float?
+  /// Manual override of expected billing for the month
+  billingOverride Float?
+  /// Manual override of expected collection for the month
+  collectionOverride Float?
+  notes     String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, periodEnd])
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Quantity tracking and productivity
+// ─────────────────────────────────────────────────────────────
+
+model QuantityItem {
+  id          String  @id @default(cuid())
+  projectId   String
+  costCodeId  String?
+  description String
+  uom         String
+  budgetQty   Float   @default(0)
+  /// Budget labour hours per unit
+  budgetUnitRate Float @default(0)
+  targetFinish   DateTime?
+  materialOrderedQty Float @default(0)
+  notes       String?
+  sortOrder   Int     @default(0)
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  costCode CostCode?        @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  entries  QuantityEntry[]
+
+  @@index([projectId])
+}
+
+model QuantityEntry {
+  id           String   @id @default(cuid())
+  itemId       String
+  periodEnd    DateTime
+  installedQty Float    @default(0)
+  actualHours  Float    @default(0)
+  crewDays     Float    @default(0)
+  notes        String?
+
+  item QuantityItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, periodEnd])
+  @@index([itemId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Snapshots and company-level accounting inputs
+// ─────────────────────────────────────────────────────────────
+
+model ProjectSnapshot {
+  id        String   @id @default(cuid())
+  projectId String
+  asOf      DateTime
+  label     String?
+  /// Serialized ProjectFinancials payload
+  payload   String
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, asOf])
+  @@index([projectId])
+}
+
+model CompanyMonthly {
+  id        String   @id @default(cuid())
+  companyId String
+  month     DateTime
+  billings  Float    @default(0)
+  costs     Float    @default(0)
+  cashIn    Float    @default(0)
+  cashOut   Float    @default(0)
+  overhead  Float    @default(0)
+  notes     String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, month])
+  @@index([companyId])
+}
+
+model ArAgingBucket {
+  id        String   @id @default(cuid())
+  companyId String
+  asOf      DateTime
+  bucket    String
+  amount    Float    @default(0)
+  sortOrder Int      @default(0)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, asOf, bucket])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Prevailing wage and certified payroll
+// ─────────────────────────────────────────────────────────────
+
+/// How a state charges workers compensation, which changes what goes in the
+/// per-hour box on the wage sheet.
+enum WorkersCompBasis {
+  /// Premium quoted per hour worked, which the wage sheet takes directly.
+  PER_HOUR
+  /// Premium quoted per 100 dollars of payroll, the ordinary case. Divide by
+  /// 100 and multiply by the hourly wage to get the per-hour figure.
+  PER_100_PAYROLL
+}
+
+/// A state, or the District of Columbia, as far as payroll is concerned.
+///
+/// Holds only what genuinely varies by state. The federal rates are on the
+/// company, because they do not vary by state and must not be stored twice.
+///
+/// The state unemployment rate is deliberately left empty until somebody fills
+/// it in from the annual notice, because it is set per employer per year and no
+/// list can be right for every company. `verifiedAt` records that somebody
+/// checked it, and against what.
+model PayrollJurisdiction {
+  id        String  @id @default(cuid())
+  companyId String
+  /// Two-letter postal code, for example WA.
+  code      String
+  name      String
+
+  /// Employer's state unemployment rate as a fraction. Null until verified.
+  sutaPct       Float?
+  /// Wages per employee per year the state unemployment rate applies to.
+  /// Recorded for reference; the wage sheet charges every hour, see notes.
+  sutaWageBase  Float?
+  /// The year the rate above was issued for.
+  sutaRateYear  Int?
+
+  workersCompBasis WorkersCompBasis @default(PER_100_PAYROLL)
+  /// True where workers compensation is bought from a state monopoly fund
+  /// rather than on the private market.
+  stateFund        Boolean          @default(false)
+
+  /// Who publishes the prevailing wage determinations used here.
+  wageAuthority    String?
+  notes            String?
+
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedNote String?
+
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  verifiedBy User?                     @relation("PayrollJurisdictionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  counties   PayrollCounty[]
+  sheets     WageRateSheet[]
+  classifications LaborClassification[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+/// A county inside a state.
+///
+/// Prevailing wage is determined county by county, both federally and in the
+/// states that publish their own schedules, so the county is what identifies
+/// which schedule a sheet was built from.
+model PayrollCounty {
+  id             String @id @default(cuid())
+  jurisdictionId String
+  name           String
+  /// Census FIPS code, where it is known, for matching published schedules.
+  fips           String?
+
+  /// Anything local: a city ordinance above the state rate, a separate
+  /// determination area, a heavy and highway split.
+  notes String?
+
+  verifiedAt   DateTime?
+  verifiedById String?
+
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jurisdiction PayrollJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+  verifiedBy   User?               @relation("PayrollCountyVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  sheets       WageRateSheet[]
+
+  @@unique([jurisdictionId, name])
+  @@index([jurisdictionId])
+}
+
+/// One certified payroll wage rate sheet for a project.
+///
+/// A project can carry more than one: work in two counties, or a schedule that
+/// changed part way through, means two sheets rather than edited history.
+model WageRateSheet {
+  id             String  @id @default(cuid())
+  projectId      String
+  name           String
+  jurisdictionId String
+  countyId       String?
+
+  /// The date of the determination or agreement the rates were taken from.
+  rateScheduleDate DateTime?
+  /// How to find that schedule again: a general decision number, an L&I
+  /// effective date, a union agreement name.
+  determinationRef String?
+
+  /// State unemployment rate for this sheet, where it differs from the rate on
+  /// the jurisdiction. Null means use the jurisdiction, which is the usual case.
+  sutaPctOverride Float?
+
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedNote String?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jurisdiction PayrollJurisdiction  @relation(fields: [jurisdictionId], references: [id], onDelete: Restrict)
+  county       PayrollCounty?       @relation(fields: [countyId], references: [id], onDelete: SetNull)
+  verifiedBy   User?                @relation("WageRateSheetVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  lines        WageRateLine[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+/// One trade on a wage sheet. The seven boxes of the form, and nothing derived:
+/// every subtotal, burden and total is computed from these on the way out.
+model WageRateLine {
+  id      String @id @default(cuid())
+  sheetId String
+  /// Trade and position as the schedule names it, for example "Carpenter,
+  /// journey level".
+  trade   String
+  /// The schedule's own classification code, where it has one.
+  classification String?
+
+  /// Item 1, the cash wage per hour.
+  hourlyWage     Float @default(0)
+  /// Item 2, the bona fide fringe benefit per hour.
+  hourlyBenefits Float @default(0)
+  /// Item 6, training and education per hour.
+  trainingPerHour     Float @default(0)
+  /// Item 7, workers compensation per hour.
+  workersCompPerHour  Float @default(0)
+  /// 1.5 for time and a half, 2 for double time.
+  overtimeMultiplier  Float @default(1.5)
+
+  /// The published determination, for checking this row against it. Optional,
+  /// because a sheet built from a union agreement has no separate published
+  /// figure to check against.
+  publishedBaseWage Float?
+  publishedFringe   Float?
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sheet WageRateSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+
+  @@unique([sheetId, trade])
+  @@index([sheetId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Labor cost, project team and overhead
+// ─────────────────────────────────────────────────────────────
+
+enum PayBasis {
+  /// Paid by the hour. Amounts on the classification are per hour.
+  HOURLY
+  /// Paid a salary. Amounts on the classification are per year.
+  SALARY
+}
+
+enum LaborKind {
+  /// Craft labor, priced into takeoff lines and charged to a work code.
+  FIELD
+  /// Project team and office: managers, superintendents, engineers,
+  /// estimators, administration. Charged to general conditions or carried
+  /// as overhead when not on a job.
+  STAFF
+}
+
+enum AssignmentBasis {
+  /// A number of hours at the loaded hourly cost.
+  HOURS
+  /// A share of somebody's time across a date range.
+  ALLOCATION
+}
+
+/**
+ * What one classification of person costs the company, fully loaded.
+ *
+ * The single place a wage or a salary is entered. Estimates price takeoff
+ * labor through it, projects assign people to jobs through it, and the
+ * overhead recovery rate counts the staff who are not on a job through it, so
+ * a pay rise is entered once and every one of those moves.
+ *
+ * Amounts are per hour when paid hourly and per year when salaried, which is
+ * how each is actually quoted. `annualHours` is how a salary is spread onto an
+ * hour, and it is deliberately not fixed at 2080: a superintendent who works
+ * 2400 hours costs less an hour than the same salary spread over 2080, and
+ * pricing at the wrong one is how general conditions quietly go light.
+ */
+model LaborClassification {
+  id        String @id @default(cuid())
+  companyId String
+  /// The company's own code for this classification, where it has one.
+  code      String?
+  name      String
+  kind      LaborKind @default(FIELD)
+  payBasis  PayBasis  @default(HOURLY)
+
+  /// Per hour when paid hourly, per year when salaried.
+  baseAmount     Float @default(0)
+  /// Fringe benefits. Per hour when paid hourly, per year when salaried.
+  benefitsAmount Float @default(0)
+  /// Hours a year a salary is spread over. Ignored when paid hourly.
+  annualHours    Float @default(2080)
+
+  /// Training and education, dollars per hour worked.
+  trainingPerHour Float @default(0)
+  /// Workers compensation for this classification's risk class, quoted the way
+  /// the jurisdiction quotes it: per hour worked, or per 100 dollars of payroll.
+  workersCompRate Float @default(0)
+
+  /// Whose state unemployment rate applies. Null uses no state rate, and the
+  /// classification says so rather than pricing labor light in silence.
+  jurisdictionId String?
+
+  /// Where this person's cost lands in a budget.
+  costCategory CostCategory @default(LABOR)
+  tradeId      String?
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jurisdiction PayrollJurisdiction? @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
+  trade        Trade?               @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  assignments  ProjectLaborAssignment[]
+  estimateRates LaborRate[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+/**
+ * A person or a classification charged to a project.
+ *
+ * Two ways to say it, because two things are being said. Craft labor and short
+ * stints are a number of hours. A salaried manager is a share of somebody's
+ * time across a range of dates, which is how project teams are actually
+ * staffed: half a project manager from March to November, a superintendent
+ * full time for the duration, an estimator for the three weeks of the bid.
+ *
+ * The cost is never stored. It is derived from the classification's loaded
+ * rate every time it is read, so a pay rise reprices every job that person is
+ * on rather than leaving a set of stale numbers behind.
+ */
+model ProjectLaborAssignment {
+  id               String @id @default(cuid())
+  projectId        String
+  classificationId String
+  /// The person, when this is a named person rather than a generic role.
+  label            String?
+  /// Where the cost lands. Null falls back to the classification's cost type.
+  costCodeId       String?
+
+  basis AssignmentBasis @default(ALLOCATION)
+
+  /// Hours basis.
+  budgetedHours Float @default(0)
+
+  /// Allocation basis: the share of their time, and over what dates.
+  allocationPct Float     @default(1)
+  startDate     DateTime?
+  endDate       DateTime?
+
+  /// A rate negotiated for this job specifically. Null is the ordinary case
+  /// and the classification's own loaded rate is used.
+  loadedRateOverride Float?
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  classification LaborClassification @relation(fields: [classificationId], references: [id], onDelete: Restrict)
+  costCode       CostCode?           @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([classificationId])
+}
+
+enum OverheadCategory {
+  OFFICE
+  VEHICLES
+  SOFTWARE
+  INSURANCE
+  EQUIPMENT
+  PROFESSIONAL
+  MARKETING
+  TRAINING
+  OTHER
+}
+
+enum OverheadPeriod {
+  MONTHLY
+  ANNUAL
+  ONE_TIME
+}
+
+/**
+ * A cost of being in business that no single job pays for directly.
+ *
+ * Rent, trucks, software, insurance, professional fees. Held so the overhead
+ * percentage carried in a bid can be worked out from what the company actually
+ * spends rather than guessed, and so an estimator pricing a trailer or a
+ * software seat into general conditions can see what the real one costs.
+ *
+ * Salaried staff are deliberately not entered here. They are already on the
+ * classification list, and the overhead summary counts the share of them that
+ * no project is paying for. Entering a salary in both places would be the same
+ * money twice.
+ */
+model OverheadCost {
+  id        String           @id @default(cuid())
+  companyId String
+  name      String
+  category  OverheadCategory @default(OTHER)
+  amount    Float            @default(0)
+  period    OverheadPeriod   @default(MONTHLY)
+  /// When a one-time cost fell, or when an annual item renews.
+  incurredOn DateTime?
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Labor compliance
+// ─────────────────────────────────────────────────────────────
+
+enum ComplianceKind {
+  CERTIFIED_PAYROLL
+  PREVAILING_WAGE_POSTING
+  FRINGE_BENEFIT_STATEMENT
+  APPRENTICESHIP_UTILIZATION
+  EEO_REPORT
+  WAGE_DETERMINATION_UPDATE
+  INTENT_OR_AFFIDAVIT
+  OSHA_LOG
+  INSURANCE_CERTIFICATE
+  LICENSE_OR_REGISTRATION
+  OTHER
+}
+
+enum ComplianceFrequency {
+  WEEKLY
+  BIWEEKLY
+  SEMIMONTHLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_TIME
+}
+
+/**
+ * Something this job has to file, and how often.
+ *
+ * Certified payroll every week, an apprenticeship utilisation report every
+ * month, a wage determination checked each quarter. The point is the deadline:
+ * a missed certified payroll can stop a payment application, and nobody
+ * remembers a weekly filing on a job they did not open this week.
+ *
+ * The next due date is never stored. It is derived from the frequency, the
+ * first due date and what has actually been filed, so it cannot go stale and
+ * a late filing does not silently reset the schedule.
+ */
+model ComplianceRequirement {
+  id        String              @id @default(cuid())
+  projectId String
+  kind      ComplianceKind      @default(CERTIFIED_PAYROLL)
+  title     String
+  /// Who it goes to.
+  agency    String?
+  frequency ComplianceFrequency @default(WEEKLY)
+  /// The first deadline. Every later one is counted forward from it.
+  firstDueDate DateTime
+  /// The last deadline, where the obligation ends before the job does.
+  endsOn       DateTime?
+  /// How many days ahead of a deadline to start warning.
+  leadDays     Int @default(7)
+
+  responsibleUserId String?
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  responsible User?                  @relation("ComplianceOwner", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  submissions ComplianceSubmission[]
+
+  @@unique([projectId, title])
+  @@index([projectId])
+}
+
+/// One filing actually made, against the deadline it was made for.
+model ComplianceSubmission {
+  id            String @id @default(cuid())
+  requirementId String
+  /// The deadline this filing answers.
+  dueDate       DateTime
+  /// The period the filing covers, where that differs from the deadline.
+  periodEnd     DateTime?
+  submittedAt   DateTime
+  submittedById String?
+  /// Confirmation number, file name, whatever proves it went.
+  reference     String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  requirement ComplianceRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  submittedBy User?                 @relation("ComplianceSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+
+  @@unique([requirementId, dueDate])
+  @@index([requirementId])
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Equipment and its rates
+// ─────────────────────────────────────────────────────────────
+
+enum EquipmentOwnership {
+  /// The company owns it. The rate recovers the cost of owning it.
+  OWNED
+  /// Hired in. The rate is what the hire costs.
+  RENTED
+  /// Brought by the operator or the subcontractor, charged through them.
+  OPERATOR_PROVIDED
+}
+
+/// How a rate is quoted. Rental rates are quoted every one of these ways, and
+/// which one applies depends on how long the machine is on the job.
+enum RateBasis {
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/**
+ * A machine, a truck, or a piece of plant, and what it costs.
+ *
+ * Equipment is a cost like labor is a cost, and it is entered once here so an
+ * estimate line, a change order line, a time and materials ticket and a project
+ * budget all price from the same rate. A rate changed here moves all of them.
+ *
+ * Rates are held at every basis they are quoted at rather than one being
+ * converted into the others behind the scenes, because a weekly rate is almost
+ * never five daily rates and pretending otherwise loses money on long hires.
+ * Where a basis has no rate the engine says so instead of inventing one, and
+ * the conversion factors it does use to reach an hourly figure are on the
+ * record here rather than assumed.
+ */
+model EquipmentItem {
+  id        String @id @default(cuid())
+  companyId String
+  code      String?
+  name      String
+  /// Excavator, truck, compactor, pump, small tools.
+  category  String?
+  ownership EquipmentOwnership @default(OWNED)
+
+  hourlyRate  Float @default(0)
+  dailyRate   Float @default(0)
+  weeklyRate  Float @default(0)
+  monthlyRate Float @default(0)
+
+  /// Fuel, wear and maintenance, charged per hour the machine actually runs.
+  /// Separate from the rate because a machine standing idle on site still costs
+  /// its rate and costs none of this.
+  operatingCostPerHour Float @default(0)
+  /// Charged per hour while it is on the job but not working.
+  standbyRatePerHour   Float @default(0)
+
+  /// How a day, a week and a month convert into hours for this machine. Stated
+  /// rather than assumed, because a haul truck on two shifts is not an eight
+  /// hour day.
+  hoursPerDay  Float @default(8)
+  daysPerWeek  Float @default(5)
+
+  /// Who it is hired from, when it is hired.
+  vendorId String?
+  assetTag String?
+
+  costCategory CostCategory @default(EQUIPMENT)
+
+  notes     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor      Vendor?                      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  assignments ProjectEquipmentAssignment[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+/**
+ * A piece of equipment charged to a project.
+ *
+ * The cost is never stored. It is the rate at the chosen basis times the units,
+ * plus the operating cost for the hours it actually ran, plus standby, all
+ * worked out each time it is read, so a rate change reprices every job the
+ * machine is on.
+ */
+model ProjectEquipmentAssignment {
+  id              String @id @default(cuid())
+  projectId       String
+  equipmentItemId String
+  /// A particular machine, where the fleet has several of the same kind.
+  label           String?
+  costCodeId      String?
+
+  basis RateBasis @default(DAILY)
+  /// Hours, days, weeks or months, matching the basis.
+  units Float     @default(0)
+
+  /// Hours the machine actually ran, which is what attracts the operating cost.
+  operatingHours Float @default(0)
+  /// Hours it stood on the job doing nothing.
+  standbyHours   Float @default(0)
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  /// A rate agreed for this job alone. Null uses the equipment list.
+  rateOverride Float?
+
+  notes     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  item     EquipmentItem @relation(fields: [equipmentItemId], references: [id], onDelete: Restrict)
+  costCode CostCode?     @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([equipmentItemId])
+}
