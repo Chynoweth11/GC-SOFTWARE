@@ -80,6 +80,10 @@ export interface DocumentView extends DocumentDerived {
     note: string | null
     uploadedByName: string | null
     createdAt: Date
+    /** Set when this system holds the bytes rather than pointing at them. */
+    stored: boolean
+    byteSize: number | null
+    checksumShort: string | null
   }[]
   lineRecords: {
     id: string
@@ -225,6 +229,11 @@ function viewFromRecord(
       note: attachment.note,
       uploadedByName: attachment.uploadedBy?.name ?? null,
       createdAt: attachment.createdAt,
+      stored: attachment.storage !== null && attachment.storageKey !== null,
+      byteSize: attachment.byteSize,
+      // Enough of the hash to compare by eye against a filing note, without
+      // filling a column with sixty-four characters nobody reads.
+      checksumShort: attachment.checksum ? attachment.checksum.slice(0, 12) : null,
     })),
     lineRecords: record.lines.map((line) => ({
       id: line.id,

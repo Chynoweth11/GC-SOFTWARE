@@ -21,7 +21,7 @@ hold the identities the workbooks never checked. Beyond them, `verify:figures`
 re-checks 772 identities against the live database, `verify:exports` writes and
 reparses every workbook and PDF, `verify:backup` round trips every project
 through export and restore, `verify:pages` walks every route, and `verify:ui`
-drives 81 interactive checks through a real browser. All of it runs on every
+drives 84 interactive checks through a real browser. All of it runs on every
 push through `.github/workflows/verify.yml`, in three parallel jobs, so a broken
 formula is reported in minutes rather than whenever somebody next thinks to
 look.
@@ -757,6 +757,7 @@ anything when they are not.
 
 | Concern | How it works | Where |
 |---|---|---|
+| Attached records | Stored and hashed with SHA-256, checked again on every download | `src/lib/storage.ts` |
 | Password sign-in | scrypt with a per-password salt, in an httpOnly cookie | `src/lib/auth.ts` |
 | Failed attempts | Counted by email and by address, each failure past the fifth doubling the wait to a cap of fifteen minutes | `src/lib/finance/throttle.ts`, `LoginAttempt` |
 | Single sign-on | Authorization code flow against GitHub, Google or Microsoft, chosen by `SSO_PROVIDER` | `src/lib/sso.ts` |
@@ -789,6 +790,21 @@ nothing configured the settings page states plainly that email is off, and
 deadlines still reach people through the dashboard and the calendar feed. An
 alerting feature that is quietly switched off is worse than one that is
 obviously switched off.
+
+**Why an attachment is stored rather than pointed at.** A signed change order is
+the evidence behind an approval. An attachment used to be a file name and a path
+somebody typed, so a file that was later moved or renamed left the audit trail
+pointing at nothing. Now the bytes are held, hashed on the way in, and the hash
+checked again on every download: a file that no longer matches is refused rather
+than served, because a record that has quietly changed is worse than a missing
+one. It looks right. A link to a file held elsewhere is still allowed, and the
+page marks it plainly as a reference nothing here can vouch for.
+
+Files go to a directory on the server by default, or to any S3-compatible
+service through `FILE_STORAGE=s3`. The requests are signed directly, so there is
+no SDK to keep up to date for what amounts to a PUT and a GET. Keys are random
+rather than derived from the file name, so a signed contract cannot be found by
+guessing.
 
 **Why the digest is skipped when there is nothing to say.** A daily message that
 usually reads "all clear" is filtered within a fortnight, and then the one that

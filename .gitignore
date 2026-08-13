@@ -49,3 +49,7 @@ next-env.d.ts
 
 # generated prisma client
 /src/generated
+
+# Attached financial records, when the local store is used. They belong in a
+# backup, not in version control.
+/var/

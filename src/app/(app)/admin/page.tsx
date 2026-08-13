@@ -8,6 +8,7 @@ import { DataList, EmptyState, KpiGrid, Kpi, Section } from '@/components/ui'
 import { CompanyForm } from '@/components/admin/company-form'
 import { mailConfig } from '@/lib/mail'
 import { ssoConfig } from '@/lib/sso'
+import { storageConfig } from '@/lib/storage'
 import { updateCompany } from './actions'
 
 export const metadata = { title: 'Company settings' }
@@ -42,6 +43,14 @@ export default async function AdminCompanyPage() {
   const mail = mailConfig()
   const digestScheduled = Boolean(process.env.CRON_SECRET)
   const sso = ssoConfig()
+  const storage = storageConfig()
+
+  const storedAttachments = await prisma.documentAttachment.count({
+    where: { changeOrder: { project: { companyId: user.companyId } }, storageKey: { not: null } },
+  })
+  const referencedAttachments = await prisma.documentAttachment.count({
+    where: { changeOrder: { project: { companyId: user.companyId } }, storageKey: null },
+  })
 
   return (
     <div className="space-y-6">
@@ -122,6 +131,35 @@ export default async function AdminCompanyPage() {
             Signing in through a provider never creates an account. Somebody has to exist here first, with a role
             chosen deliberately, because the role is the whole of what they may see. A leaver switched off in your
             directory can no longer sign in, and switching them off here does the same.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title="Attached records"
+        description="A signed change order is the evidence behind an approval, so it is held here and hashed rather than pointed at"
+      >
+        <div className="card p-4">
+          <DataList
+            columns={2}
+            items={[
+              { label: 'Where files go', value: storage.description },
+              {
+                label: 'Ready to use',
+                value: storage.configured ? 'Yes' : `No, ${storage.missing.join(' and ')} not set`,
+              },
+              { label: 'Files held here', value: storedAttachments.toLocaleString('en-US') },
+              {
+                label: 'References to files elsewhere',
+                value: referencedAttachments.toLocaleString('en-US'),
+                hint: 'Recorded as a link or a path. Nothing here can prove one of these is unchanged.',
+              },
+            ]}
+          />
+          <p className="mt-3 text-xs" style={{ color: 'var(--text-subtle)' }}>
+            Every stored file is hashed when it arrives and checked again on every download. A file that no longer
+            matches is refused rather than served, because a record that has quietly changed is worse than a missing
+            one: it looks right.
           </p>
         </div>
       </Section>

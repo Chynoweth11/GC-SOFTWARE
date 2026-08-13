@@ -350,6 +350,9 @@ export default async function DocumentPage({
               note: attachment.note,
               uploadedByName: attachment.uploadedByName,
               createdAt: attachment.createdAt.toISOString(),
+              stored: attachment.stored,
+              byteSize: attachment.byteSize,
+              checksumShort: attachment.checksumShort,
             }))}
           />
         </Section>

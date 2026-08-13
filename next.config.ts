@@ -46,7 +46,15 @@ const nextConfig: NextConfig = {
     // Without this flag the call throws instead of rendering the 403 page, and
     // a user without permission gets a server error rather than an explanation.
     authInterrupts: true,
-    ...(allowedOrigins.length > 0 ? { serverActions: { allowedOrigins } } : {}),
+    serverActions: {
+      // A signed change order is a scanned PDF, and the default limit of one
+      // megabyte turns that into an error nobody can read. The storage layer
+      // refuses anything over 25 MB with a sentence that explains itself, so
+      // this only has to be large enough to let that check be the one that
+      // speaks.
+      bodySizeLimit: '26mb',
+      ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
+    },
   },
 }
 

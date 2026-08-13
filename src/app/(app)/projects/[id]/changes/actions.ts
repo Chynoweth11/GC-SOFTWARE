@@ -6,6 +6,14 @@ import { assertCan, can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { recordAudit, recordFieldChanges } from '@/lib/audit'
 import { getProjectDocument } from '@/lib/queries/documents'
+import {
+  ALLOWED_CONTENT_TYPES,
+  MAX_UPLOAD_BYTES,
+  deleteFile,
+  newKey,
+  putFile,
+  type StoredFile,
+} from '@/lib/storage'
 import type {
   ChangeOrderType,
   CostCategory,
@@ -976,6 +984,37 @@ export async function saveAttachment(formData: FormData): Promise<{ error?: stri
   const document = await ownedDocument(documentId, user.companyId)
   if (!document) return { error: 'That document is not on this account.' }
 
+  /*
+    The file itself, when one was chosen.
+
+    An attachment can still be a link to a file held elsewhere, which is how a
+    company already running a document system will want it. But when somebody
+    picks a file it is stored here, hashed, and the hash kept: the point of
+    attaching a signed change order is being able to produce it in a year and
+    prove it is the one that was approved, and a path that might have been
+    renamed proves nothing.
+  */
+  const upload = formData.get('file')
+  let stored: StoredFile | null = null
+
+  if (upload instanceof File && upload.size > 0) {
+    if (upload.size > MAX_UPLOAD_BYTES) {
+      return { error: `That file is ${Math.round(upload.size / 1_048_576)} MB. The limit is 25 MB.` }
+    }
+    const contentType = upload.type || 'application/octet-stream'
+    if (!ALLOWED_CONTENT_TYPES[contentType]) {
+      return {
+        error: `${contentType || 'That kind of file'} is not accepted. Attach a PDF, an image, a spreadsheet or a Word document.`,
+      }
+    }
+    try {
+      const bytes = Buffer.from(await upload.arrayBuffer())
+      stored = await putFile(newKey(documentId, upload.name || fileName), bytes, contentType)
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'The file could not be stored.' }
+    }
+  }
+
   // Attaching the signed copy to an approved document is allowed and wanted:
   // it is the evidence behind the approval, not a change to its money.
   const created = await prisma.documentAttachment.create({
@@ -986,6 +1025,11 @@ export async function saveAttachment(formData: FormData): Promise<{ error?: stri
       location: text(formData.get('location')),
       note: text(formData.get('note')),
       uploadedById: user.id,
+      storage: stored?.storage ?? null,
+      storageKey: stored?.storageKey ?? null,
+      contentType: stored ? (upload as File).type : null,
+      byteSize: stored?.byteSize ?? null,
+      checksum: stored?.checksum ?? null,
     },
   })
 
@@ -997,7 +1041,9 @@ export async function saveAttachment(formData: FormData): Promise<{ error?: stri
     entityId: created.id,
     entityLabel: `${document.number} ${fileName}`,
     action: 'CREATE',
-    summary: `${fileName} attached to ${document.number} as ${kind.toLowerCase().replace(/_/g, ' ')}`,
+    summary: stored
+      ? `${fileName} attached to ${document.number} as ${kind.toLowerCase().replace(/_/g, ' ')}, ${stored.byteSize} bytes, sha256 ${stored.checksum}`
+      : `${fileName} attached to ${document.number} as ${kind.toLowerCase().replace(/_/g, ' ')}`,
   })
 
   refresh(document.projectId, documentId)
@@ -1026,6 +1072,12 @@ export async function deleteAttachment(formData: FormData): Promise<{ error?: st
   }
 
   await prisma.documentAttachment.delete({ where: { id } })
+  // The bytes go too. Leaving them behind would mean a signed contract sitting
+  // in a bucket that nothing in the system points at any more.
+  if (attachment.storage && attachment.storageKey) {
+    await deleteFile(attachment.storage, attachment.storageKey)
+  }
+
   await recordAudit({
     companyId: user.companyId,
     userId: user.id,
@@ -1034,7 +1086,9 @@ export async function deleteAttachment(formData: FormData): Promise<{ error?: st
     entityId: id,
     entityLabel: `${attachment.changeOrder.number} ${attachment.fileName}`,
     action: 'DELETE',
-    summary: `${attachment.fileName} removed from ${attachment.changeOrder.number}`,
+    summary: attachment.checksum
+      ? `${attachment.fileName} removed from ${attachment.changeOrder.number}, sha256 was ${attachment.checksum}`
+      : `${attachment.fileName} removed from ${attachment.changeOrder.number}`,
   })
 
   refresh(attachment.changeOrder.projectId, attachment.changeOrder.id)

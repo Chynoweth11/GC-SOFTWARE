@@ -30,7 +30,9 @@ async function signIn(page, email, password) {
   await page.fill('input[type="email"]', email)
   await page.fill('input[type="password"]', password)
   await Promise.all([
-    page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 20000 }),
+    // Generous, because the first sign-in of a run can be waiting on a cold
+    // compile of the page it lands on. A slow start is not a failed sign-in.
+    page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 120_000 }),
     page.click('button[type="submit"]'),
   ])
 }
@@ -975,6 +977,57 @@ async function main() {
     ok('the document follows its signatures to fully signed')
   } else {
     bad('signature tracking', 'the document did not reach fully signed')
+  }
+
+  /*
+    The signed copy, actually stored.
+
+    An attachment used to be a file name and a path somebody typed. This picks a
+    real file, checks it comes back byte for byte, and checks the page carries
+    the hash it was filed under.
+  */
+  const pdfBytes = Buffer.from(
+    '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+    'utf8',
+  )
+  await page.getByRole('button', { name: /Attach a record|Attach the signed copy|Attach/ }).first().click()
+  await page.waitForTimeout(400)
+  await page.setInputFiles('input[type="file"][name="file"]', {
+    name: 'exercise-signed.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdfBytes,
+  })
+  await page.fill('input[name="note"]', 'Attached by the exercise run')
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Attach it' }).click()])
+
+  await page.goto(documentUrl, { waitUntil: 'networkidle' })
+  const attached = await bodyWhen(/exercise-signed\.pdf/)
+  if (/exercise-signed\.pdf/.test(attached) && !/Reference only/.test(attached)) {
+    ok('a signed copy is stored here rather than pointed at')
+  } else {
+    bad('attachment storage', 'the file did not register as held by this system')
+  }
+
+  const attachmentHref = await page
+    .locator('a[href^="/api/attachment/"]')
+    .first()
+    .getAttribute('href')
+  if (attachmentHref) {
+    const download = await page.request.get(`${BASE}${attachmentHref}`)
+    const returned = Buffer.from(await download.body())
+    if (download.status() === 200 && returned.equals(pdfBytes)) {
+      ok('the file comes back byte for byte, with its hash checked on the way out')
+    } else {
+      bad('attachment download', `status ${download.status()}, ${returned.length} bytes against ${pdfBytes.length}`)
+    }
+    const disposition = download.headers()['content-disposition'] ?? ''
+    if (/attachment; filename="exercise-signed\.pdf"/.test(disposition)) {
+      ok('it downloads as a record to keep rather than opening in the page')
+    } else {
+      bad('attachment download', `the disposition read ${JSON.stringify(disposition)}`)
+    }
+  } else {
+    bad('attachment download', 'no download link appeared against the stored file')
   }
 
   // The certification dialog: cancel first, and check nothing happened.

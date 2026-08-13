@@ -1325,8 +1325,22 @@ model DocumentAttachment {
   changeOrderId String
   kind          DocumentAttachmentKind @default(SIGNED_DOCUMENT)
   fileName      String
-  /// Where the file actually lives, for a system that stores them.
+  /// Where the file actually lives. A link somebody typed, when the file is
+  /// held elsewhere; the storage key, when this system holds it.
   location      String?
+
+  /// Which store holds it: `local`, `s3`, or null when this is only a link.
+  storage       String?
+  /// The key inside that store. Never guessable, so a signed document cannot be
+  /// found by trying likely names.
+  storageKey    String?
+  contentType   String?
+  byteSize      Int?
+  /// SHA-256 of the bytes as stored. The point of the whole exercise: a signed
+  /// change order can be proved later to be the file that was approved, not one
+  /// that replaced it.
+  checksum      String?
+
   note          String?
   uploadedById  String?
   createdAt     DateTime               @default(now())

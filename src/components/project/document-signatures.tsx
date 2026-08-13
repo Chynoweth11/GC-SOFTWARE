@@ -34,6 +34,18 @@ export interface AttachmentRow {
   note: string | null
   uploadedByName: string | null
   createdAt: string
+  /** Set when this system holds the file, rather than pointing at one. */
+  stored: boolean
+  byteSize: number | null
+  /** First twelve characters of the SHA-256, which is enough to compare by eye. */
+  checksumShort: string | null
+}
+
+/** File sizes the way a person reads them. */
+function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`
+  if (bytes < 1_048_576) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1_048_576).toFixed(1)} MB`
 }
 
 type Action = (formData: FormData) => Promise<{ error?: string }>
@@ -369,6 +381,7 @@ export function DocumentAttachments({
                 <tr>
                   <th>File</th>
                   <th>What it is</th>
+                  <th>Held here</th>
                   <th>Where it lives</th>
                   <th>Added</th>
                   <th>By</th>
@@ -379,7 +392,17 @@ export function DocumentAttachments({
                 {rows.map((row) => (
                   <tr key={row.id}>
                     <td className="font-medium">
-                      {row.fileName}
+                      {row.stored ? (
+                        <a
+                          href={`/api/attachment/${row.id}`}
+                          className="hover:underline"
+                          style={{ color: 'var(--accent)' }}
+                        >
+                          {row.fileName}
+                        </a>
+                      ) : (
+                        row.fileName
+                      )}
                       {row.note && (
                         <div className="wrap text-[11px]" style={{ color: 'var(--text-subtle)' }}>
                           {row.note}
@@ -388,6 +411,24 @@ export function DocumentAttachments({
                     </td>
                     <td className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       {ATTACHMENT_KINDS.find(([value]) => value === row.kind)?.[1] ?? row.kind}
+                    </td>
+                    <td className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {row.stored ? (
+                        <>
+                          {row.byteSize !== null ? fileSize(row.byteSize) : 'Yes'}
+                          {row.checksumShort && (
+                            <div
+                              className="text-[10px]"
+                              style={{ color: 'var(--text-subtle)' }}
+                              title="SHA-256 of the file as it was filed. Checked again on every download."
+                            >
+                              {row.checksumShort}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ color: 'var(--caution)' }}>Reference only</span>
+                      )}
                     </td>
                     <td className="wrap text-xs" style={{ color: 'var(--text-muted)' }}>
                       {row.location ?? ''}
@@ -431,6 +472,29 @@ export function DocumentAttachments({
         >
           <input type="hidden" name="documentId" value={documentId} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block lg:col-span-2">
+              <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                The file
+              </span>
+              <input
+                type="file"
+                name="file"
+                accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.xlsx,.docx,.csv"
+                className="field mt-1 w-full text-sm"
+                onChange={(event) => {
+                  // Name the record after the file, unless somebody has already
+                  // typed a name of their own.
+                  const chosen = event.target.files?.[0]
+                  const form = event.target.form
+                  const nameField = form?.elements.namedItem('fileName') as HTMLInputElement | null
+                  if (chosen && nameField && !nameField.value) nameField.value = chosen.name
+                }}
+              />
+              <span className="mt-0.5 block text-[11px]" style={{ color: 'var(--text-subtle)' }}>
+                Held here and hashed, so it can be produced later and proved unchanged. Up to 25 MB. Leave it empty to
+                record a file kept somewhere else.
+              </span>
+            </label>
             <label className="block">
               <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
                 File name
