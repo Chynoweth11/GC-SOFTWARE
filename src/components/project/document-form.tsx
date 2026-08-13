@@ -17,6 +17,8 @@ import { money, percent } from '@/lib/format'
 
 export interface DocumentDefaults {
   id?: string
+  /** When the document last moved. Absent when raising a new one. */
+  updatedAt?: string
   number: string
   documentKind: string
   type: string
@@ -140,6 +142,11 @@ export function DocumentForm({
       className="space-y-4"
     >
       {defaults?.id && <input type="hidden" name="id" value={defaults.id} />}
+      {/*
+        What the document looked like when this form was opened. The action
+        refuses the save if somebody else has changed it since.
+      */}
+      {defaults?.updatedAt && <input type="hidden" name="expectedUpdatedAt" value={defaults.updatedAt} />}
       <input type="hidden" name="projectId" value={projectId} />
 
       {error && (

@@ -4,9 +4,11 @@ import { prisma } from '@/lib/db'
 import {
   deriveEquipmentItem,
   deriveEquipmentUse,
+  summarizeFleet,
   summarizeProjectEquipment,
   type EquipmentItemDerived,
   type EquipmentUseDerived,
+  type FleetSummary,
   type ProjectEquipmentSummary,
 } from '@/lib/finance'
 
@@ -133,3 +135,105 @@ export const getProjectEquipment = cache(
     return { ...summarizeProjectEquipment(rows), rows }
   },
 )
+
+export interface FleetView extends FleetSummary {
+  /** Which jobs each machine is on, for the rows worth chasing. */
+  jobsByItem: Map<string, { projectId: string; projectNumber: string; projectName: string; cost: number }[]>
+}
+
+/**
+ * The whole fleet, across every live job.
+ *
+ * Reads the same assignments the project tab reads and prices them through the
+ * same engine, so the company view and the job view cannot disagree about what
+ * a machine cost. Closed and completed jobs are left out: the question this
+ * page answers is what the fleet is doing now, and a machine that finished a
+ * job last year is idle today whatever it did then.
+ */
+export const getFleet = cache(async (companyId: string): Promise<FleetView> => {
+  const [items, assignments] = await Promise.all([
+    prisma.equipmentItem.findMany({
+      where: { companyId },
+      include: { vendor: { select: { name: true } } },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    }),
+    prisma.projectEquipmentAssignment.findMany({
+      where: {
+        project: { companyId, status: { notIn: ['CLOSED', 'COMPLETED'] } },
+      },
+      include: { project: { select: { id: true, number: true, name: true } } },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    }),
+  ])
+
+  const itemsById = new Map(items.map((item) => [item.id, item]))
+
+  const uses = assignments
+    .filter((assignment) => itemsById.has(assignment.equipmentItemId))
+    .map((assignment) => {
+      const item = itemsById.get(assignment.equipmentItemId)!
+      return {
+        ...deriveEquipmentUse(
+          {
+            id: assignment.id,
+            equipmentItemId: assignment.equipmentItemId,
+            label: assignment.label,
+            costCodeId: assignment.costCodeId,
+            basis: assignment.basis,
+            units: assignment.units,
+            operatingHours: assignment.operatingHours,
+            standbyHours: assignment.standbyHours,
+            startDate: assignment.startDate,
+            endDate: assignment.endDate,
+            rateOverride: assignment.rateOverride,
+          },
+          deriveEquipmentItem(item),
+        ),
+        projectId: assignment.projectId,
+        projectNumber: assignment.project.number,
+        projectName: assignment.project.name,
+      }
+    })
+
+  const summary = summarizeFleet(
+    items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      ownership: item.ownership,
+      hourlyRate: item.hourlyRate,
+      dailyRate: item.dailyRate,
+      weeklyRate: item.weeklyRate,
+      monthlyRate: item.monthlyRate,
+      operatingCostPerHour: item.operatingCostPerHour,
+      standbyRatePerHour: item.standbyRatePerHour,
+      hoursPerDay: item.hoursPerDay,
+      daysPerWeek: item.daysPerWeek,
+      costCategory: item.costCategory,
+      vendorName: item.vendor?.name ?? null,
+      active: item.active,
+    })),
+    uses,
+  )
+
+  const jobsByItem = new Map<
+    string,
+    { projectId: string; projectNumber: string; projectName: string; cost: number }[]
+  >()
+  for (const entry of uses) {
+    const list = jobsByItem.get(entry.equipmentItemId) ?? []
+    const already = list.find((job) => job.projectId === entry.projectId)
+    if (already) already.cost += entry.cost
+    else {
+      list.push({
+        projectId: entry.projectId,
+        projectNumber: entry.projectNumber,
+        projectName: entry.projectName,
+        cost: entry.cost,
+      })
+    }
+    jobsByItem.set(entry.equipmentItemId, list)
+  }
+
+  return { ...summary, jobsByItem }
+})

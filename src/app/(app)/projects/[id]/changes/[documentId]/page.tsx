@@ -247,6 +247,7 @@ export default async function DocumentPage({
             const derived = document.lines[index]
             return {
               ...line,
+              updatedAt: line.updatedAt.toISOString(),
               derived: {
                 netQty: derived.netQty,
                 grossQty: derived.grossQty,
@@ -396,6 +397,7 @@ export default async function DocumentPage({
               trades={trades.map((trade) => ({ id: trade.id, label: trade.name }))}
               defaults={{
                 id: document.id,
+                updatedAt: document.updatedAt.toISOString(),
                 number: document.number,
                 documentKind: document.documentKind,
                 type: document.type,

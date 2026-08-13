@@ -2,9 +2,12 @@ import { forbidden } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import { getEquipmentItems } from '@/lib/queries/equipment'
-import { InfoNote, Section } from '@/components/ui'
+import { getEquipmentItems, getFleet } from '@/lib/queries/equipment'
+import { OWNERSHIP_LABELS } from '@/lib/finance'
+import { number as fmtNumber, percent } from '@/lib/format'
+import { InfoNote, Kpi, KpiGrid, MoneyKpi, Section } from '@/components/ui'
 import { EquipmentLibrary } from '@/components/admin/equipment-library'
+import { FleetTable } from '@/components/admin/fleet-table'
 import { deleteEquipmentItem, saveEquipmentItem } from './actions'
 
 export const metadata = { title: 'Equipment and rates' }
@@ -20,8 +23,9 @@ export default async function EquipmentSettingsPage() {
   const user = await requireUser()
   if (!can(user.role, 'manage:reference_data')) forbidden()
 
-  const [items, vendors] = await Promise.all([
+  const [items, fleet, vendors] = await Promise.all([
     getEquipmentItems(user.companyId),
+    getFleet(user.companyId),
     prisma.vendor.findMany({
       where: { companyId: user.companyId, active: true },
       select: { id: true, name: true },
@@ -31,6 +35,78 @@ export default async function EquipmentSettingsPage() {
 
   return (
     <div className="space-y-6">
+      <Section
+        title="What the fleet is doing"
+        description="Every machine across every live job. The idle ones are not hidden, because they are the point"
+      >
+        <KpiGrid cols={5}>
+          <MoneyKpi
+            label="Plant cost across live jobs"
+            amount={fleet.totals.cost}
+            detail={`${fleet.rows.filter((row) => row.jobCount > 0).length} machines earning`}
+          />
+          <MoneyKpi
+            label="Paid to stand"
+            amount={fleet.totals.standbyCost}
+            tone={fleet.standbyShare > 0.25 ? 'adverse' : fleet.totals.standbyCost > 0 ? 'caution' : 'favorable'}
+            detail={
+              fleet.totals.cost > 0 ? `${percent(fleet.standbyShare, 0)} of the plant cost` : 'Nothing standing'
+            }
+          />
+          <Kpi
+            label="Hours run against hours hired"
+            value={fleet.totals.hiredHours > 0 ? percent(fleet.utilization, 0) : '-'}
+            tone={fleet.totals.hiredHours > 0 && fleet.utilization < 0.5 ? 'caution' : 'neutral'}
+            detail={`${fmtNumber(fleet.totals.operatingHours, 0)} of ${fmtNumber(fleet.totals.hiredHours, 0)} hours`}
+          />
+          <Kpi
+            label="On no job"
+            value={fleet.idleCount.toString()}
+            tone={fleet.idleCount > 0 ? 'caution' : 'favorable'}
+            detail={fleet.idleCount > 0 ? 'Costing whatever they cost to own' : 'Every machine is out'}
+          />
+          <Kpi
+            label="Standing more than a quarter"
+            value={fleet.standbyHeavy.length.toString()}
+            tone={fleet.standbyHeavy.length > 0 ? 'caution' : 'favorable'}
+            detail={
+              fleet.standbyHeavy.length > 0
+                ? fleet.standbyHeavy
+                    .slice(0, 2)
+                    .map((row) => row.name)
+                    .join(', ')
+                : 'None'
+            }
+          />
+        </KpiGrid>
+
+        <div className="mt-3">
+          <FleetTable
+            rows={fleet.rows.map((row) => ({
+              itemId: row.itemId,
+              name: row.name,
+              category: row.category,
+              ownershipLabel: OWNERSHIP_LABELS[row.ownership] ?? row.ownership,
+              vendorName: row.vendorName,
+              active: row.active,
+              loadedHourlyCost: row.loadedHourlyCost,
+              jobCount: row.jobCount,
+              rentalCost: row.rentalCost,
+              operatingCost: row.operatingCost,
+              standbyCost: row.standbyCost,
+              cost: row.cost,
+              operatingHours: row.operatingHours,
+              standbyHours: row.standbyHours,
+              hiredHours: row.hiredHours,
+              standbyShare: row.standbyShare,
+              utilization: row.utilization,
+              issues: row.issues,
+              jobs: fleet.jobsByItem.get(row.itemId) ?? [],
+            }))}
+          />
+        </div>
+      </Section>
+
       <Section
         title="Equipment and rates"
         description="Every machine the company owns or hires, and what an hour, a day, a week and a month of it costs"

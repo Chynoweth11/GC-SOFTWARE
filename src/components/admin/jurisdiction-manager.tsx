@@ -45,6 +45,11 @@ export interface JurisdictionNode {
 
 type Action = (formData: FormData) => Promise<{ error?: string }>
 
+/** Reports how many were new and how many were already on the state. */
+type CountyImportAction = (
+  formData: FormData,
+) => Promise<{ error?: string; added?: number; alreadyThere?: number }>
+
 export function JurisdictionManager({
   jurisdictions,
   canEdit,
@@ -52,6 +57,7 @@ export function JurisdictionManager({
   verify,
   saveCounty,
   deleteCounty,
+  importCounties,
 }: {
   jurisdictions: JurisdictionNode[]
   canEdit: boolean
@@ -59,6 +65,7 @@ export function JurisdictionManager({
   verify: Action
   saveCounty: Action
   deleteCounty: Action
+  importCounties: CountyImportAction
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -142,6 +149,7 @@ export function JurisdictionManager({
             verify={verify}
             saveCounty={saveCounty}
             deleteCounty={deleteCounty}
+            importCounties={importCounties}
           />
         ))}
         {shown.length === 0 && (
@@ -165,6 +173,7 @@ function Jurisdiction({
   verify,
   saveCounty,
   deleteCounty,
+  importCounties,
 }: {
   jurisdiction: JurisdictionNode
   canEdit: boolean
@@ -176,9 +185,13 @@ function Jurisdiction({
   verify: Action
   saveCounty: Action
   deleteCounty: Action
+  importCounties: CountyImportAction
 }) {
+  const router = useRouter()
   const [addingCounty, setAddingCounty] = useState(false)
   const [editingCounty, setEditingCounty] = useState<string | null>(null)
+  const [pastingCounties, setPastingCounties] = useState(false)
+  const [countyResult, setCountyResult] = useState<string | null>(null)
 
   const rateLabel =
     jurisdiction.sutaPct === null
@@ -390,12 +403,64 @@ function Jurisdiction({
               <h4 className="text-xs font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-muted)' }}>
                 Counties
               </h4>
-              {canEdit && !addingCounty && (
-                <button type="button" className="btn btn-ghost text-xs" onClick={() => setAddingCounty(true)}>
-                  Add a county
-                </button>
+              {canEdit && !addingCounty && !pastingCounties && (
+                <div className="flex items-center gap-1">
+                  <button type="button" className="btn btn-ghost text-xs" onClick={() => setAddingCounty(true)}>
+                    Add a county
+                  </button>
+                  <button type="button" className="btn btn-ghost text-xs" onClick={() => setPastingCounties(true)}>
+                    Paste a list
+                  </button>
+                </div>
               )}
             </div>
+
+            {pastingCounties && canEdit && (
+              <form
+                action={async (formData) => {
+                  setCountyResult(null)
+                  const outcome = await importCounties(formData)
+                  if (outcome?.error) {
+                    setCountyResult(outcome.error)
+                    return
+                  }
+                  const added = outcome.added ?? 0
+                  const known = outcome.alreadyThere ?? 0
+                  setCountyResult(
+                    added === 0
+                      ? `Nothing new. All ${known} were already here.`
+                      : `${added} added${known > 0 ? `, ${known} already here` : ''}.`,
+                  )
+                  setPastingCounties(false)
+                  router.refresh()
+                }}
+                className="mb-2 rounded-lg border p-2"
+                style={{ borderColor: 'var(--border-strong)' }}
+              >
+                <input type="hidden" name="jurisdictionId" value={jurisdiction.id} />
+                <textarea
+                  name="counties"
+                  rows={5}
+                  required
+                  className="field w-full font-mono text-xs"
+                  placeholder={`Paste the county list published by ${jurisdiction.name}, one to a line or separated by commas. "County" on the end is trimmed, and anything already here is left alone.`}
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <button type="submit" className="btn btn-primary text-xs" disabled={busy}>
+                    Add them
+                  </button>
+                  <button type="button" className="btn btn-ghost text-xs" onClick={() => setPastingCounties(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {countyResult && (
+              <p className="mb-2 text-xs" style={{ color: 'var(--text-muted)' }} role="status">
+                {countyResult}
+              </p>
+            )}
 
             {jurisdiction.counties.length === 0 && !addingCounty && (
               <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>

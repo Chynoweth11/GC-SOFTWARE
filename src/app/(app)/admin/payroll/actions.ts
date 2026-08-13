@@ -141,6 +141,114 @@ export async function saveJurisdiction(formData: FormData): Promise<{ error?: st
   return {}
 }
 
+/**
+ * Enters unemployment rates for many states at once.
+ *
+ * Fifty-one jurisdictions ship with no rate, deliberately: the rate is assigned
+ * to each employer every year, so a figure supplied here would be wrong for
+ * most companies on the day it shipped. The consequence was that nobody could
+ * compute a loaded labor rate until somebody had opened fifty-one forms.
+ *
+ * Most contractors work in two or three states, so this takes the annual notice
+ * as it is written down, one state and one rate a line, in whatever order and
+ * whatever punctuation. A line that cannot be read is reported by its own text
+ * rather than being silently dropped, because a rate that quietly failed to
+ * save is a labor cost quietly priced light.
+ *
+ * A rate entered this way is unverified, exactly as it would be if it had been
+ * typed into the form, so somebody still has to say they checked it.
+ */
+export async function importJurisdictionRates(formData: FormData): Promise<{
+  error?: string
+  applied?: number
+  skipped?: string[]
+}> {
+  const user = await requireUser()
+  assertCan(user.role, 'manage:reference_data')
+
+  const raw = String(formData.get('rates') ?? '').trim()
+  if (!raw) return { error: 'Paste the states and their rates, one to a line.' }
+
+  const yearRaw = String(formData.get('sutaRateYear') ?? '').trim()
+  const sutaRateYear = yearRaw ? Number(yearRaw) : null
+  if (sutaRateYear !== null && (!Number.isInteger(sutaRateYear) || sutaRateYear < 2000 || sutaRateYear > 2100)) {
+    return { error: 'Enter the year these rates were issued for as four digits.' }
+  }
+
+  const jurisdictions = await prisma.payrollJurisdiction.findMany({
+    where: { companyId: user.companyId },
+    select: { id: true, code: true, name: true, sutaPct: true, verifiedAt: true },
+  })
+  const byCode = new Map(jurisdictions.map((entry) => [entry.code.toUpperCase(), entry]))
+  const byName = new Map(jurisdictions.map((entry) => [entry.name.toLowerCase(), entry]))
+
+  const skipped: string[] = []
+  let applied = 0
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+
+    // State first, rate last, separated by a comma, a tab or run of spaces.
+    // Written how a notice writes it, not how a parser would prefer it.
+    const match = trimmed.match(/^(.*?)[,\t]?\s+([\d.]+)\s*%?$/)
+    if (!match) {
+      skipped.push(`${trimmed} (could not tell the state from the rate)`)
+      continue
+    }
+
+    const label = match[1].trim().replace(/[,;:]$/, '')
+    const jurisdiction = byCode.get(label.toUpperCase()) ?? byName.get(label.toLowerCase())
+    if (!jurisdiction) {
+      skipped.push(`${trimmed} (no state called ${label})`)
+      continue
+    }
+
+    const entered = Number(match[2])
+    if (!isFinite(entered) || entered < 0 || entered > 20) {
+      skipped.push(`${trimmed} (a rate has to be between 0 and 20 percent)`)
+      continue
+    }
+
+    // Written as a percentage on the notice, held as a fraction here, which is
+    // the same convention the single-state form uses.
+    const sutaPct = entered / 100
+    const rateChanged = jurisdiction.sutaPct !== sutaPct
+
+    await prisma.payrollJurisdiction.update({
+      where: { id: jurisdiction.id },
+      data: {
+        sutaPct,
+        ...(sutaRateYear !== null ? { sutaRateYear } : {}),
+        // A changed rate is a new fact, so whoever checked the old one has not
+        // checked this one.
+        ...(rateChanged ? { verifiedAt: null, verifiedById: null, verifiedNote: null } : {}),
+      },
+    })
+
+    await recordAudit({
+      companyId: user.companyId,
+      userId: user.id,
+      actor: user,
+      entity: 'PayrollJurisdiction',
+      entityId: jurisdiction.id,
+      entityLabel: jurisdiction.name,
+      action: 'UPDATE',
+      field: 'sutaPct',
+      oldValue: jurisdiction.sutaPct,
+      newValue: sutaPct,
+      summary: `State unemployment rate for ${jurisdiction.name} set to ${entered} percent${sutaRateYear ? ` for ${sutaRateYear}` : ''}, entered in bulk and not yet checked`,
+    })
+    applied++
+  }
+
+  revalidatePath('/admin/payroll')
+  if (applied === 0 && skipped.length > 0) {
+    return { error: `Nothing was read from that. ${skipped[0]}`, skipped }
+  }
+  return { applied, skipped }
+}
+
 /** Records that somebody checked a state's rate against the annual notice. */
 export async function verifyJurisdiction(formData: FormData): Promise<{ error?: string }> {
   const user = await requireUser()
@@ -240,6 +348,92 @@ export async function saveCounty(formData: FormData): Promise<{ error?: string }
 
   revalidatePath('/admin/payroll')
   return {}
+}
+
+/**
+ * Adds many counties to one state at once.
+ *
+ * Counties come complete for the states this system was built against and
+ * nowhere else, because a county list invented rather than taken from the
+ * state's own publication is a list that will be wrong somewhere, and
+ * prevailing wage is determined county by county. So the list is pasted from
+ * the source, one to a line, and this only has to avoid duplicating what is
+ * already there.
+ *
+ * A name already on the state is skipped rather than reported as an error: a
+ * list pasted twice, or extended and pasted again, is the ordinary case and
+ * should not need somebody to work out which lines are new.
+ */
+export async function importCounties(formData: FormData): Promise<{
+  error?: string
+  added?: number
+  alreadyThere?: number
+}> {
+  const user = await requireUser()
+  assertCan(user.role, 'manage:reference_data')
+
+  const jurisdictionId = String(formData.get('jurisdictionId'))
+  const raw = String(formData.get('counties') ?? '').trim()
+  if (!raw) return { error: 'Paste the counties, one to a line.' }
+
+  const jurisdiction = await prisma.payrollJurisdiction.findFirst({
+    where: { id: jurisdictionId, companyId: user.companyId },
+    select: { id: true, name: true },
+  })
+  if (!jurisdiction) return { error: 'That state is not set up on this account.' }
+
+  const existing = await prisma.payrollCounty.findMany({
+    where: { jurisdictionId },
+    select: { name: true },
+  })
+  const already = new Set(existing.map((county) => county.name.toLowerCase()))
+
+  // Lines, or one line of comma separated names, which is how these are
+  // published about half the time.
+  const names = raw
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim().replace(/\s+County$/i, '').trim())
+    .filter((entry) => entry.length > 0 && !entry.startsWith('#'))
+
+  const seen = new Set<string>()
+  const toCreate: string[] = []
+  let alreadyThere = 0
+
+  for (const name of names) {
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (already.has(key)) {
+      alreadyThere++
+      continue
+    }
+    toCreate.push(name)
+  }
+
+  if (toCreate.length === 0) {
+    return { added: 0, alreadyThere }
+  }
+
+  await prisma.payrollCounty.createMany({
+    data: toCreate.map((name) => ({ jurisdictionId, name })),
+  })
+
+  // One audit entry for the batch rather than one per county: the fact worth
+  // recording is that somebody loaded a county list, and forty rows saying the
+  // same thing would bury the entries that matter.
+  await recordAudit({
+    companyId: user.companyId,
+    userId: user.id,
+    actor: user,
+    entity: 'PayrollJurisdiction',
+    entityId: jurisdiction.id,
+    entityLabel: jurisdiction.name,
+    action: 'CREATE',
+    summary: `${toCreate.length} counties added to ${jurisdiction.name}: ${toCreate.slice(0, 12).join(', ')}${toCreate.length > 12 ? ' and others' : ''}`,
+  })
+
+  revalidatePath('/admin/payroll')
+  return { added: toCreate.length, alreadyThere }
 }
 
 export async function deleteCounty(formData: FormData): Promise<{ error?: string }> {

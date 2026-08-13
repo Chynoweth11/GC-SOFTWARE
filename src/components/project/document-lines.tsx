@@ -19,6 +19,8 @@ import { money, number as fmtNumber, percent } from '@/lib/format'
 
 export interface LineRow {
   id: string
+  /** When this line last moved, so a save can tell if somebody beat it to it. */
+  updatedAt: string
   costCodeId: string
   costCodeLabel: string
   category: string
@@ -381,6 +383,12 @@ function LineForm({
   return (
     <form action={onSubmit} className="space-y-3">
       {row && <input type="hidden" name="id" value={row.id} />}
+      {/*
+        What this line looked like when the form was opened. The action refuses
+        the save if it has moved since, rather than landing these figures on top
+        of somebody else's without either of them knowing.
+      */}
+      {row && <input type="hidden" name="expectedUpdatedAt" value={row.updatedAt} />}
       <input type="hidden" name="documentId" value={documentId} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

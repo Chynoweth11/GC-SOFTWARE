@@ -15,13 +15,13 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 335 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 346 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
 re-checks 772 identities against the live database, `verify:exports` writes and
 reparses every workbook and PDF, `verify:backup` round trips every project
 through export and restore, `verify:pages` walks every route, and `verify:ui`
-drives 84 interactive checks through a real browser. All of it runs on every
+drives 90 interactive checks through a real browser. All of it runs on every
 push through `.github/workflows/verify.yml`, in three parallel jobs, so a broken
 formula is reported in minutes rather than whenever somebody next thinks to
 look.
@@ -519,6 +519,16 @@ on `PayrollJurisdiction`, and a sheet stores a rate only when this job genuinely
 carries a different one (`sutaPctOverride`, normally null). Correcting a rate in
 Settings therefore corrects every sheet built on it.
 
+**The annual notice, entered in one go.** Fifty-one jurisdictions ship with no
+rate, which is right, but it meant nobody could load a labor rate until they had
+opened fifty-one forms. The notice is now pasted as it is written, one state and
+one rate to a line, in whatever order and with whatever punctuation. A line that
+cannot be read is quoted back in full rather than dropped, because a rate that
+quietly failed to save is a labor cost quietly priced light. A rate entered this
+way is unverified, exactly as one typed into the form would be. County lists
+paste the same way, and a county already on the state is skipped rather than
+reported as an error.
+
 **Nothing is shipped that cannot be true.** All fifty states and the District of
 Columbia are seeded, with the facts that belong to the state: its code and name,
 whether workers compensation is bought from a state monopoly fund, whether that
@@ -704,6 +714,20 @@ reprices the estimate line that names the machine, the change order that runs
 it, the ticket it was on and the project budget it lands in, and none of them
 holds a copy.
 
+**The fleet, as against one job.** `summarizeFleet` rolls the same rows up to the
+machine across every live job, and answers a different set of questions:
+
+| Figure | How it is derived |
+|---|---|
+| Hired hours | Units booked on each job, converted to hours at the basis each was hired on |
+| Used | Hours run over hours hired. Below half is a machine sitting; above one is a hire recorded short |
+| Standby share | What was paid for the machine to stand, over what the machine cost |
+| On no job | Machines still in use with nothing charged against them |
+
+A machine with no use at all is still listed, with zeros. Hiding the idle ones
+would answer the wrong question: an excavator nobody has charged to a job for
+four months is the most interesting row on the page.
+
 ---
 
 ## 17. Output, permissions and portability
@@ -758,6 +782,8 @@ anything when they are not.
 | Concern | How it works | Where |
 |---|---|---|
 | Attached records | Stored and hashed with SHA-256, checked again on every download | `src/lib/storage.ts` |
+| Two people, one record | The form carries the timestamp it was opened at; a save onto a record that has moved is refused with an explanation | `refuseIfMovedOn` in the changes actions |
+| Two people, one approval | The approval is claimed with a conditional update, so the database decides and the second is told | `approveDocument` |
 | Password sign-in | scrypt with a per-password salt, in an httpOnly cookie | `src/lib/auth.ts` |
 | Failed attempts | Counted by email and by address, each failure past the fifth doubling the wait to a cap of fifteen minutes | `src/lib/finance/throttle.ts`, `LoginAttempt` |
 | Single sign-on | Authorization code flow against GitHub, Google or Microsoft, chosen by `SSO_PROVIDER` | `src/lib/sso.ts` |

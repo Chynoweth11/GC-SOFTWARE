@@ -134,6 +134,40 @@ function refuseIfApproved(
 }
 
 /**
+ * Whether the record has moved since the form was opened.
+ *
+ * Two people editing the same change order line is not a rare event on a job
+ * with a busy week of pricing, and last save wins is the worst outcome: the
+ * second person's figures land on top of the first person's without either of
+ * them knowing anything happened. The form carries the timestamp the record had
+ * when it was loaded, and a mismatch is refused with an explanation rather than
+ * silently applied.
+ *
+ * A form submitted without the field is allowed through. Everything that edits
+ * money carries it; the rule is here to catch a collision, not to break a form
+ * somebody has not got round to updating.
+ */
+function refuseIfMovedOn(
+  formData: FormData,
+  record: { updatedAt: Date },
+  what: string,
+): { error: string } | null {
+  const claimed = String(formData.get('expectedUpdatedAt') ?? '').trim()
+  if (!claimed) return null
+
+  const parsed = new Date(claimed)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  // A second of slack, because the timestamp goes through a string on the way
+  // to the browser and back and some databases round it.
+  if (Math.abs(parsed.getTime() - record.updatedAt.getTime()) < 1_000) return null
+
+  return {
+    error: `Somebody else changed ${what} while this was open. Nothing was saved. Reload to see their version, then make your change on top of it.`,
+  }
+}
+
+/**
  * Posts, or removes, the budget revisions an approved document implies.
  *
  * The one place the approval turns into money in the budget. Approving raises
@@ -327,6 +361,9 @@ export async function saveDocument(formData: FormData): Promise<{ error?: string
   if (id) {
     const existing = await ownedDocument(id, user.companyId)
     if (!existing) return { error: 'That document is not on this account.' }
+
+    const collision = refuseIfMovedOn(formData, existing, `${existing.number}`)
+    if (collision) return collision
 
     // An approved document's figures are already in the project. Everything
     // that could move them is refused; the rest is allowed through.
@@ -749,6 +786,9 @@ export async function saveDocumentLine(formData: FormData): Promise<{ error?: st
   if (id) {
     const existing = await prisma.changeOrderLine.findFirst({ where: { id, changeOrderId: documentId } })
     if (!existing) return { error: 'That line is not on this document.' }
+
+    const collision = refuseIfMovedOn(formData, existing, `this line on ${document.number}`)
+    if (collision) return collision
 
     const updated = await prisma.changeOrderLine.update({ where: { id }, data: values })
     await recordFieldChanges({

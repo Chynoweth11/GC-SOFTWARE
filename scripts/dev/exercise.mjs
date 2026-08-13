@@ -634,11 +634,26 @@ async function main() {
   console.log('\nEquipment and rates')
 
   const machineName = 'Exercise Excavator'
+
+  /*
+    The machine's row in the equipment library.
+
+    The fleet summary above it names the same machine, so matching on the name
+    alone finds whichever table comes first. The library row is the one carrying
+    a Delete button, which is a fact about what that table is for rather than a
+    marker added for the test.
+  */
+  const libraryRow = () =>
+    page
+      .locator('tr', { hasText: machineName })
+      .filter({ has: page.getByRole('button', { name: 'Delete', exact: true }) })
+      .first()
+
   const clearMachine = async () => {
     await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
-    const existing = page.locator('tr', { hasText: machineName })
+    const existing = libraryRow()
     if ((await existing.count()) > 0) {
-      await existing.first().getByRole('button', { name: 'Delete', exact: true }).click()
+      await existing.getByRole('button', { name: 'Delete', exact: true }).click()
       await page.waitForTimeout(300)
       await page.getByRole('button', { name: 'Delete the machine' }).click()
       await page.waitForTimeout(2000)
@@ -677,7 +692,7 @@ async function main() {
   await Promise.all([page.waitForTimeout(2500), page.getByRole('button', { name: 'Add it' }).click()])
 
   await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
-  const machineRow = await page.locator('tr', { hasText: machineName }).first().innerText()
+  const machineRow = await libraryRow().innerText()
   /*
     An hour, all in, worked from the shortest basis that carries a rate:
 
@@ -773,6 +788,28 @@ async function main() {
   await page.waitForTimeout(300)
   await page.getByRole('button', { name: 'Take it off the job' }).click()
   await page.waitForTimeout(2000)
+
+  // The fleet view: the same rows, asked a company question rather than a job
+  // question.
+  await page.goto(`${BASE}/admin/equipment`, { waitUntil: 'networkidle' })
+  const fleetText = await bodyWhen(new RegExp(machineName))
+  if (/what the fleet is doing/i.test(fleetText) && /on no job/i.test(fleetText)) {
+    ok('the fleet page reports what every machine is doing, idle ones included')
+  } else {
+    bad('fleet page', 'the fleet summary did not render')
+  }
+
+  // The fleet row is the one without a Delete button, which is the library's.
+  const idleRow = await page
+    .locator('tr', { hasText: machineName })
+    .filter({ hasNot: page.getByRole('button', { name: 'Delete', exact: true }) })
+    .first()
+    .innerText()
+  if (/None/.test(idleRow)) {
+    ok('a machine nobody is using says so rather than being left off the page')
+  } else {
+    bad('fleet page', `the idle machine did not report as idle, row read ${idleRow.replace(/\n/g, ' | ')}`)
+  }
 
   // The same rate, reaching a bid. A takeoff line that names the machine has to
   // price it at the list rate, otherwise a job is bid without its plant.
@@ -1406,6 +1443,63 @@ async function main() {
     exercised++
   }
   ok(`changed ${exercised} dashboard filters without an error`)
+
+  // ── Entering the annual notice in one go ─────────────────────────────────
+  // Fifty-one jurisdictions ship with no rate, so until this exists nobody can
+  // load a labor rate without opening fifty-one forms.
+  console.log('\nBulk reference data')
+  await page.goto(`${BASE}/admin/payroll`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Enter rates from a notice' }).click()
+  await page.waitForTimeout(400)
+  await page.fill(
+    'textarea[name="rates"]',
+    ['WA 1.43', 'Oregon, 2.1%', 'CA\t3.4', 'Atlantis 9.9', 'not a line at all'].join('\n'),
+  )
+  await page.fill('input[name="sutaRateYear"]', '2026')
+  await Promise.all([page.waitForTimeout(3000), page.getByRole('button', { name: 'Enter the rates' }).click()])
+
+  const importText = await bodyWhen(/rates entered|rate entered/)
+  if (/3 rates entered/.test(importText)) {
+    ok('a notice pasted in three different formats enters three rates')
+  } else {
+    bad('rate import', `expected three rates, the page said ${JSON.stringify(importText.slice(0, 200))}`)
+  }
+  if (/no state called Atlantis/.test(importText) && /could not tell the state from the rate/.test(importText)) {
+    ok('a line it cannot read is quoted back rather than silently dropped')
+  } else {
+    bad('rate import', 'the unreadable lines were not reported')
+  }
+
+  await page.goto(`${BASE}/admin/payroll`, { waitUntil: 'networkidle' })
+  const afterImport = await page.locator('body').innerText()
+  if (/3 of 51 states carry an unemployment rate/.test(afterImport)) {
+    ok('the page counts how many states still have no rate behind them')
+  } else {
+    bad('rate import', 'the count of states carrying a rate did not update')
+  }
+
+  // Put the reference data back as it was found: no rate is the shipped state,
+  // because a rate nobody has checked is worse than an obvious gap. Cleared
+  // through the same form a person would use, one state at a time.
+  for (const state of ['Washington', 'Oregon', 'California']) {
+    await page.goto(`${BASE}/admin/payroll`, { waitUntil: 'networkidle' })
+    // The accordion header carries the code, the name and the rate, so match
+    // the state within it rather than anchoring at the start.
+    await page.locator('button[aria-expanded]', { hasText: state }).first().click()
+    await page.waitForSelector('input[name="sutaPct"]', { timeout: 15000 })
+    await page.locator('input[name="sutaPct"]').first().fill('')
+    await Promise.all([
+      page.waitForTimeout(2500),
+      page.getByRole('button', { name: `Save ${state}` }).click(),
+    ])
+  }
+  await page.goto(`${BASE}/admin/payroll`, { waitUntil: 'networkidle' })
+  const restored = await page.locator('body').innerText()
+  if (/0 of 51 states carry an unemployment rate/.test(restored)) {
+    ok('the rates come back off, leaving the reference data as it shipped')
+  } else {
+    bad('rate import cleanup', 'a rate was left behind on a state')
+  }
 
   // ── The sign-in box, under pressure ──────────────────────────────────────
   // A password box with no limit behind it is a guessing machine, and this one

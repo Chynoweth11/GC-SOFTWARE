@@ -335,3 +335,138 @@ export function daysOnSite(startDate: Date | null, endDate: Date | null): number
   const days = daysBetween(startDate, endDate) + 1
   return days > 0 ? days : 0
 }
+
+/**
+ * One machine, across every job it is on.
+ *
+ * The project tab answers "what is this job spending on plant". This answers
+ * the questions a company asks about a fleet: which machines are earning, which
+ * are standing, and whether a machine hired eleven months a year should have
+ * been bought. Both read the same rows, so neither can disagree with the other.
+ */
+export interface FleetRow {
+  itemId: string
+  name: string
+  category: string | null
+  ownership: EquipmentOwnership
+  vendorName: string | null
+  active: boolean
+  /** Hourly cost including fuel and wear, as a priced line reads it. */
+  loadedHourlyCost: number
+  /** How many jobs are carrying it right now. */
+  jobCount: number
+  rentalCost: number
+  operatingCost: number
+  standbyCost: number
+  cost: number
+  operatingHours: number
+  standbyHours: number
+  /** Standby as a share of what this machine cost. The number to act on. */
+  standbyShare: number
+  /**
+   * What the hire actually bought, against what was used.
+   *
+   * A machine hired for eighty hours and run for twenty is not being used; a
+   * machine run for more hours than the hire covers is under-recorded. Both are
+   * worth seeing next to each other.
+   */
+  hiredHours: number
+  utilization: number
+  issues: string[]
+}
+
+export interface FleetSummary {
+  rows: FleetRow[]
+  totals: {
+    rentalCost: number
+    operatingCost: number
+    standbyCost: number
+    cost: number
+    operatingHours: number
+    standbyHours: number
+    hiredHours: number
+  }
+  standbyShare: number
+  utilization: number
+  /** Machines on the list that no job is carrying. */
+  idleCount: number
+  /** Machines whose standby is more than a quarter of what they cost. */
+  standbyHeavy: FleetRow[]
+}
+
+export interface FleetItemInput extends EquipmentItemInput {
+  vendorName: string | null
+  active: boolean
+}
+
+/**
+ * Rolls every machine's use up to the machine.
+ *
+ * A machine with no use at all is still listed, with zeros. A fleet page that
+ * hid the idle machines would answer the wrong question: an excavator nobody
+ * has charged to a job for four months is the most interesting row on it.
+ */
+export function summarizeFleet(
+  items: readonly FleetItemInput[],
+  uses: readonly (EquipmentUseDerived & { projectId: string })[],
+): FleetSummary {
+  const rows: FleetRow[] = items.map((item) => {
+    const derived = deriveEquipmentItem(item)
+    const mine = uses.filter((use) => use.equipmentItemId === item.id)
+
+    const rentalCost = sumBy(mine, (use) => use.rentalCost)
+    const operatingCost = sumBy(mine, (use) => use.operatingCost)
+    const standbyCost = sumBy(mine, (use) => use.standbyCost)
+    const cost = rentalCost + operatingCost + standbyCost
+    const operatingHours = sumBy(mine, (use) => use.operatingHours)
+    const standbyHours = sumBy(mine, (use) => use.standbyHours)
+
+    // What the hire covered: the units booked, converted to hours at the basis
+    // each one was hired on.
+    const hiredHours = sumBy(mine, (use) => num(use.units) * hoursPerUnit(item, use.basis))
+
+    return {
+      itemId: item.id,
+      name: item.name,
+      category: item.category ?? null,
+      ownership: item.ownership,
+      vendorName: item.vendorName,
+      active: item.active,
+      loadedHourlyCost: derived.loadedHourlyCost,
+      jobCount: new Set(mine.map((use) => use.projectId)).size,
+      rentalCost,
+      operatingCost,
+      standbyCost,
+      cost,
+      operatingHours,
+      standbyHours,
+      standbyShare: safeDiv(standbyCost, cost),
+      hiredHours,
+      utilization: safeDiv(operatingHours, hiredHours),
+      issues: derived.issues,
+    }
+  })
+
+  rows.sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name))
+
+  const totals = {
+    rentalCost: sumBy(rows, (row) => row.rentalCost),
+    operatingCost: sumBy(rows, (row) => row.operatingCost),
+    standbyCost: sumBy(rows, (row) => row.standbyCost),
+    cost: sumBy(rows, (row) => row.cost),
+    operatingHours: sumBy(rows, (row) => row.operatingHours),
+    standbyHours: sumBy(rows, (row) => row.standbyHours),
+    hiredHours: sumBy(rows, (row) => row.hiredHours),
+  }
+
+  return {
+    rows,
+    totals,
+    standbyShare: safeDiv(totals.standbyCost, totals.cost),
+    utilization: safeDiv(totals.operatingHours, totals.hiredHours),
+    idleCount: rows.filter((row) => row.active && row.jobCount === 0).length,
+    // A quarter is where standby stops being the cost of doing business and
+    // starts being a question about scheduling.
+    standbyHeavy: rows.filter((row) => row.cost > 0 && row.standbyShare > 0.25),
+  }
+}

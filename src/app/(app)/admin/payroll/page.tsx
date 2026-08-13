@@ -5,8 +5,17 @@ import { prisma } from '@/lib/db'
 import { getJurisdictions } from '@/lib/queries/wage-rates'
 import { InfoNote, Section } from '@/components/ui'
 import { FederalRatesForm, JurisdictionManager } from '@/components/admin/jurisdiction-manager'
+import { RateImport } from '@/components/admin/rate-import'
 import { COUNTIES_SEEDED } from '@/lib/reference/jurisdictions'
-import { deleteCounty, saveCounty, saveFederalRates, saveJurisdiction, verifyJurisdiction } from './actions'
+import {
+  deleteCounty,
+  importCounties,
+  importJurisdictionRates,
+  saveCounty,
+  saveFederalRates,
+  saveJurisdiction,
+  verifyJurisdiction,
+} from './actions'
 
 export const metadata = { title: 'Payroll and prevailing wage' }
 
@@ -62,12 +71,21 @@ export default async function PayrollSettingsPage() {
           </InfoNote>
         </div>
 
+        <div className="mb-3">
+          <RateImport
+            save={importJurisdictionRates}
+            entered={jurisdictions.filter((jurisdiction) => jurisdiction.sutaPct !== null).length}
+            total={jurisdictions.length}
+          />
+        </div>
+
         <JurisdictionManager
           canEdit={can(user.role, 'manage:reference_data')}
           save={saveJurisdiction}
           verify={verifyJurisdiction}
           saveCounty={saveCounty}
           deleteCounty={deleteCounty}
+          importCounties={importCounties}
           jurisdictions={jurisdictions.map((jurisdiction) => ({
             id: jurisdiction.id,
             code: jurisdiction.code,

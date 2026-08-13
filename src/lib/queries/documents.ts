@@ -63,6 +63,8 @@ export interface DocumentView extends DocumentDerived {
   supersededById: string | null
   anticipatedApproval: Date | null
   dateSubmitted: Date | null
+  /** When the record last moved, so a form can tell if it moved underneath. */
+  updatedAt: Date
   signatureRows: {
     id: string
     party: string
@@ -112,6 +114,7 @@ export interface DocumentView extends DocumentDerived {
     subUnitCost: number
     otherUnitCost: number
     notes: string | null
+    updatedAt: Date
   }[]
 }
 
@@ -212,6 +215,7 @@ function viewFromRecord(
     supersededById: record.supersededById,
     anticipatedApproval: record.anticipatedApproval,
     dateSubmitted: record.dateSubmitted,
+    updatedAt: record.updatedAt,
     signatureRows: record.signatures.map((signature) => ({
       id: signature.id,
       party: signature.party,
@@ -262,6 +266,7 @@ function viewFromRecord(
       subUnitCost: line.subUnitCost,
       otherUnitCost: line.otherUnitCost,
       notes: line.notes,
+      updatedAt: line.updatedAt,
     })),
   }
 }
