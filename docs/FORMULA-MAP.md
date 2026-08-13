@@ -15,7 +15,7 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 346 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 350 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
 re-checks 761 identities against the live database, `verify:exports` writes and
@@ -770,6 +770,34 @@ rate, an hourly rate or a way in.
 **Restores never overwrite.** A restore always creates a new project. If the job
 number is taken it takes the next free suffix and says so, because a restore that
 could silently replace live budgets and billings is a way to lose a month of work.
+
+---
+
+## Money as a double, checked rather than assumed
+
+Every dollar in the schema is a `Float`, which is a double. That is the ordinary
+choice and it deserved an answer rather than an assumption, because this system
+decides what a company invoices.
+
+`precision.test.ts` runs the arithmetic a second time in exact decimal, as
+integers scaled by twelve places so nothing is ever rounded on the way, and
+compares. It checks three things: the markup chain against the exact chain, a
+thousand compounded markups against the exact compounding, and five hundred
+awkward takeoff lines summed in three different orders. Adding a small number to
+a large one is where a double loses the most, so if the order of addition
+changed the answer, that would be the drift showing.
+
+It does not. The chain agrees to the cent, the pathological compounding stays
+within a tenth of a part per million, and the five hundred lines total the same
+forwards, backwards and smallest-first. A double carries fifteen significant
+digits and a contract value with cents needs about twelve, so the headroom is
+real rather than lucky.
+
+**What would change the answer.** These tests exist to catch the day it stops
+being true: a much longer chain, figures an order of magnitude larger, or an
+engine that iterates rather than compounds once. If one of them ever fails, the
+fix is integer cents throughout, and the failure will say so before a customer
+does.
 
 ---
 
