@@ -1,0 +1,94 @@
+name: Verify
+
+# Everything that proves the figures are right, run on every push.
+#
+# The suite already existed and was only ever run by hand, which meant a
+# regression was caught when somebody happened to look. Three jobs run in
+# parallel so a broken formula is reported in a couple of minutes rather than
+# behind a browser walk that takes ten.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # A database of its own per job, built from the migrations and the workbook
+  # seed. Never the committed one, because there isn't one.
+  DATABASE_URL: file:./prisma/ci.db
+
+jobs:
+  static:
+    name: Types, lint and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run test
+
+  figures:
+    name: Figures, exports, audit and backup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the database from the migrations and seed it
+        run: |
+          npx prisma migrate deploy
+          npx tsx prisma/seed.ts
+      # Every identity the engine claims, against live data.
+      - run: npm run verify:figures
+      # Every workbook and PDF written, reparsed and checked.
+      - run: npm run verify:exports
+      # The audit log refusing to be edited or deleted.
+      - run: npm run verify:audit
+      # Every project exported, restored, exported again and compared.
+      - run: npm run verify:backup
+
+  browser:
+    name: Every route and every control
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the database from the migrations and seed it
+        run: |
+          npx prisma migrate deploy
+          npx tsx prisma/seed.ts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Start the server
+        run: |
+          npm run start &
+          # Wait for it rather than sleeping: a cold start is slower on a
+          # shared runner than on a laptop, and a fixed sleep would report
+          # that as a broken app.
+          for attempt in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000/login; then exit 0; fi
+            sleep 2
+          done
+          echo "The server did not come up." >&2
+          exit 1
+      # Every route renders, with no console error and no em dash.
+      - run: npm run verify:pages
+      # Every control does something, and the money rules hold end to end.
+      - run: npm run verify:ui

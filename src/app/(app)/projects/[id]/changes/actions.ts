@@ -551,9 +551,18 @@ export async function approveDocument(formData: FormData): Promise<{ error?: str
   if (priced.isOfficial) return { error: `${priced.number} is already approved.` }
   if (!priced.canApprove) return { error: priced.approvalBlockedReason ?? 'This document cannot be approved yet.' }
 
+  /*
+    Claim the approval, rather than checking and then writing.
+
+    Two people can reach this line at the same moment: both read an unapproved
+    document, both pass the check above, and both write. The condition on
+    `approvedAt` means the database decides, and the second one to arrive
+    changes nothing and is told why. This is the one gate the contract value
+    rests on, so it is the one place that cannot be nearly right.
+  */
   const now = new Date()
-  await prisma.changeOrder.update({
-    where: { id },
+  const claimed = await prisma.changeOrder.updateMany({
+    where: { id, approvedAt: null },
     data: {
       approvedAt: now,
       approvedById: user.id,
@@ -564,6 +573,9 @@ export async function approveDocument(formData: FormData): Promise<{ error?: str
       fullySignedAt: priced.fullySignedAt ?? now,
     },
   })
+  if (claimed.count === 0) {
+    return { error: `${priced.number} was approved by somebody else a moment ago. Reload to see who and when.` }
+  }
 
   await recordAudit({
     companyId: user.companyId,
@@ -605,8 +617,10 @@ export async function unapproveDocument(formData: FormData): Promise<{ error?: s
   if (!document) return { error: 'That document is not on this account.' }
   if (document.approvedAt === null) return { error: `${document.number} is not approved.` }
 
-  await prisma.changeOrder.update({
-    where: { id },
+  // Withdrawn the same way it was claimed, so two people cannot both record a
+  // withdrawal of the same approval and post the reversal twice.
+  const released = await prisma.changeOrder.updateMany({
+    where: { id, approvedAt: { not: null } },
     data: {
       approvedAt: null,
       approvedById: null,
@@ -615,6 +629,9 @@ export async function unapproveDocument(formData: FormData): Promise<{ error?: s
       status: 'FULLY_SIGNED',
     },
   })
+  if (released.count === 0) {
+    return { error: `${document.number} is no longer approved. Somebody else withdrew it a moment ago.` }
+  }
 
   await recordAudit({
     companyId: user.companyId,

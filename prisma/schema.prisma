@@ -151,6 +151,29 @@ model Session {
   @@index([userId])
 }
 
+/// Every attempt to sign in, successful or not.
+///
+/// Kept so a run of failures can be counted and stopped. A password box with no
+/// limit behind it is a guessing machine, and this system holds a company's
+/// contract values. The identifier is the email typed and the address it came
+/// from, so one person fat-fingering their password does not lock out the
+/// office, and one address working through a list is stopped whatever email it
+/// tries.
+model LoginAttempt {
+  id         String   @id @default(cuid())
+  /// The email as typed, lowercased. Not a user id: most failures name an
+  /// account that does not exist.
+  email      String
+  ipAddress  String?
+  successful Boolean  @default(false)
+  /// Set when the attempt was refused before the password was even checked.
+  refusedFor String?
+  createdAt  DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
 /// The permanent record of every change made in the system.
 ///
 /// Append only. Database triggers reject UPDATE and DELETE on this table, so

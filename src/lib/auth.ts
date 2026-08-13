@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { cache } from 'react'
 import { prisma } from './db'
+import { ADDRESS_RULES, EMAIL_RULES, throttleVerdict, waitInWords } from './finance/throttle'
 import type { Role } from '@/generated/prisma/client'
 
 const SESSION_COOKIE = 'constructx_session'
@@ -91,20 +92,93 @@ export async function destroySession(): Promise<void> {
   store.delete(SESSION_COOKIE)
 }
 
-export async function authenticate(email: string, password: string): Promise<SessionUser | null> {
-  const user = await prisma.user.findUnique({
-    where: { email: email.toLowerCase().trim() },
-    include: { company: true },
+export interface AuthResult {
+  user: SessionUser | null
+  /** Set when the attempt was refused before the password was even checked. */
+  waitSeconds?: number
+  message?: string
+}
+
+/**
+ * Signs somebody in, or makes them wait.
+ *
+ * Every attempt is recorded, successful or not, and a run of failures is made
+ * to wait for longer and longer. The rule itself lives in `finance/throttle.ts`
+ * where it can be tested; this reads the history, asks it, and writes down what
+ * happened.
+ *
+ * The wait is applied before the password is checked, and the same message
+ * comes back whether the email exists or not, so the box cannot be used to find
+ * out who has an account here.
+ */
+export async function authenticate(
+  email: string,
+  password: string,
+  ipAddress?: string | null,
+): Promise<AuthResult> {
+  const typed = email.toLowerCase().trim()
+  const now = new Date()
+  const since = new Date(now.getTime() - EMAIL_RULES.windowMinutes * 60_000)
+
+  const [byEmail, byAddress] = await Promise.all([
+    prisma.loginAttempt.findMany({
+      where: { email: typed, createdAt: { gte: since } },
+      select: { createdAt: true, successful: true },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+    }),
+    ipAddress
+      ? prisma.loginAttempt.findMany({
+          where: { ipAddress, createdAt: { gte: since } },
+          select: { createdAt: true, successful: true },
+          orderBy: { createdAt: 'desc' },
+          take: 120,
+        })
+      : Promise.resolve([]),
+  ])
+
+  const emailVerdict = throttleVerdict(byEmail, EMAIL_RULES, now)
+  const addressVerdict = throttleVerdict(byAddress, ADDRESS_RULES, now)
+  // Whichever says wait longer wins; either tripping is enough to stop.
+  const wait = Math.max(
+    emailVerdict.allowed ? 0 : emailVerdict.waitSeconds,
+    addressVerdict.allowed ? 0 : addressVerdict.waitSeconds,
+  )
+
+  if (wait > 0) {
+    await prisma.loginAttempt.create({
+      data: { email: typed, ipAddress: ipAddress ?? null, successful: false, refusedFor: 'Too many attempts' },
+    })
+    return {
+      user: null,
+      waitSeconds: wait,
+      message: `Too many sign-in attempts. Try again in ${waitInWords(wait)}.`,
+    }
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: typed }, include: { company: true } })
+  const ok = user !== null && user.active && verifyPassword(password, user.passwordHash)
+
+  await prisma.loginAttempt.create({
+    data: {
+      email: typed,
+      ipAddress: ipAddress ?? null,
+      successful: ok,
+      refusedFor: ok ? null : user === null ? 'No such account' : !user.active ? 'Account is closed' : 'Wrong password',
+    },
   })
-  if (!user || !user.active || !verifyPassword(password, user.passwordHash)) return null
+
+  if (!ok || !user) return { user: null }
 
   await createSession(user.id)
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    companyId: user.companyId,
-    companyName: user.company.name,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      companyId: user.companyId,
+      companyName: user.company.name,
+    },
   }
 }

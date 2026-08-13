@@ -169,7 +169,7 @@ async function main() {
   await page.waitForSelector('[role="dialog"] input', { timeout: 5000 })
   await searchFor('Cascade')
   await page.keyboard.press('Enter')
-  await page.waitForTimeout(1200)
+  await page.waitForURL(/\/projects\//, { timeout: 15000 }).catch(() => {})
   if (page.url().includes('/projects/')) ok('the palette opens from the keyboard and Enter opens the result')
   else bad('search keyboard navigation', `landed on ${page.url()}`)
 
@@ -1196,10 +1196,14 @@ async function main() {
 
   await page.goto(`${BASE}/projects/${projectId}/changes`, { waitUntil: 'networkidle' })
   const tmPanel = await bodyWhen(/machine hours/)
-  if (/time and materials/i.test(tmPanel) && /8 machine hours/.test(tmPanel)) {
+  const hoursShown = tmPanel.match(/(\d+) machine hours/)
+  if (/time and materials/i.test(tmPanel) && hoursShown?.[1] === '8') {
     ok('the tickets on a job are summarised with the hours standing behind them')
   } else {
-    bad('time and materials panel', 'the panel did not carry the machine hours behind the tickets')
+    bad(
+      'time and materials panel',
+      `expected 8 machine hours, the panel said ${hoursShown?.[0] ?? 'nothing about machine hours'}`,
+    )
   }
 
   // Sign it and approve it standing on its own, which is money.
@@ -1349,6 +1353,81 @@ async function main() {
     exercised++
   }
   ok(`changed ${exercised} dashboard filters without an error`)
+
+  // ── The sign-in box, under pressure ──────────────────────────────────────
+  // A password box with no limit behind it is a guessing machine, and this one
+  // guards a company's contract values.
+  console.log('\nSign-in throttle')
+  const guessContext = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  const guesser = await guessContext.newPage()
+
+  // An address nobody has, so no real account is slowed down by this check.
+  const madeUpEmail = `throttle-probe-${Date.now()}@constructx.com`
+  /*
+    Submit, then wait for the answer to appear.
+
+    Waiting for the URL is no use here: the form posts back to /login, so the
+    page is already at the address it is going to end up at and the wait returns
+    before the server has said anything.
+  */
+  const guess = async (email, password) => {
+    await guesser.goto(`${BASE}/login`, { waitUntil: 'networkidle' })
+    await guesser.fill('input[type="email"]', email)
+    await guesser.fill('input[type="password"]', password)
+    await guesser.click('button[type="submit"]')
+    // A refusal comes back as a redirect carrying the reason in the query, so
+    // that is the thing to wait for. Reading the page before the navigation has
+    // landed gets the old one, or nothing at all.
+    await guesser.waitForURL(/[?&]error=/, { timeout: 20000 }).catch(() => {})
+    return decodeURIComponent(new URL(guesser.url()).searchParams.get('error') ?? '')
+  }
+
+  let refusedAt = 0
+  let wrongPasswordMessages = 0
+  for (let attempt = 1; attempt <= 7; attempt++) {
+    const text = await guess(madeUpEmail, 'not-the-password')
+    if (/Too many sign-in attempts/.test(text)) {
+      refusedAt = attempt
+      break
+    }
+    if (/was not recognised/.test(text)) wrongPasswordMessages++
+  }
+
+  if (wrongPasswordMessages === 5 && refusedAt === 6) {
+    ok('five wrong passwords pass through, and the sixth is made to wait')
+  } else {
+    bad('sign-in throttle', `refused at attempt ${refusedAt} after ${wrongPasswordMessages} plain refusals`)
+  }
+
+  const throttled = await guess(madeUpEmail, 'not-the-password')
+  if (/Try again in/.test(throttled)) {
+    ok('the wait is stated rather than left as a mystery')
+  } else {
+    bad('sign-in throttle', `the refusal did not say how long to wait, it said ${JSON.stringify(throttled)}`)
+  }
+
+  // The same message whichever way it fails, so the box cannot be used to find
+  // out who has an account here. Two addresses nobody has been guessing at, so
+  // neither is already carrying a wait.
+  const realAccount = await guess('accounting@constructx.com', 'definitely-wrong')
+  const noAccount = await guess(`nobody-${Date.now()}@constructx.com`, 'definitely-wrong')
+
+  const said = (text) => (text.match(/was not recognised|Too many sign-in attempts/) ?? [''])[0]
+  if (said(realAccount) && said(realAccount) === said(noAccount)) {
+    ok('a real account and a made up one are refused in exactly the same words')
+  } else {
+    bad('account enumeration', `"${said(realAccount)}" against "${said(noAccount)}"`)
+  }
+
+  // A correct password still works, which is the point of a throttle rather
+  // than a lockout.
+  await signIn(guesser, 'owner@constructx.com', 'constructx')
+  if (!new URL(guesser.url()).pathname.startsWith('/login')) {
+    ok('the right password still gets in, because this slows guessing rather than locking accounts')
+  } else {
+    bad('sign-in throttle', 'a correct password was refused')
+  }
+  await guessContext.close()
 
   // ── Permissions, from a read-only account ────────────────────────────────
   console.log('\nPermissions')

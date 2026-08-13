@@ -6,6 +6,8 @@ import { recentActivity } from '@/lib/audit'
 import { date, percent, titleize } from '@/lib/format'
 import { DataList, EmptyState, KpiGrid, Kpi, Section } from '@/components/ui'
 import { CompanyForm } from '@/components/admin/company-form'
+import { mailConfig } from '@/lib/mail'
+import { ssoConfig } from '@/lib/sso'
 import { updateCompany } from './actions'
 
 export const metadata = { title: 'Company settings' }
@@ -29,6 +31,17 @@ export default async function AdminCompanyPage() {
   ])
 
   const [projects, users, costCodes, vendors, transactions, auditEntries] = counts
+
+  /*
+    Whether reminders can actually leave the building.
+
+    Shown rather than assumed. An alerting feature that is quietly switched off
+    is worse than one that is obviously switched off, and the only way anybody
+    finds out which they have is if the page says so.
+  */
+  const mail = mailConfig()
+  const digestScheduled = Boolean(process.env.CRON_SECRET)
+  const sso = ssoConfig()
 
   return (
     <div className="space-y-6">
@@ -76,6 +89,74 @@ export default async function AdminCompanyPage() {
             />
           </div>
         )}
+      </Section>
+
+      <Section
+        title="Signing in"
+        description="Who gets in, and through which door. Access itself is decided here by role, never by the identity provider"
+      >
+        <div className="card p-4">
+          <DataList
+            columns={2}
+            items={[
+              {
+                label: 'Single sign-on',
+                value: sso.provider === 'none' ? 'Not configured' : sso.label,
+              },
+              {
+                label: 'Ready to use',
+                value: sso.configured
+                  ? 'Yes'
+                  : sso.provider === 'none'
+                    ? 'Password sign-in only'
+                    : `No, ${sso.missing.join(' and ')} not set`,
+              },
+              {
+                label: 'Addresses allowed',
+                value: sso.allowedDomains.length > 0 ? sso.allowedDomains.join(', ') : 'Any domain',
+              },
+              { label: 'Failed attempts', value: 'Slowed automatically, doubling with each one' },
+            ]}
+          />
+          <p className="mt-3 text-xs" style={{ color: 'var(--text-subtle)' }}>
+            Signing in through a provider never creates an account. Somebody has to exist here first, with a role
+            chosen deliberately, because the role is the whole of what they may see. A leaver switched off in your
+            directory can no longer sign in, and switching them off here does the same.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title="Reminders by email"
+        description="Compliance deadlines are always on the dashboard and in the calendar feed. Email is optional, and either configured or plainly not"
+      >
+        <div className="card p-4">
+          <DataList
+            columns={2}
+            items={[
+              {
+                label: 'Mail provider',
+                value: mail.provider === 'none' ? 'Not configured' : titleize(mail.provider),
+              },
+              { label: 'Sending address', value: mail.from || 'Not set' },
+              {
+                label: 'Ready to send',
+                value: mail.configured ? 'Yes' : `No, ${mail.missing.join(' and ')} not set`,
+              },
+              {
+                label: 'Daily digest endpoint',
+                value: digestScheduled
+                  ? 'Open to a scheduler holding CRON_SECRET'
+                  : 'Closed, because CRON_SECRET is not set',
+              },
+            ]}
+          />
+          <p className="mt-3 text-xs" style={{ color: 'var(--text-subtle)' }}>
+            Point any scheduler at <code>/api/cron/compliance-digest</code> with an{' '}
+            <code>Authorization: Bearer</code> header carrying <code>CRON_SECRET</code>. Nothing is sent on a day when
+            nothing is overdue or due soon, so a message arriving always means there is something to do.
+          </p>
+        </div>
       </Section>
 
       <Section title="Recent activity" description="Every financial change, who made it and when">

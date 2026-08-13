@@ -1,5 +1,7 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { authenticate, getSessionUser } from '@/lib/auth'
+import { ssoConfig } from '@/lib/sso'
 import { LoginForm } from './login-form'
 
 export const metadata = { title: 'Sign in' }
@@ -11,6 +13,9 @@ export default async function LoginPage({
 }) {
   if (await getSessionUser()) redirect('/')
   const { error } = await searchParams
+  // Only offered when it will actually work. A button that leads to a
+  // configuration error is worse than no button.
+  const sso = ssoConfig()
 
   async function signIn(formData: FormData) {
     'use server'
@@ -18,8 +23,21 @@ export default async function LoginPage({
     const password = String(formData.get('password') ?? '')
     if (!email || !password) redirect('/login?error=Enter+your+email+and+password')
 
-    const user = await authenticate(email, password)
-    if (!user) redirect('/login?error=That+email+and+password+combination+was+not+recognised')
+    /*
+      Where the attempt came from, for counting.
+
+      Behind a proxy the socket address is the proxy's, so the forwarded header
+      is read first and only its first entry is trusted: the rest are whatever
+      the caller chose to send. A missing address is not fatal, it just means
+      this attempt is only counted against the email.
+    */
+    const requestHeaders = await headers()
+    const forwarded = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim()
+    const ipAddress = forwarded || requestHeaders.get('x-real-ip') || null
+
+    const result = await authenticate(email, password, ipAddress)
+    if (result.message) redirect(`/login?error=${encodeURIComponent(result.message)}`)
+    if (!result.user) redirect('/login?error=That+email+and+password+combination+was+not+recognised')
     redirect('/')
   }
 
@@ -42,6 +60,20 @@ export default async function LoginPage({
         </div>
 
         <div className="card p-5">
+          {sso.configured && (
+            <>
+              <a href="/api/auth/sso/start" className="btn btn-secondary w-full">
+                Continue with {sso.label}
+              </a>
+              <div className="my-4 flex items-center gap-3">
+                <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
+                <span className="text-[11px] uppercase tracking-[0.06em]" style={{ color: 'var(--text-subtle)' }}>
+                  or
+                </span>
+                <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
+              </div>
+            </>
+          )}
           <LoginForm action={signIn} error={error} />
         </div>
 

@@ -15,13 +15,16 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 311 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 335 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
 re-checks 772 identities against the live database, `verify:exports` writes and
 reparses every workbook and PDF, `verify:backup` round trips every project
 through export and restore, `verify:pages` walks every route, and `verify:ui`
-drives 77 interactive checks through a real browser.
+drives 81 interactive checks through a real browser. All of it runs on every
+push through `.github/workflows/verify.yml`, in three parallel jobs, so a broken
+formula is reported in minutes rather than whenever somebody next thinks to
+look.
 
 None of the browser checks sleep and hope. Each one waits for the sentence it is
 looking for and gives up only when it is really not coming, so a slow moment on
@@ -743,6 +746,54 @@ rate, an hourly rate or a way in.
 **Restores never overwrite.** A restore always creates a new project. If the job
 number is taken it takes the next free suffix and says so, because a restore that
 could silently replace live budgets and billings is a way to lose a month of work.
+
+---
+
+## Who gets in, and who hears about it
+
+Nothing here computes a figure either. It documents the two doors and the one
+way out, all of which are configured by environment and none of which invent
+anything when they are not.
+
+| Concern | How it works | Where |
+|---|---|---|
+| Password sign-in | scrypt with a per-password salt, in an httpOnly cookie | `src/lib/auth.ts` |
+| Failed attempts | Counted by email and by address, each failure past the fifth doubling the wait to a cap of fifteen minutes | `src/lib/finance/throttle.ts`, `LoginAttempt` |
+| Single sign-on | Authorization code flow against GitHub, Google or Microsoft, chosen by `SSO_PROVIDER` | `src/lib/sso.ts` |
+| Compliance reminders | Dashboard panel, project alerts, an iCalendar feed, and optionally email | `src/lib/finance/digest.ts`, `src/lib/mail.ts` |
+| The daily digest | An endpoint any scheduler can call, behind `CRON_SECRET` | `src/app/api/cron/compliance-digest` |
+
+**Why the throttle doubles rather than locks.** An account locked after five
+wrong passwords is an account anybody can lock for somebody else. Doubling the
+wait costs a person who has forgotten their password a few seconds and then a
+minute, and costs a program working through a list more time than the list is
+worth. The cap means no account is ever shut out permanently. A successful
+sign-in clears the count, so yesterday's fumbling is not carried into today.
+
+**Why the two counters.** By email alone, an attack spreads itself across many
+addresses and stays under the limit. By address alone, a whole office behind one
+connection trips it for everybody. Counting both, and stopping when either
+trips, is what makes it hold in both directions.
+
+**Why a sign-in never creates an account.** Role is the whole of the access
+control in this system, and an account created automatically has to be given
+some role. Any role safe enough to grant by default is one that could see
+something it should not, so an unrecognised address is turned away and told to
+ask an administrator. The provider proves who somebody is; it does not decide
+what they may see.
+
+**Why email is optional and says so.** Deliverability means SPF, DKIM, DMARC, a
+warmed sending address and a reputation to protect, none of which a contractor's
+financial system should own, so it goes through Resend or any SMTP server. With
+nothing configured the settings page states plainly that email is off, and
+deadlines still reach people through the dashboard and the calendar feed. An
+alerting feature that is quietly switched off is worse than one that is
+obviously switched off.
+
+**Why the digest is skipped when there is nothing to say.** A daily message that
+usually reads "all clear" is filtered within a fortnight, and then the one that
+matters is filtered with it. Mail arriving from this system always means there
+is something to do.
 
 ---
 
