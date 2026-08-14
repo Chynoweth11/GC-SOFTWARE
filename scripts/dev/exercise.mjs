@@ -1428,6 +1428,104 @@ async function main() {
   if (backup.status() !== 200) bad('project backup', `status ${backup.status()}`)
   else ok('project workbook, PDF and backup all download')
 
+  /*
+    The exports nothing was reaching.
+
+    The reports and the project workbook were covered; the pay application, the
+    estimate and the audit history were not, so a route that had stopped
+    building would only have been found by somebody trying to use it.
+  */
+  /*
+    Taken as the page writes them.
+
+    The pay application export carries the application number in its query, so
+    rebuilding the path by hand would test a URL nothing links to. The links
+    live inside an export menu and only exist once it is open, so it is opened
+    first. A missing menu means this job has no pay application to export, which
+    is a fact about the data rather than a failure, so the lookup gives up
+    quietly instead of taking the rest of the run down.
+  */
+  const hrefFromExportMenu = async (url, prefix) => {
+    await page.goto(url, { waitUntil: 'networkidle' })
+    // A page can carry more than one export menu, and only one of them holds
+    // the link being looked for, so each is opened in turn.
+    const openers = page.getByRole('button', { name: /Export/ })
+    for (let index = 0; index < (await openers.count()); index++) {
+      await openers.nth(index).click()
+      const link = page.locator(`a[href^="${prefix}"]`).first()
+      const found = await link.waitFor({ state: 'attached', timeout: 3000 }).then(
+        () => true,
+        () => false,
+      )
+      if (found) return link.getAttribute('href')
+      await page.keyboard.press('Escape')
+    }
+    return null
+  }
+
+  const billingExcel = await hrefFromExportMenu(
+    `${BASE}/projects/${projectId}/billing`,
+    '/api/export/billing/',
+  )
+  const billingPdf = await hrefFromExportMenu(`${BASE}/projects/${projectId}/billing`, '/api/pdf/billing/')
+
+  await page.goto(`${BASE}/estimating`, { waitUntil: 'networkidle' })
+  const estimateLink = await page.locator('a[href^="/estimating/"]').evaluateAll((links) =>
+    links.map((a) => a.getAttribute('href')).find((href) => href && /^\/estimating\/[^/]+$/.test(href) && !href.endsWith('/new')),
+  )
+  const exportableEstimateId = estimateLink ? estimateLink.split('/')[2] : null
+
+  const downloads = [
+    ...(billingExcel ? [['pay application workbook', billingExcel]] : []),
+    ...(billingPdf ? [['pay application PDF', billingPdf]] : []),
+    ...(exportableEstimateId ? [[`estimate workbook`, `/api/export/estimate/${exportableEstimateId}`]] : []),
+    ...(exportableEstimateId ? [[`estimate PDF`, `/api/pdf/estimate/${exportableEstimateId}`]] : []),
+    ['audit history', '/api/export/audit'],
+  ]
+
+  let downloaded = 0
+  for (const [label, path] of downloads) {
+    const response = await page.request.get(`${BASE}${path}`)
+    const length = (await response.body()).length
+    if (response.status() !== 200) bad(`${label} export`, `status ${response.status()}`)
+    else if (length < 1000) bad(`${label} export`, `only ${length} bytes`)
+    else downloaded++
+  }
+  if (downloaded === downloads.length && downloaded > 0) {
+    ok(`${downloads.map(([label]) => label).join(', ')} all download, ${downloaded} files`)
+  } else if (downloads.length === 0) {
+    bad('exports', 'no pay application, estimate or audit export could be found to check')
+  }
+
+  // ── The doors that are shut until somebody opens them ────────────────────
+  // Both of these are switched off in a default deployment, and both have to
+  // say so rather than failing in a way that looks like a bug.
+  console.log('\nSwitched off by default')
+  const digest = await page.request.get(`${BASE}/api/cron/compliance-digest`)
+  const digestBody = await digest.text()
+  if (digest.status() === 503 && /CRON_SECRET is not set/.test(digestBody)) {
+    ok('the digest endpoint is closed while no scheduler secret is set, and says which one')
+  } else {
+    bad('compliance digest endpoint', `status ${digest.status()}, ${digestBody.slice(0, 120)}`)
+  }
+
+  const wrongSecret = await page.request.get(`${BASE}/api/cron/compliance-digest`, {
+    headers: { Authorization: 'Bearer not-the-secret' },
+  })
+  if (wrongSecret.status() === 503 || wrongSecret.status() === 401) {
+    ok('a caller without the right secret gets nothing')
+  } else {
+    bad('compliance digest endpoint', `a wrong secret returned ${wrongSecret.status()}`)
+  }
+
+  const ssoStart = await page.request.get(`${BASE}/api/auth/sso/start`, { maxRedirects: 0 })
+  const ssoLocation = ssoStart.headers()['location'] ?? ''
+  if (/single sign-on is not configured/i.test(decodeURIComponent(ssoLocation))) {
+    ok('single sign-on says it is not set up rather than failing on the way to a provider')
+  } else {
+    bad('sso start', `redirected to ${ssoLocation || '(nowhere)'}`)
+  }
+
   // ── Dashboard filters ────────────────────────────────────────────────────
   console.log('\nDashboard and project filters')
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
@@ -1581,12 +1679,23 @@ async function main() {
   const viewerContext = await browser.newContext({ viewport: { width: 1440, height: 960 } })
   const viewer = await viewerContext.newPage()
   await signIn(viewer, 'viewer@constructx.com', 'constructx')
+  /*
+    Asked as a plain request rather than a navigation.
+
+    A navigation can abort for reasons that have nothing to do with permissions,
+    and an aborted navigation must never be read as a refusal: a security check
+    that passes when it could not see the answer is worse than no check. A
+    request carries the same session cookie, returns a status and a body, and
+    has no rendering to be interrupted.
+  */
   for (const route of ['/estimating', '/pipeline', '/admin', '/admin/audit', `/estimating/new`]) {
-    const response = await viewer.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' })
-    const body = await viewer.locator('body').innerText()
-    const refused = response?.status() === 403 || /not permitted|forbidden|sign in/i.test(body)
-    if (refused) ok(`read-only is refused ${route}`)
-    else bad(`read-only reached ${route}`, `status ${response?.status()}`)
+    const response = await viewer.request.get(`${BASE}${route}`)
+    const body = await response.text()
+    if (response.status() === 403 || /not permitted|forbidden|sign in/i.test(body)) {
+      ok(`read-only is refused ${route}`)
+    } else {
+      bad(`read-only reached ${route}`, `status ${response.status()}`)
+    }
   }
   for (const kind of ['export', 'pdf']) {
     const response = await viewer.request.get(`${BASE}/api/${kind}/report/profitability`)

@@ -16,6 +16,15 @@ import { checksumOf, getFile } from '@/lib/storage'
  * Everything is scoped to the company through the document that owns it, so an
  * id from another account reads as missing rather than as forbidden.
  */
+/** A file name safe to put inside a quoted header value. */
+function safeFileName(name: string): string {
+  const cleaned = name
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/["\\]/g, '')
+    .trim()
+  return cleaned.slice(0, 200) || 'attachment'
+}
+
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
   if (!user) return new Response('Sign in first.', { status: 401 })
@@ -59,10 +68,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   return new Response(new Uint8Array(bytes), {
     headers: {
       'Content-Type': attachment.contentType ?? 'application/octet-stream',
-      // Attachment rather than inline: these are records to keep, and a PDF
-      // rendered in the page is one browser setting away from being printed
-      // instead of filed.
-      'Content-Disposition': `attachment; filename="${attachment.fileName.replace(/["\\]/g, '')}"`,
+      /*
+        Attachment rather than inline: these are records to keep, and a PDF
+        rendered in the page is one browser setting away from being printed
+        instead of filed. It also means a file that somehow got past the type
+        check cannot be rendered as a page in this origin.
+
+        The name is a field somebody typed, so anything that could end a header
+        line or a quoted string comes out. A control character here would let a
+        file name write its own response headers.
+      */
+      'Content-Disposition': `attachment; filename="${safeFileName(attachment.fileName)}"`,
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
     },

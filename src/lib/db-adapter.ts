@@ -28,17 +28,25 @@ export function isPostgres(url: string = databaseUrl()): boolean {
 /**
  * The driver adapter for that engine.
  *
- * The Postgres one is loaded at the moment it is needed, by a name built at
- * runtime so the bundler leaves it alone. A deployment on SQLite must not be
- * required to install a Postgres driver it will never open.
+ * The Postgres one is an optional dependency, loaded at the moment it is needed
+ * by a name built at runtime so the bundler leaves it alone. A deployment on
+ * SQLite can therefore install with `--omit=optional` and never carry a
+ * Postgres driver it will never open. If it is genuinely missing and somebody
+ * points at Postgres anyway, the message says what to install rather than
+ * failing as a module resolution error a long way from the cause.
  */
 export function createAdapter(url: string = databaseUrl()) {
   if (!isPostgres(url)) return new PrismaBetterSqlite3({ url })
 
   const moduleName = '@prisma/adapter-pg'
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const loaded = require(moduleName) as {
-    PrismaPg: new (config: { connectionString: string }) => never
+  let loaded: { PrismaPg: new (config: { connectionString: string }) => never }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    loaded = require(moduleName)
+  } catch {
+    throw new Error(
+      'DATABASE_URL points at Postgres but the Postgres driver is not installed. Run npm install @prisma/adapter-pg pg.',
+    )
   }
   return new loaded.PrismaPg({ connectionString: url })
 }

@@ -1,4 +1,4 @@
-import { num, safeDiv, sumBy } from './core'
+import { num, sumBy } from './core'
 import {
   contractChangeDocuments,
   documentTotals,
@@ -75,19 +75,6 @@ export function computeContractPosition(
 }
 
 /**
- * Cost impact of approved documents, which is what posts to the budget.
- *
- * Every kind counts here, including a subcontract change, because all of them
- * move cost even when only some of them move revenue.
- */
-export function approvedCostImpact(documents: readonly DocumentDerived[]): number {
-  return sumBy(
-    documents.filter((document) => document.isOfficial),
-    (document) => document.costAmount,
-  )
-}
-
-/**
  * The four totals the change order tab shows, plus the margin behind them.
  *
  * Restated over the document totals so there is one definition of "approved"
@@ -115,10 +102,3 @@ export function changeOrderSummary(documents: readonly DocumentDerived[]) {
   }
 }
 
-/** Margin on one document, for a row that wants it without the rest. */
-export function documentMargin(document: DocumentDerived) {
-  return {
-    margin: document.ownerAmount - document.costAmount,
-    marginPct: safeDiv(document.ownerAmount - document.costAmount, document.ownerAmount),
-  }
-}

@@ -15,13 +15,13 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 350 tests asserting these formulas
+Verification: `src/lib/finance/*.test.ts`, 374 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
 re-checks 761 identities against the live database, `verify:exports` writes and
 reparses every workbook and PDF, `verify:backup` round trips every project
 through export and restore, `verify:pages` walks every route, and `verify:ui`
-drives 90 interactive checks through a real browser. All of it runs on every
+drives 94 interactive checks through a real browser. All of it runs on every
 push through `.github/workflows/verify.yml`, in three parallel jobs, so a broken
 formula is reported in minutes rather than whenever somebody next thinks to
 look.

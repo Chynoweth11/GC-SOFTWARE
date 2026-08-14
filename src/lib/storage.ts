@@ -1,6 +1,5 @@
 import 'server-only'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 /**
@@ -93,8 +92,16 @@ export function storageConfig(env: NodeJS.ProcessEnv = process.env): StorageConf
   }
 }
 
-function localRoot(): string {
-  return path.resolve(process.cwd(), process.env.FILE_STORAGE_DIR ?? './var/uploads')
+/**
+ * The local-disk driver, loaded only when it is the store in use.
+ *
+ * Its filesystem calls build paths at runtime, and a bundler that sees that
+ * traces the whole project into the deployment output. Keeping it behind a
+ * dynamic import means an S3 deployment never pulls it in and the trace stays
+ * honest about what is actually needed.
+ */
+function localDriver(): Promise<typeof import('./storage-local')> {
+  return import('./storage-local')
 }
 
 /**
@@ -202,9 +209,8 @@ export async function putFile(key: string, body: Buffer, contentType: string): P
     return { storage: 's3', storageKey: key, byteSize: body.byteLength, checksum }
   }
 
-  const destination = path.join(localRoot(), key)
-  await mkdir(path.dirname(destination), { recursive: true })
-  await writeFile(destination, body)
+  const { writeLocal } = await localDriver()
+  await writeLocal(key, body)
   return { storage: 'local', storageKey: key, byteSize: body.byteLength, checksum }
 }
 
@@ -217,11 +223,8 @@ export async function getFile(storage: string, key: string): Promise<Buffer | nu
     return Buffer.from(await response.arrayBuffer())
   }
 
-  try {
-    return await readFile(path.join(localRoot(), key))
-  } catch {
-    return null
-  }
+  const { readLocal } = await localDriver()
+  return readLocal(key)
 }
 
 /**
@@ -235,7 +238,8 @@ export async function deleteFile(storage: string, key: string): Promise<void> {
       await fetch(url, { method: 'DELETE', headers })
       return
     }
-    await unlink(path.join(localRoot(), key))
+    const { removeLocal } = await localDriver()
+    await removeLocal(key)
   } catch {
     // Already gone, which is the state we wanted.
   }

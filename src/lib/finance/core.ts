@@ -57,6 +57,3 @@ export function clampPct(value: number): number {
   return clamp(num(value), 0, 1)
 }
 
-export function isZero(value: number, tolerance = 0.005): boolean {
-  return Math.abs(value) <= tolerance
-}

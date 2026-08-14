@@ -6,7 +6,13 @@
  * are only offered where the underlying records carry a real date: a monthly
  * cash-flow curve cannot be split into weeks without inventing the split, and
  * this module will not do that.
+ *
+ * Not part of the `finance` barrel, and deliberately so: these are chart
+ * groupings rather than financial engines, and keeping them out means the
+ * dashboard's bucketing cannot be mistaken for something a figure depends on.
  */
+
+import { startOfMonth } from './dates'
 
 export type Grain = 'week' | 'month' | 'quarter' | 'year'
 
@@ -23,10 +29,6 @@ export function startOfWeek(date: Date): Date {
   const day = (d.getUTCDay() + 6) % 7 // Monday is 0
   d.setUTCDate(d.getUTCDate() - day)
   return d
-}
-
-export function startOfMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
 }
 
 export function startOfQuarter(date: Date): Date {

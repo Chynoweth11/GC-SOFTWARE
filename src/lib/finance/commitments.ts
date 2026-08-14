@@ -1,4 +1,4 @@
-import { num, safeDiv, sumBy } from './core'
+import { num, sumBy } from './core'
 import type { CommitmentPosition } from './types'
 
 export interface CommitmentChangeInput {
@@ -174,22 +174,3 @@ export interface BuyoutRow {
   awardedVendorName: string | null
 }
 
-export function buyoutSummary(rows: readonly BuyoutRow[]) {
-  const budget = sumBy(rows, (r) => r.budgetAmount)
-  const awarded = sumBy(
-    rows.filter((r) => r.awardAmount > 0),
-    (r) => r.awardAmount,
-  )
-  const awardedBudget = sumBy(
-    rows.filter((r) => r.awardAmount > 0),
-    (r) => r.budgetAmount,
-  )
-  return {
-    totalBudget: budget,
-    totalAwarded: awarded,
-    savings: awardedBudget - awarded,
-    savingsPct: safeDiv(awardedBudget - awarded, awardedBudget),
-    packagesBoughtOut: rows.filter((r) => r.awardAmount > 0).length,
-    packagesOpen: rows.filter((r) => r.awardAmount <= 0).length,
-  }
-}

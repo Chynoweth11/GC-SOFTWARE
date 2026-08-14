@@ -285,13 +285,18 @@ async function withAuditGuardsLifted<T>(run: () => Promise<T>): Promise<T> {
 async function main() {
   console.log('Clearing existing data...')
   const tables = [
-    'session', 'projectSnapshot', 'quantityEntry', 'quantityItem',
+    'session', 'loginAttempt', 'projectSnapshot', 'quantityEntry', 'quantityItem',
     'cashFlowPeriod', 'forecastLine', 'forecastPeriod', 'ownerBillingLine', 'ownerBilling',
     'sovLine', 'subInvoice', 'costTransaction', 'changeOrderLine', 'changeOrder',
     'commitmentChange', 'commitmentLine', 'commitment', 'budgetRevision', 'budgetLine',
     'bidPackageQuote', 'bidPackage', 'estimateClarification', 'estimateAlternate',
-    'generalConditionItem', 'estimateItem', 'estimateSection', 'laborRate', 'laborClassification',
+    'generalConditionItem', 'estimateItem', 'estimateSection', 'laborRate',
     'complianceSubmission', 'complianceRequirement', 'projectLaborAssignment',
+    // After the assignments that point at it, not before: a classification with
+    // somebody charged to a job cannot be removed while that charge exists, and
+    // a reset has to work from a database with real work in it rather than only
+    // from an empty one.
+    'laborClassification',
     'projectEquipmentAssignment', 'equipmentItem', 'overheadCost',
     'wageRateLine', 'wageRateSheet', 'payrollCounty', 'payrollJurisdiction',
     'project', 'estimate', 'bid', 'vendor', 'vendorRegion', 'vendorState', 'client', 'costCode', 'trade', 'csiDivision',
