@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Calculated, EmptyState } from '@/components/ui'
-import { money, number as fmtNumber, percent } from '@/lib/format'
+import { hours, money, percent, quantity } from '@/lib/format'
 
 /**
  * The priced breakdown behind a change order.
@@ -245,7 +245,7 @@ export function DocumentLines({
                       </td>
                       <td className="num">
                         <Calculated formula="from the measure and dimensions">
-                          {fmtNumber(row.derived.netQty, 2)}
+                          {quantity(row.derived.netQty)}
                         </Calculated>
                         {row.uom && (
                           <span className="ml-1 text-[10px]" style={{ color: 'var(--text-subtle)' }}>
@@ -254,13 +254,13 @@ export function DocumentLines({
                         )}
                       </td>
                       <td className="num">{row.wastePct ? percent(row.wastePct, 1) : '-'}</td>
-                      <td className="num">{row.derived.laborHours ? fmtNumber(row.derived.laborHours, 1) : '-'}</td>
+                      <td className="num">{row.derived.laborHours ? hours(row.derived.laborHours) : '-'}</td>
                       <td className="num" title={row.derived.laborRateSource ?? undefined}>
                         {row.derived.laborRate ? money(row.derived.laborRate, { cents: true }) : '-'}
                       </td>
                       <td className="num">{money(row.derived.laborCost)}</td>
                       <td className="num">
-                        {row.derived.equipmentHours ? fmtNumber(row.derived.equipmentHours, 1) : '-'}
+                        {row.derived.equipmentHours ? hours(row.derived.equipmentHours) : '-'}
                       </td>
                       <td className="num" title={row.equipmentClass ?? undefined}>
                         {row.derived.equipmentRate ? money(row.derived.equipmentRate, { cents: true }) : '-'}
@@ -297,10 +297,10 @@ export function DocumentLines({
               <tfoot>
                 <tr>
                   <th colSpan={6}>Direct cost</th>
-                  <th className="num">{fmtNumber(totals.hours, 1)}</th>
+                  <th className="num">{hours(totals.hours)}</th>
                   <th className="num" />
                   <th className="num">{money(totals.labor)}</th>
-                  <th className="num">{fmtNumber(totals.equipmentHours, 1)}</th>
+                  <th className="num">{hours(totals.equipmentHours)}</th>
                   <th className="num" />
                   <th className="num">{money(totals.material)}</th>
                   <th className="num">{money(totals.equipment)}</th>

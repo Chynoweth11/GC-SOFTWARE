@@ -92,7 +92,7 @@ export function ForecastTable({
                     <td>
                       <Meter value={r.pctComplete} showLabel={false} height={4} />
                       <span className="tnum text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-                        {percent(r.pctComplete, 0)}
+                        {percent(r.pctComplete)}
                       </span>
                     </td>
                     <td className="num">{money(etc)}</td>

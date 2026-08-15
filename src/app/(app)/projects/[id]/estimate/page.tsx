@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { getProjectEstimateComparison } from '@/lib/queries/project-estimate'
-import { money, moneyShort, number as fmtNumber, percent } from '@/lib/format'
+import { money, moneyShort, percent, quantity } from '@/lib/format'
 import {
   Calculated,
   DataList,
@@ -243,8 +243,8 @@ function TakeoffSections({
                       </td>
                       <td className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.sectionName ?? '-'}</td>
                       <td className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.measure}</td>
-                      <td className="num">{fmtNumber(item.netQty, 2)}</td>
-                      <td className="num">{fmtNumber(item.grossQty, 2)}</td>
+                      <td className="num">{quantity(item.netQty)}</td>
+                      <td className="num">{quantity(item.grossQty)}</td>
                       <td className="num">{money(item.laborCost)}</td>
                       <td className="num">{money(item.materialCost)}</td>
                       <td className="num">{money(item.equipmentCost)}</td>
@@ -291,7 +291,7 @@ function TakeoffSections({
                       <tr key={item.id}>
                         <td>{item.item}</td>
                         <td className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.basis}</td>
-                        <td className="num">{fmtNumber(item.qty, 2)}</td>
+                        <td className="num">{quantity(item.qty)}</td>
                         <td className="num">{money(item.unitCost, { cents: true })}</td>
                         <td className="num font-medium">{money(item.total)}</td>
                       </tr>

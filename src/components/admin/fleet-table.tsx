@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { EmptyState, Pill } from '@/components/ui'
-import { money, number as fmtNumber, percent } from '@/lib/format'
+import { hours, money, percent } from '@/lib/format'
 
 /**
  * Every machine, and what it is actually doing.
@@ -170,8 +170,8 @@ export function FleetTable({ rows }: { rows: FleetTableRow[] }) {
                         row.jobCount
                       )}
                     </td>
-                    <td className="num">{row.hiredHours ? fmtNumber(row.hiredHours, 0) : '-'}</td>
-                    <td className="num">{row.operatingHours ? fmtNumber(row.operatingHours, 0) : '-'}</td>
+                    <td className="num">{row.hiredHours ? hours(row.hiredHours) : '-'}</td>
+                    <td className="num">{row.operatingHours ? hours(row.operatingHours) : '-'}</td>
                     <td
                       className="num"
                       style={{
@@ -188,14 +188,14 @@ export function FleetTable({ rows }: { rows: FleetTableRow[] }) {
                           : 'Hours run against the hours the hire bought.'
                       }
                     >
-                      {row.hiredHours ? percent(row.utilization, 0) : '-'}
+                      {row.hiredHours ? percent(row.utilization) : '-'}
                     </td>
                     <td className="num">{money(row.rentalCost)}</td>
                     <td className="num">{money(row.operatingCost)}</td>
                     <td className="num" style={{ color: row.standbyShare > 0.25 ? 'var(--caution)' : undefined }}>
                       {money(row.standbyCost)}
                       {row.standbyShare > 0.25 && (
-                        <span className="ml-1 text-[10px]">{percent(row.standbyShare, 0)}</span>
+                        <span className="ml-1 text-[10px]">{percent(row.standbyShare)}</span>
                       )}
                     </td>
                     <td className="num font-semibold">{money(row.cost)}</td>

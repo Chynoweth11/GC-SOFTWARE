@@ -203,7 +203,7 @@ export function DocumentList({
                     <td className="num" style={{ color: row.margin < 0 ? 'var(--adverse)' : undefined }}>
                       {money(row.margin)}
                       <span className="ml-1 text-[10px]" style={{ color: 'var(--text-subtle)' }}>
-                        {percent(row.marginPct, 0)}
+                        {percent(row.marginPct)}
                       </span>
                     </td>
                   )}

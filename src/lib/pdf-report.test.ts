@@ -80,3 +80,57 @@ describe('sheet to PDF', () => {
     expect(sheetToPdfSection({ ...spec, rows: [] }).table!.totals).toBeUndefined()
   })
 })
+
+describe('sheet to PDF: measured figures keep their decimals', () => {
+  /*
+    The PDF used to print `number` columns with no decimals at all while the
+    workbook printed two, so a quantity of 33.33 was 33 in one export and 33.33
+    in the other. The two are the same document rendered twice; they have to
+    agree place for place.
+  */
+  const measured: SheetSpec = {
+    name: 'Quantities',
+    columns: [
+      { header: 'Item', key: 'item' },
+      { header: 'Budget qty', key: 'qty', format: 'quantity', total: true },
+      { header: 'Budget hours', key: 'hrs', format: 'hours', total: true },
+      { header: 'Crew days', key: 'days', format: 'number' },
+    ],
+    rows: [
+      { item: 'Slab on grade', qty: 33.333, hrs: 7.25, days: 1.5 },
+      { item: 'Footings', qty: 1200, hrs: 8, days: 2 },
+    ],
+    totalsRow: true,
+  }
+  const rows = sheetToPdfSection(measured).table!.rows
+
+  it('holds a quantity to three places, where a cubic yard lands', () => {
+    expect(rows[0].qty).toBe('33.333')
+  })
+
+  it('keeps a quarter hour rather than rounding it to the hour', () => {
+    expect(rows[0].hrs).toBe('7.25')
+  })
+
+  it('keeps two places on a plain measurement', () => {
+    expect(rows[0].days).toBe('1.5')
+  })
+
+  it('writes a whole figure whole, inventing no precision', () => {
+    expect(rows[1].qty).toBe('1,200')
+    expect(rows[1].hrs).toBe('8')
+    expect(rows[1].days).toBe('2')
+  })
+
+  it('totals with the decimals intact rather than summing rounded figures', () => {
+    const totals = sheetToPdfSection(measured).table!.totals!
+    expect(totals.qty).toBe('1,233.333')
+    expect(totals.hrs).toBe('15.25')
+  })
+
+  it('right-aligns the measured columns alongside the money ones', () => {
+    const byKey = Object.fromEntries(sheetToPdfSection(measured).table!.columns.map((c) => [c.key, c.align]))
+    expect(byKey.qty).toBe('right')
+    expect(byKey.hrs).toBe('right')
+  })
+})

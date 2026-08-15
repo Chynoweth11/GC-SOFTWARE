@@ -5,7 +5,7 @@ import { getProjectBundle } from '@/lib/queries/project'
 import { getProjectDocuments } from '@/lib/queries/documents'
 import { prisma } from '@/lib/db'
 import { DOCUMENT_KIND_LABELS, DOCUMENT_STATUS_LABELS, timeAndMaterialsSummary } from '@/lib/finance'
-import { money, moneyShort, percent } from '@/lib/format'
+import { hours, money, moneyShort, percent } from '@/lib/format'
 import { InfoNote, Kpi, KpiGrid, MoneyKpi, Section } from '@/components/ui'
 import { ChartFrame, DonutChart, HorizontalBars } from '@/components/charts/primitives'
 import { DocumentList } from '@/components/project/document-list'
@@ -151,8 +151,8 @@ export default async function ChangesPage({ params }: { params: Promise<{ id: st
             />
             <Kpi
               label="Hours behind them"
-              value={`${Math.round(tm.laborHours)} labor`}
-              detail={`${Math.round(tm.equipmentHours)} machine hours`}
+              value={`${hours(tm.laborHours)} labor`}
+              detail={`${hours(tm.equipmentHours)} machine hours`}
             />
             <MoneyKpi
               label="Nobody has signed"

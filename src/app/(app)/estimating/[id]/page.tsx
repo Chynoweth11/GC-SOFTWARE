@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth'
 import { can } from '@/lib/permissions'
 import { getEstimateBundle } from '@/lib/queries/estimate'
 import { prisma } from '@/lib/db'
-import { money, moneyShort, number as fmtNumber, percent } from '@/lib/format'
+import { hours, money, moneyShort, number as fmtNumber, percent } from '@/lib/format'
 import { DataList, KpiGrid, Kpi, MoneyKpi, Section, Variance, InfoNote } from '@/components/ui'
 import { ChartFrame, DonutChart, HorizontalBars } from '@/components/charts/primitives'
 import { ConvertToProjectForm } from '@/components/estimating/convert-to-project-form'
@@ -134,7 +134,7 @@ export default async function BidSummaryPage({ params }: { params: Promise<{ id:
                 { label: 'Total bid / SF', value: summary.metrics.buildingAreaSf ? money(summary.metrics.totalBidPerSf, { cents: true }) : '-' },
                 { label: 'Labor share of direct', value: percent(summary.metrics.laborShareOfDirect) },
                 { label: 'Subcontract share of direct', value: percent(summary.metrics.subShareOfDirect) },
-                { label: 'Total labor hours', value: fmtNumber(summary.laborHours, 0) },
+                { label: 'Total labor hours', value: hours(summary.laborHours) },
               ]}
             />
           </ChartFrame>

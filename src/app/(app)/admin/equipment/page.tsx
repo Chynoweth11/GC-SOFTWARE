@@ -4,7 +4,7 @@ import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { getEquipmentItems, getFleet } from '@/lib/queries/equipment'
 import { OWNERSHIP_LABELS } from '@/lib/finance'
-import { number as fmtNumber, percent } from '@/lib/format'
+import { hours, percent } from '@/lib/format'
 import { InfoNote, Kpi, KpiGrid, MoneyKpi, Section } from '@/components/ui'
 import { EquipmentLibrary } from '@/components/admin/equipment-library'
 import { FleetTable } from '@/components/admin/fleet-table'
@@ -50,14 +50,14 @@ export default async function EquipmentSettingsPage() {
             amount={fleet.totals.standbyCost}
             tone={fleet.standbyShare > 0.25 ? 'adverse' : fleet.totals.standbyCost > 0 ? 'caution' : 'favorable'}
             detail={
-              fleet.totals.cost > 0 ? `${percent(fleet.standbyShare, 0)} of the plant cost` : 'Nothing standing'
+              fleet.totals.cost > 0 ? `${percent(fleet.standbyShare)} of the plant cost` : 'Nothing standing'
             }
           />
           <Kpi
             label="Hours run against hours hired"
-            value={fleet.totals.hiredHours > 0 ? percent(fleet.utilization, 0) : '-'}
+            value={fleet.totals.hiredHours > 0 ? percent(fleet.utilization) : '-'}
             tone={fleet.totals.hiredHours > 0 && fleet.utilization < 0.5 ? 'caution' : 'neutral'}
-            detail={`${fmtNumber(fleet.totals.operatingHours, 0)} of ${fmtNumber(fleet.totals.hiredHours, 0)} hours`}
+            detail={`${hours(fleet.totals.operatingHours)} of ${hours(fleet.totals.hiredHours)} hours`}
           />
           <Kpi
             label="On no job"

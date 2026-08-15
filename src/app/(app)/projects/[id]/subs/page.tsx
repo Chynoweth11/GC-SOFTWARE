@@ -171,7 +171,7 @@ export default async function SubsPage({ params }: { params: Promise<{ id: strin
                         <td>
                           <Meter value={c.pctComplete} showLabel={false} height={4} />
                           <span className="tnum text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-                            {percent(c.pctComplete, 0)}
+                            {percent(c.pctComplete)}
                           </span>
                         </td>
                         <td className="num">{money(c.earnedToDate)}</td>

@@ -244,7 +244,7 @@ export function LaborLibrary({
                                         : 'var(--text)',
                                 }}
                               >
-                                {percent(row.assignedShare, 0)}
+                                {percent(row.assignedShare)}
                               </span>
                             ) : (
                               fmtNumber(row.assignmentCount, 0)
@@ -629,7 +629,7 @@ export function OverheadLibrary({
               <td>Salaried time no job is paying for</td>
               <td className="num">{money(summary.annualUnassignedStaff)}</td>
               <td className="wrap text-xs" style={{ color: 'var(--text-subtle)' }}>
-                {percent(summary.staff.utilization, 0)} of the staff bill is on jobs
+                {percent(summary.staff.utilization)} of the staff bill is on jobs
               </td>
             </tr>
             <tr>
@@ -702,7 +702,7 @@ export function OverheadLibrary({
           ))}
           {summary.staff.overAllocated.map((person) => (
             <Pill key={person.id} tone="adverse">
-              {person.name} is allocated {percent(person.share, 0)}
+              {person.name} is allocated {percent(person.share)}
             </Pill>
           ))}
         </div>

@@ -15,7 +15,7 @@ Source workbooks:
 | **MC** | `ConstructX_Master_Company_TrackingX.xlsx` |
 | **TB** | `ConstructX_Takeoff_Bid_Template2.xlsx` |
 
-Verification: `src/lib/finance/*.test.ts`, 374 tests asserting these formulas
+Verification: `src/lib/**/*.test.ts`, 434 tests asserting these formulas
 reproduce the workbooks' own cached values, and that the engines added since
 hold the identities the workbooks never checked. Beyond them, `verify:figures`
 re-checks 761 identities against the live database, `verify:exports` writes and
@@ -798,6 +798,57 @@ being true: a much longer chain, figures an order of magnitude larger, or an
 engine that iterates rather than compounds once. If one of them ever fails, the
 fix is integer cents throughout, and the failure will say so before a customer
 does.
+
+---
+
+## How a figure is written down
+
+Engine: [`src/lib/format.ts`](../src/lib/format.ts) · Tests: `format.test.ts`
+
+The engines carry full precision. Rounding happens once, at the moment a figure
+becomes text, and what it rounds to is a decision rather than a default.
+
+| Formatter | Places | Why |
+|---|---|---|
+| `money` | 0, or 2 on request | A contract value with cents in a summary column is noise. An invoice line without them is wrong |
+| `moneyShort` | Narrowing with size | `$2.45M` is no wider than `$2.5M` and does not hide fifty thousand dollars. Places fall away only once they stop meaning anything |
+| `percent` | 1 by default | A tenth of a point of margin on a two million dollar job is two thousand dollars. It was `0` in seventeen places and is not any more |
+| `hours` | Up to 2, never padded | A quarter hour is a quarter hour. Rounding 7.25 to 7 loses fifteen minutes of a crew, priced |
+| `quantity` | Up to 3, never padded | A cubic yard lands on thirds. 33.333 is the measurement; 33.33 is a different one |
+| `number` | Exactly what is asked | For counts, where a fixed width lines a column up and a decimal place would be nonsense |
+
+**The distinction that matters.** `number(value, 1)` is wrong in both
+directions at once: it writes 7 as "7.0", claiming a precision nobody measured,
+and 7.25 as "7.3", throwing away a quarter hour. `decimal` states a *maximum*
+instead, so a whole number stays whole and a measured one keeps what it has.
+`hours` and `quantity` are that function with the limits this trade uses.
+
+**The exports say the same thing.** A workbook and its PDF render from one sheet
+spec, and each column names its precision there rather than taking a default, so
+`hours` and `quantity` columns print the same places in both. They did not
+always: the PDF wrote `number` columns with no decimals while the workbook wrote
+two, which made a quantity of 33.33 read as 33 depending on which button
+somebody pressed. `pdf-report.test.ts` asserts the places directly.
+
+---
+
+## The shapes
+
+Engine: [`src/lib/charts/geometry.ts`](../src/lib/charts/geometry.ts) · Tests: `geometry.test.ts`
+
+Every chart's arithmetic, kept out of the components that draw it. This was the
+last real calculation in the system with no test, and it is the one whose
+failure is quietest: a wrong angle renders cleanly, logs nothing, and sits
+beside a figure that is perfectly correct. Only the picture lies.
+
+| Function | What it holds to |
+|---|---|
+| `donutArcs` | Slices sweep to exactly 2π however many there are; each start is derived from the running total, so no rounding error creeps round the ring; a credit shows at its size rather than eating its neighbour |
+| `niceTicks` | Steps of 1, 2, 5 or 10 times a power of ten, bracketing the data, with zero labelled `0` rather than `-0` |
+| `extentOf` | Includes zero for bars, because a bar chart that starts elsewhere exaggerates every difference on it. A rate chart living near 1.0 opts out |
+| `barWidths` | Proportional and absolute, so a negative variance is as visible as a positive one; shares one scale across a row |
+| `sparklinePoints` | Scaled to its own range, because a sparkline carries shape and the figure beside it carries level |
+| `coord` | The only rounding, at the very last step, to a hundredth of a pixel so server and browser markup match byte for byte |
 
 ---
 

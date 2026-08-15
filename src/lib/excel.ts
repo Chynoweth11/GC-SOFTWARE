@@ -16,7 +16,7 @@ export interface SheetColumn {
   key: string
   width?: number
   /** money renders as accounting, percent as 0.0%, and number as plain. */
-  format?: 'money' | 'money2' | 'percent' | 'number' | 'date' | 'text'
+  format?: 'money' | 'money2' | 'percent' | 'number' | 'hours' | 'quantity' | 'date' | 'text'
   /** Included in the totals row when the sheet has one. */
   total?: boolean
 }
@@ -30,11 +30,19 @@ export interface SheetSpec {
   totalsRow?: boolean
 }
 
+/*
+  Decimal places are stated, never defaulted, and they match what the PDF of the
+  same sheet prints. The cell always carries the full value; these decide what a
+  reader sees. Trailing zeros are optional throughout, so a whole number stays
+  whole rather than claiming a precision nobody measured.
+*/
 const NUMBER_FORMATS: Record<NonNullable<SheetColumn['format']>, string> = {
   money: '$#,##0;($#,##0);"-"',
   money2: '$#,##0.00;($#,##0.00);"-"',
   percent: '0.0%',
   number: '#,##0.##',
+  hours: '#,##0.##',
+  quantity: '#,##0.###',
   date: 'mmm d, yyyy',
   text: '@',
 }

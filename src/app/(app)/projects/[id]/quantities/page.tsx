@@ -4,7 +4,7 @@ import { can } from '@/lib/permissions'
 import { getProjectBundle } from '@/lib/queries/project'
 import { prisma } from '@/lib/db'
 import { overallQuantityProgress, sumBy } from '@/lib/finance'
-import { date, number as fmtNumber, percent } from '@/lib/format'
+import { date, decimal, hours, percent, quantity } from '@/lib/format'
 import { EmptyState, KpiGrid, Kpi, Section, Variance, InfoNote } from '@/components/ui'
 import { ChartFrame, HorizontalBars, Meter } from '@/components/charts/primitives'
 import { QuantityEntryForm } from '@/components/project/quantity-entry-form'
@@ -48,9 +48,9 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
       <Section title="Production and productivity">
         <KpiGrid cols={6}>
           <Kpi label="Physical progress" value={percent(progress)} chart={<Meter value={progress} showLabel={false} />} hint="Earned labour hours ÷ budget hours." />
-          <Kpi label="Budget hours" value={fmtNumber(totalBudgetHours, 0)} />
-          <Kpi label="Earned hours" value={fmtNumber(totalEarnedHours, 0)} detail="Installed quantity at the budget rate" />
-          <Kpi label="Actual hours" value={fmtNumber(totalActualHours, 0)} />
+          <Kpi label="Budget hours" value={hours(totalBudgetHours)} />
+          <Kpi label="Earned hours" value={hours(totalEarnedHours)} detail="Installed quantity at the budget rate" />
+          <Kpi label="Actual hours" value={hours(totalActualHours)} />
           <Kpi
             label="Productivity factor"
             value={overallProductivity.toFixed(3)}
@@ -59,11 +59,11 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
           />
           <Kpi
             label="Forecast hours at completion"
-            value={fmtNumber(totalForecastHours, 0)}
+            value={hours(totalForecastHours)}
             tone={totalForecastHours > totalBudgetHours ? 'adverse' : 'favorable'}
             detail={
               <>
-                <Variance value={totalBudgetHours - totalForecastHours} format="money" compact showSign /> vs budget
+                <Variance value={totalBudgetHours - totalForecastHours} format="hours" showSign /> vs budget
               </>
             }
           />
@@ -75,7 +75,7 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
           {behind.length} work item{behind.length === 1 ? ' is' : 's are'} running below the budget production rate:{' '}
           {behind.map((q) => q.description).slice(0, 3).join(', ')}
           {behind.length > 3 ? ` and ${behind.length - 3} more` : ''}. At the current rate they will consume{' '}
-          {fmtNumber(sumBy(behind, (q) => q.forecastHoursAtCompletion - q.budgetHours), 0)} hours more than budgeted.
+          {hours(sumBy(behind, (q) => q.forecastHoursAtCompletion - q.budgetHours))} hours more than budgeted.
         </InfoNote>
       )}
 
@@ -136,39 +136,39 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
                     </td>
                     <td style={{ color: 'var(--text-muted)' }}>{q.costCode ?? '-'}</td>
                     <td style={{ color: 'var(--text-muted)' }}>{q.uom}</td>
-                    <td className="num">{fmtNumber(q.budgetQty)}</td>
-                    <td className="num">{fmtNumber(q.installedToDate)}</td>
-                    <td className="num">{fmtNumber(q.remainingQty)}</td>
+                    <td className="num">{quantity(q.budgetQty)}</td>
+                    <td className="num">{quantity(q.installedToDate)}</td>
+                    <td className="num">{quantity(q.remainingQty)}</td>
                     <td>
                       <Meter value={q.pctInstalled} showLabel={false} height={4} />
                       <span className="tnum text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-                        {percent(q.pctInstalled, 0)}
+                        {percent(q.pctInstalled)}
                       </span>
                     </td>
                     <td className="num">{q.budgetUnitRate.toFixed(3)}</td>
                     <td className="num" style={{ color: q.actualUnitRate > q.budgetUnitRate ? 'var(--adverse)' : undefined }}>
                       {q.actualUnitRate.toFixed(3)}
                     </td>
-                    <td className="num">{fmtNumber(q.budgetHours, 1)}</td>
-                    <td className="num">{fmtNumber(q.earnedHours, 1)}</td>
-                    <td className="num">{fmtNumber(q.actualHours, 1)}</td>
+                    <td className="num">{hours(q.budgetHours)}</td>
+                    <td className="num">{hours(q.earnedHours)}</td>
+                    <td className="num">{hours(q.actualHours)}</td>
                     <td className="num">
                       <span style={{ color: q.hoursVariance < 0 ? 'var(--adverse)' : 'var(--favorable)' }}>
                         {q.hoursVariance > 0 ? '+' : ''}
-                        {fmtNumber(q.hoursVariance, 1)}
+                        {hours(q.hoursVariance)}
                       </span>
                     </td>
                     <td className="num" style={{ color: q.productivityFactor >= 1 ? 'var(--favorable)' : 'var(--adverse)' }}>
                       {q.productivityFactor.toFixed(3)}
                     </td>
-                    <td className="num">{fmtNumber(q.forecastHoursAtCompletion, 1)}</td>
+                    <td className="num">{hours(q.forecastHoursAtCompletion)}</td>
                     <td className="num">
                       <span style={{ color: q.forecastHoursVariance < 0 ? 'var(--adverse)' : 'var(--favorable)' }}>
                         {q.forecastHoursVariance > 0 ? '+' : ''}
-                        {fmtNumber(q.forecastHoursVariance, 1)}
+                        {hours(q.forecastHoursVariance)}
                       </span>
                     </td>
-                    <td className="num">{fmtNumber(q.avgDailyProduction, 1)}</td>
+                    <td className="num">{decimal(q.avgDailyProduction, 2)}</td>
                     <td className="num">{q.daysToComplete || '-'}</td>
                     <td className="num" style={{ color: q.materialOveragePct > 0.1 ? 'var(--caution)' : undefined }}>
                       {q.materialOrderedQty ? percent(q.materialOveragePct, 1) : '-'}
@@ -179,13 +179,13 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
               <tfoot>
                 <tr>
                   <td colSpan={9}>Total, {quantities.length} work items</td>
-                  <td className="num">{fmtNumber(totalBudgetHours, 1)}</td>
-                  <td className="num">{fmtNumber(totalEarnedHours, 1)}</td>
-                  <td className="num">{fmtNumber(totalActualHours, 1)}</td>
-                  <td className="num">{fmtNumber(totalEarnedHours - totalActualHours, 1)}</td>
+                  <td className="num">{hours(totalBudgetHours)}</td>
+                  <td className="num">{hours(totalEarnedHours)}</td>
+                  <td className="num">{hours(totalActualHours)}</td>
+                  <td className="num">{hours(totalEarnedHours - totalActualHours)}</td>
                   <td className="num">{overallProductivity.toFixed(3)}</td>
-                  <td className="num">{fmtNumber(totalForecastHours, 1)}</td>
-                  <td className="num">{fmtNumber(totalBudgetHours - totalForecastHours, 1)}</td>
+                  <td className="num">{hours(totalForecastHours)}</td>
+                  <td className="num">{hours(totalBudgetHours - totalForecastHours)}</td>
                   <td colSpan={3} />
                 </tr>
               </tfoot>
@@ -229,9 +229,9 @@ export default async function QuantitiesPage({ params }: { params: Promise<{ id:
                     <tr key={e.id}>
                       <td className="max-w-[16rem] truncate">{item.description}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{date(e.periodEnd)}</td>
-                      <td className="num">{fmtNumber(e.installedQty)}</td>
-                      <td className="num">{fmtNumber(e.actualHours, 1)}</td>
-                      <td className="num">{fmtNumber(e.crewDays)}</td>
+                      <td className="num">{quantity(e.installedQty)}</td>
+                      <td className="num">{hours(e.actualHours)}</td>
+                      <td className="num">{decimal(e.crewDays, 2)}</td>
                       <td className="num">{e.installedQty ? (e.actualHours / e.installedQty).toFixed(3) : '-'}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{e.notes ?? '-'}</td>
                     </tr>

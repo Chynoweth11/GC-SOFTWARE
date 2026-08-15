@@ -76,7 +76,7 @@ export default async function ProjectSummaryPage({ params }: { params: Promise<{
               tone={f.forecastProfit < 0 ? 'adverse' : 'favorable'}
               detail={
                 <>
-                  {percent(f.forecastMargin)} · <Variance value={f.marginVsTarget} format="percent" /> vs {percent(project.targetMarginPct, 0)} target
+                  {percent(f.forecastMargin)} · <Variance value={f.marginVsTarget} format="percent" /> vs {percent(project.targetMarginPct)} target
                 </>
               }
             />

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { money, moneyShort, percent, percentSigned, varianceTone } from '@/lib/format'
+import { hours, money, moneyShort, percent, percentSigned, varianceTone } from '@/lib/format'
 
 // ── KPI tiles ─────────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ export function Variance({
 }: {
   value: number | null | undefined
   favorableWhen?: 'positive' | 'negative'
-  format?: 'money' | 'percent'
+  format?: 'money' | 'percent' | 'hours'
   compact?: boolean
   showSign?: boolean
 }) {
@@ -96,6 +96,11 @@ export function Variance({
   let text: string
   if (format === 'percent') {
     text = showSign ? percentSigned(value) : percent(value)
+  } else if (format === 'hours') {
+    // Hours are not dollars. A variance in crew time read as a dollar figure is
+    // a number somebody will put in a forecast.
+    const formatted = `${hours(Math.abs(value))} hr`
+    text = showSign ? `${value < 0 ? '−' : '+'}${formatted}` : formatted
   } else {
     const formatted = compact ? moneyShort(Math.abs(value)) : money(Math.abs(value), { dash: false })
     text = showSign ? `${value < 0 ? '−' : '+'}${formatted}` : formatted

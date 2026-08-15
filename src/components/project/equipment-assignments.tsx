@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Calculated, EmptyState } from '@/components/ui'
-import { date, dateInput, money, number as fmtNumber, percent } from '@/lib/format'
+import { date, dateInput, decimal, hours, money, percent } from '@/lib/format'
 
 /**
  * The machines charged to this job, and what each of them costs it.
@@ -217,7 +217,7 @@ export function EquipmentAssignments({
                         {row.costCodeLabel ?? <span style={{ color: 'var(--adverse)' }}>No cost code</span>}
                       </td>
                       <td className="wrap text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {fmtNumber(row.units, 1)} {BASIS_UNITS[row.basis] ?? ''}
+                        {decimal(row.units, 2)} {BASIS_UNITS[row.basis] ?? ''}
                         {row.startDate && row.endDate && (
                           <div style={{ color: 'var(--text-subtle)' }}>
                             {date(row.startDate)} to {date(row.endDate)}
@@ -233,7 +233,7 @@ export function EquipmentAssignments({
                         )}
                       </td>
                       <td className="num">{money(row.rentalCost)}</td>
-                      <td className="num">{fmtNumber(row.operatingHours, 0)} h</td>
+                      <td className="num">{hours(row.operatingHours)} h</td>
                       <td className="num">{money(row.operatingCost)}</td>
                       <td className="num" style={{ color: row.standbyCost > 0 ? 'var(--caution)' : undefined }}>
                         {money(row.standbyCost)}
@@ -278,7 +278,7 @@ export function EquipmentAssignments({
                 <tr>
                   <th colSpan={4}>All plant on this job</th>
                   <th className="num">{money(totals.rentalCost)}</th>
-                  <th className="num">{fmtNumber(totals.operatingHours, 0)} h</th>
+                  <th className="num">{hours(totals.operatingHours)} h</th>
                   <th className="num">{money(totals.operatingCost)}</th>
                   <th className="num">{money(totals.standbyCost)}</th>
                   <th className="num">{money(totals.cost)}</th>
@@ -293,7 +293,7 @@ export function EquipmentAssignments({
       {rows.length > 0 && totals.standbyCost > 0 && (
         <p className="text-xs" style={{ color: 'var(--caution)' }}>
           {money(totals.standbyCost)} of this is standby, {percent(standbyShare, 1)} of what the plant is costing the
-          job, over {fmtNumber(totals.standbyHours, 0)} idle hours.
+          job, over {hours(totals.standbyHours)} idle hours.
         </p>
       )}
 

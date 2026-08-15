@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { EstimateItemDerived } from '@/lib/finance'
 import { MEASURE_LABELS } from '@/lib/finance/estimate'
-import { money, number as fmtNumber, percent } from '@/lib/format'
+import { hours, money, percent, quantity } from '@/lib/format'
 import { Pill } from '@/components/ui'
 
 const MEASURES = Object.keys(MEASURE_LABELS) as (keyof typeof MEASURE_LABELS)[]
@@ -389,15 +389,15 @@ export function TakeoffTable({
                   <td className="num">{i.length || '-'}</td>
                   <td className="num">{i.width || '-'}</td>
                   <td className="num">{i.depth || '-'}</td>
-                  <td className="num calculated">{fmtNumber(i.netQty, 2)}</td>
-                  <td className="num">{i.wastePct ? percent(i.wastePct, 0) : '-'}</td>
-                  <td className="num calculated">{fmtNumber(i.grossQty, 2)}</td>
+                  <td className="num calculated">{quantity(i.netQty)}</td>
+                  <td className="num">{i.wastePct ? percent(i.wastePct) : '-'}</td>
+                  <td className="num calculated">{quantity(i.grossQty)}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{i.laborClass ?? '-'}</td>
-                  <td className="num">{i.laborHrsPerUnit || '-'}</td>
+                  <td className="num">{i.laborHrsPerUnit ? hours(i.laborHrsPerUnit) : '-'}</td>
                   <td className="num">{i.laborRate ? money(i.laborRate) : '-'}</td>
                   <td className="num">{money(i.laborCost)}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{i.equipmentClass ?? '-'}</td>
-                  <td className="num">{i.equipmentHours ? fmtNumber(i.equipmentHours, 1) : '-'}</td>
+                  <td className="num">{i.equipmentHours ? hours(i.equipmentHours) : '-'}</td>
                   <td className="num">{i.equipmentRate ? money(i.equipmentRate, { cents: true }) : '-'}</td>
                   <td className="num">{money(i.materialCost)}</td>
                   <td className="num">{money(i.equipmentCost)}</td>
@@ -451,11 +451,11 @@ export function TakeoffTable({
             <tfoot>
               <tr>
                 <td colSpan={12}>Total, {filtered.length} lines</td>
-                <td className="num">{fmtNumber(totals.laborHours, 1)} hr</td>
+                <td className="num">{hours(totals.laborHours)} hr</td>
                 <td />
                 <td className="num">{money(totals.laborCost)}</td>
                 <td />
-                <td className="num">{fmtNumber(totals.equipmentHours, 1)} hr</td>
+                <td className="num">{hours(totals.equipmentHours)} hr</td>
                 <td />
                 <td className="num">{money(totals.materialCost)}</td>
                 <td className="num">{money(totals.equipmentCost)}</td>

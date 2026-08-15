@@ -48,6 +48,45 @@ export function number(value: number | null | undefined, places = 0): string {
   return value.toLocaleString('en-US', { minimumFractionDigits: places, maximumFractionDigits: places })
 }
 
+/**
+ * A figure that carries its decimals when it has them, and none when it does not.
+ *
+ * `number(value, 1)` is the wrong tool for a measured quantity in both
+ * directions. It writes 7 as "7.0", which invents a precision nobody recorded,
+ * and it writes 7.25 as "7.3", which throws away a quarter of an hour somebody
+ * did record. Hours, quantities and productivity rates are all measured, so
+ * they get the decimals they actually have, up to a stated limit, and no more.
+ *
+ * The thousands separator stays, because a figure like 12,480.5 hours is read
+ * wrong without it.
+ */
+export function decimal(value: number | null | undefined, maxPlaces = 2): string {
+  if (value == null || !isFinite(value)) return '-'
+  return value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: maxPlaces })
+}
+
+/**
+ * Hours, to the nearest hundredth where there is one.
+ *
+ * A timesheet is kept in quarter hours and a machine meter reads to a tenth, so
+ * two places holds everything either of them can say. A whole number of hours
+ * prints as a whole number.
+ */
+export function hours(value: number | null | undefined): string {
+  return decimal(value, 2)
+}
+
+/**
+ * A measured quantity: square feet, cubic yards, tons, each.
+ *
+ * Three places, because a cubic yard worked out from feet and inches lands on
+ * awkward thirds, and rounding a takeoff quantity is how a bid quietly loses
+ * material.
+ */
+export function quantity(value: number | null | undefined): string {
+  return decimal(value, 3)
+}
+
 const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 const MONTH_LONG = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })

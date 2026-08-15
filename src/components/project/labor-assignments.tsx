@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ConfirmButton } from '@/components/ui/confirm-button'
 import { Calculated, EmptyState } from '@/components/ui'
-import { date, dateInput, money, number as fmtNumber, percent } from '@/lib/format'
+import { date, dateInput, hours, money, percent } from '@/lib/format'
 
 /**
  * Who is charged to this job, and what they cost it.
@@ -199,13 +199,13 @@ export function LaborAssignments({
                       <td className="wrap text-xs" style={{ color: 'var(--text-muted)' }}>
                         {row.basis === 'ALLOCATION' ? (
                           <>
-                            {percent(row.allocationPct, 0)} from {date(row.startDate)} to {date(row.endDate)}
+                            {percent(row.allocationPct)} from {date(row.startDate)} to {date(row.endDate)}
                             <span className="ml-1" style={{ color: 'var(--text-subtle)' }}>
                               {row.weeks.toFixed(1)} weeks
                             </span>
                           </>
                         ) : (
-                          <>{fmtNumber(row.budgetedHours, 0)} hours</>
+                          <>{hours(row.budgetedHours)} hours</>
                         )}
                       </td>
                       <td className="num" title={row.loadedRateOverride != null ? 'A rate agreed for this job' : 'From the classification library'}>
@@ -216,7 +216,7 @@ export function LaborAssignments({
                           </span>
                         )}
                       </td>
-                      <td className="num">{fmtNumber(row.hours, 0)}</td>
+                      <td className="num">{hours(row.hours)}</td>
                       <td className="num font-semibold">
                         <Calculated formula={row.workingOut}>{money(row.cost)}</Calculated>
                       </td>
@@ -251,14 +251,14 @@ export function LaborAssignments({
                       <td colSpan={4} style={{ color: 'var(--text-muted)' }}>
                         {group.label}
                       </td>
-                      <td className="num">{fmtNumber(group.hours, 0)}</td>
+                      <td className="num">{hours(group.hours)}</td>
                       <td className="num">{money(group.cost)}</td>
                       {canEdit && <td className="no-print" />}
                     </tr>
                   ))}
                   <tr>
                     <th colSpan={4}>Everybody on this job</th>
-                    <th className="num">{fmtNumber(totals.hours, 0)}</th>
+                    <th className="num">{hours(totals.hours)}</th>
                     <th className="num">{money(totals.cost)}</th>
                     {canEdit && <th className="no-print" />}
                   </tr>

@@ -1,7 +1,7 @@
 import 'server-only'
 import type { CellValue, SheetColumn, SheetSpec } from '@/lib/excel'
 import type { PdfColumn, PdfDocument, PdfSection, PdfTable } from '@/lib/pdf'
-import { date, money, number, percent } from '@/lib/format'
+import { date, decimal, hours, money, percent, quantity } from '@/lib/format'
 
 /**
  * Renders the same sheet specs the Excel exporter uses as a PDF.
@@ -13,10 +13,17 @@ import { date, money, number, percent } from '@/lib/format'
 /** Usable text width: page width less both margins, matching pdf.ts. */
 const CONTENT_WIDTH = 792 - 36 - 36
 
-const RIGHT_ALIGNED: SheetColumn['format'][] = ['money', 'money2', 'percent', 'number']
+const RIGHT_ALIGNED: SheetColumn['format'][] = ['money', 'money2', 'percent', 'number', 'hours', 'quantity']
 
+/*
+  The PDF of a sheet has to print what the sheet shows. These cases mirror the
+  number formats in `excel.ts` place for place: a column that keeps three
+  decimals in the workbook keeps three here, and one that keeps none keeps none.
+  They used to disagree, which meant a quantity was a different figure depending
+  on which button somebody pressed.
+*/
 function formatCell(value: CellValue, format: SheetColumn['format']): string {
-  // A missing figure or date reads as an em-dash, exactly as it does on screen;
+  // A missing figure or date reads as a dash, exactly as it does on screen;
   // only free text is left blank.
   if (value == null || value === '') return format && format !== 'text' ? '-' : ''
   switch (format) {
@@ -27,7 +34,11 @@ function formatCell(value: CellValue, format: SheetColumn['format']): string {
     case 'percent':
       return percent(typeof value === 'number' ? value : Number(value))
     case 'number':
-      return number(typeof value === 'number' ? value : Number(value))
+      return decimal(typeof value === 'number' ? value : Number(value), 2)
+    case 'hours':
+      return hours(typeof value === 'number' ? value : Number(value))
+    case 'quantity':
+      return quantity(typeof value === 'number' ? value : Number(value))
     case 'date':
       return date(value instanceof Date ? value : String(value))
     default:

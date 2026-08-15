@@ -4,7 +4,7 @@ import { can } from '@/lib/permissions'
 import { getEstimateBundle } from '@/lib/queries/estimate'
 import { getEquipmentItems } from '@/lib/queries/equipment'
 import { prisma } from '@/lib/db'
-import { number as fmtNumber, percent } from '@/lib/format'
+import { hours, percent } from '@/lib/format'
 import { KpiGrid, Kpi, MoneyKpi, Section } from '@/components/ui'
 import { TakeoffTable } from '@/components/estimating/takeoff-table'
 import { saveTakeoffItem, deleteTakeoffItem } from '../actions'
@@ -33,12 +33,12 @@ export default async function TakeoffPage({ params }: { params: Promise<{ id: st
       <Section title="Takeoff position">
         <KpiGrid cols={6}>
           <MoneyKpi label="Takeoff total" amount={summary.takeoffTotal} detail={`${summary.items.length} lines`} />
-          <MoneyKpi label="Labor" amount={summary.costMix.labor} detail={`${fmtNumber(summary.laborHours, 0)} hours`} />
+          <MoneyKpi label="Labor" amount={summary.costMix.labor} detail={`${hours(summary.laborHours)} hours`} />
           <MoneyKpi label="Material" amount={summary.costMix.material} detail={`Taxed at ${percent(estimate.salesTaxPct, 1)}`} />
           <MoneyKpi
             label="Equipment"
             amount={summary.costMix.equipment}
-            detail={`${fmtNumber(summary.items.reduce((total, item) => total + item.equipmentHours, 0), 0)} machine hours`}
+            detail={`${hours(summary.items.reduce((total, item) => total + item.equipmentHours, 0))} machine hours`}
           />
           <MoneyKpi label="Subcontract" amount={summary.costMix.subcontract} />
           <Kpi

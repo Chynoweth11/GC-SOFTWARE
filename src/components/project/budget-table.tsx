@@ -177,12 +177,12 @@ export function BudgetTable({
                   <td className="num">{money(l.committed)}</td>
                   <td className="num">{money(l.totalCostToDate)}</td>
                   <td className="num" style={{ color: l.pctSpent > l.effectivePctComplete + 0.1 ? 'var(--caution)' : undefined }}>
-                    {percent(l.pctSpent, 0)}
+                    {percent(l.pctSpent)}
                   </td>
                   <td className="num" style={{ minWidth: 90 }}>
                     <Meter value={l.effectivePctComplete} showLabel={false} height={4} />
                     <span className="tnum text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-                      {percent(l.effectivePctComplete, 0)}
+                      {percent(l.effectivePctComplete)}
                     </span>
                   </td>
                   <td className="num">{money(l.earnedValue)}</td>

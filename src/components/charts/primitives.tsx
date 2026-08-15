@@ -1,7 +1,8 @@
 'use client'
 
 import { useId, useMemo, useState, type ReactNode } from 'react'
-import { money, moneyShort, number as fmtNumber, percent } from '@/lib/format'
+import { decimal, hours, money, moneyShort } from '@/lib/format'
+import { barWidths, donutArcs, donutPath, extentOf, niceTicks, sparklinePoints } from '@/lib/charts/geometry'
 
 /**
  * Chart primitives.
@@ -10,14 +11,12 @@ import { money, moneyShort, number as fmtNumber, percent } from '@/lib/format'
  * eight chart forms, all reading the same financial series, and building them
  * directly keeps every axis, tooltip and colour consistent with the rest of the
  * design system, and keeps the client bundle small.
+ *
+ * The arithmetic behind the shapes lives in `@/lib/charts/geometry`, where it
+ * can be tested. What is left here is the drawing.
  */
 
 /** Categorical palette. Ordered so the first three read clearly apart at a glance. */
-/** Rounds an SVG coordinate so server and client markup always match exactly. */
-function coord(value: number): string {
-  return (Math.round(value * 100) / 100).toString()
-}
-
 export const SERIES_COLORS = [
   'var(--accent)',
   'var(--favorable)',
@@ -36,12 +35,20 @@ export const SERIES_COLORS = [
  */
 export type ValueFormat = 'money' | 'moneyShort' | 'percent' | 'number' | 'hours'
 
+/*
+  An axis label states its tick, not a rounded impression of it.
+
+  `percent(v, 0)` writes a tick of 0.125 as "13%", which puts a label on the
+  axis that no gridline is at. `decimal` gives it the place it needs and none it
+  does not, so a tick at a quarter reads 25% and one at an eighth reads 12.5%.
+  Hours and counts are measured, so they keep their decimals too.
+*/
 const FORMATTERS: Record<ValueFormat, (v: number) => string> = {
   money: (v) => money(v, { dash: false }),
   moneyShort,
-  percent: (v) => percent(v, 0),
-  number: (v) => fmtNumber(v),
-  hours: (v) => `${fmtNumber(v)} hr`,
+  percent: (v) => `${decimal(v * 100, 1)}%`,
+  number: (v) => decimal(v, 2),
+  hours: (v) => `${hours(v)} hr`,
 }
 
 function resolveFormat(format: ValueFormat = 'moneyShort') {
@@ -72,34 +79,11 @@ export interface ChartProps {
 
 const PAD = { top: 12, right: 12, bottom: 26 }
 
-function niceTicks(min: number, max: number, count = 4): number[] {
-  if (min === max) return [min]
-  const span = max - min
-  const rawStep = span / count
-  const magnitude = 10 ** Math.floor(Math.log10(Math.abs(rawStep) || 1))
-  const normalized = rawStep / magnitude
-  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude
-  const start = Math.floor(min / step) * step
-  const ticks: number[] = []
-  for (let v = start; v <= max + step * 0.001; v += step) ticks.push(Math.abs(v) < step * 1e-9 ? 0 : v)
-  return ticks
-}
-
 function useExtent(series: Series[], includeZero = true) {
-  return useMemo(() => {
-    const values = series.flatMap((s) => s.values.filter((v): v is number => v != null && isFinite(v)))
-    if (values.length === 0) return { min: 0, max: 1 }
-    let min = Math.min(...values)
-    let max = Math.max(...values)
-    if (includeZero) {
-      min = Math.min(min, 0)
-      max = Math.max(max, 0)
-    }
-    if (min === max) {
-      max = min + Math.abs(min || 1)
-    }
-    return { min, max }
-  }, [series, includeZero])
+  return useMemo(
+    () => extentOf(series.flatMap((s) => s.values), includeZero),
+    [series, includeZero],
+  )
 }
 
 interface TooltipState {
@@ -550,7 +534,9 @@ export function HorizontalBars({
   const rows = labels
     .map((label, i) => ({ label, values: series.map((s) => s.values[i] ?? 0) }))
     .slice(0, maxRows)
-  const max = Math.max(1, ...rows.flatMap((r) => r.values.map(Math.abs)))
+  // One scale across every row and every series, so two bars on one chart can
+  // be compared with each other and with the row above.
+  const scaleMax = Math.max(1, ...rows.flatMap((r) => r.values.map((v) => Math.abs(v))))
 
   if (!primary || rows.length === 0) return <EmptyChart />
 
@@ -572,7 +558,7 @@ export function HorizontalBars({
                 key={series[si].key}
                 className="h-full rounded-full transition-[width] duration-500"
                 style={{
-                  width: `${(Math.abs(v) / max) * 100}%`,
+                  width: `${barWidths([v], scaleMax)[0]}%`,
                   background: series[si].color ?? SERIES_COLORS[si % SERIES_COLORS.length],
                 }}
                 title={`${series[si].label}: ${fmt(v)}`}
@@ -614,34 +600,21 @@ export function DonutChart({
   const total = slices.reduce((a, s) => a + Math.abs(s.value), 0)
   if (total === 0) return <EmptyChart />
 
-  const radius = size / 2
   const thickness = size * 0.19
-  const inner = radius - thickness
-  // Cumulative fractions, so each arc's start is derived rather than accumulated
-  // through a variable the renderer would see mutate.
-  const offsets = slices.reduce<number[]>((acc, slice, i) => {
-    acc.push((acc[i - 1] ?? 0) + Math.abs(slice.value) / total)
-    return acc
-  }, [])
 
-  const arcs = slices.map((slice, i) => {
-    const fraction = Math.abs(slice.value) / total
-    const sweep = fraction * Math.PI * 2
-    const start = -Math.PI / 2 + (offsets[i - 1] ?? 0) * Math.PI * 2
-    const end = start + sweep
-    const largeArc = sweep > Math.PI ? 1 : 0
-    // Two decimals is finer than any screen can render, and it keeps the markup
-    // byte-identical between the server and the browser. Full double precision
-    // does not: the last digit can differ between the two renders and React
-    // reports it as a hydration mismatch.
-    const p = (r: number, a: number) => `${coord(radius + r * Math.cos(a))},${coord(radius + r * Math.sin(a))}`
-    return {
-      slice,
-      fraction,
-      color: slice.color ?? SERIES_COLORS[i % SERIES_COLORS.length],
-      d: `M${p(radius, start)} A${radius},${radius} 0 ${largeArc} 1 ${p(radius, end)} L${p(inner, end)} A${inner},${inner} 0 ${largeArc} 0 ${p(inner, start)} Z`,
-    }
-  })
+  /*
+    The angles come from `donutArcs`, which is tested: the slices sweep to
+    exactly a full turn, each one starts where the last ended, and a credit is
+    shown at its size rather than eating its neighbour. Only the colour and the
+    label are decided here.
+  */
+  const geometry = donutArcs(slices.map((slice) => slice.value))
+  const arcs = geometry.map((arc, i) => ({
+    slice: slices[i],
+    fraction: arc.fraction,
+    color: slices[i].color ?? SERIES_COLORS[i % SERIES_COLORS.length],
+    d: donutPath(arc, size, thickness),
+  }))
 
   return (
     <div className={`flex flex-wrap items-center gap-5 ${className ?? ''}`}>
@@ -735,19 +708,20 @@ export function Sparkline({
   width?: number
   height?: number
 }) {
-  const clean = values.filter((v) => isFinite(v))
-  if (clean.length < 2) return <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>-</span>
-  const min = Math.min(...clean)
-  const max = Math.max(...clean)
-  const span = max - min || 1
-  const points = clean.map((v, i) => {
-    const x = (i / (clean.length - 1)) * (width - 2) + 1
-    const y = height - 2 - ((v - min) / span) * (height - 4)
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  })
+  const points = sparklinePoints(values, width, height)
+  if (points.length === 0) {
+    return <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>-</span>
+  }
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
-      <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      <polyline
+        points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }

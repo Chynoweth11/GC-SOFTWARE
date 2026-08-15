@@ -11,7 +11,7 @@ import { LaborAssignments } from '@/components/project/labor-assignments'
 import { EquipmentAssignments } from '@/components/project/equipment-assignments'
 import { ComplianceList } from '@/components/project/compliance-list'
 import { WageRateSheets } from '@/components/project/wage-rate-sheets'
-import { money, percent } from '@/lib/format'
+import { hours, money, percent } from '@/lib/format'
 import {
   deleteComplianceRequirement,
   deleteComplianceSubmission,
@@ -101,7 +101,7 @@ export default async function ProjectLaborPage({ params }: { params: Promise<{ i
           amount={labor.totals.cost + equipment.totals.cost}
           detail={`${labor.rows.length + equipment.rows.length} entries`}
         />
-        <MoneyKpi label="Field labor" amount={fieldCost} detail={`${Math.round(labor.byKind.find((g) => g.kind === 'FIELD')?.hours ?? 0)} hours`} />
+        <MoneyKpi label="Field labor" amount={fieldCost} detail={`${hours(labor.byKind.find((g) => g.kind === 'FIELD')?.hours ?? 0)} hours`} />
         <MoneyKpi label="Project team" amount={staffCost} detail="Salaried people charged to this job" />
         <MoneyKpi
           label="Equipment"
@@ -110,7 +110,7 @@ export default async function ProjectLaborPage({ params }: { params: Promise<{ i
           detail={
             equipment.totals.standbyCost > 0
               ? `${money(equipment.totals.standbyCost)} of it standby`
-              : `${Math.round(equipment.totals.operatingHours)} hours run`
+              : `${hours(equipment.totals.operatingHours)} hours run`
           }
         />
         <Kpi
@@ -119,7 +119,7 @@ export default async function ProjectLaborPage({ params }: { params: Promise<{ i
           detail={
             compliance.onTimeRate === null
               ? 'Nothing recorded yet'
-              : `${percent(compliance.onTimeRate, 0)} of deadlines answered`
+              : `${percent(compliance.onTimeRate)} of deadlines answered`
           }
           tone={compliance.overdue > 0 ? 'adverse' : compliance.dueSoon > 0 ? 'caution' : 'favorable'}
         />
